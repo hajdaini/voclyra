@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -27,6 +27,22 @@ export class AppStorage {
     await mkdir(path, { recursive: true });
     this.hideRoot();
     return path;
+  }
+
+  async clearDir(...parts: string[]): Promise<void> {
+    const path = await this.ensureDir(...parts);
+    const entries = await readdir(path);
+    await Promise.all(entries.map((entry) => rm(join(path, entry), { recursive: true, force: true })));
+  }
+
+  async removeMatching(part: string, shouldRemove: (name: string) => boolean): Promise<void> {
+    const path = await this.ensureDir(part);
+    const entries = await readdir(path);
+    await Promise.all(
+      entries
+        .filter(shouldRemove)
+        .map((entry) => rm(join(path, entry), { recursive: true, force: true })),
+    );
   }
 
   path(...parts: string[]): string {

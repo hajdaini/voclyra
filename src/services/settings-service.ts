@@ -11,6 +11,7 @@ export class SettingsService {
       ...settings,
       pasteAfterDictation: settings.pasteAfterDictation ?? defaultSettings.pasteAfterDictation,
       pasteAfterImprovement: settings.pasteAfterImprovement ?? defaultSettings.pasteAfterImprovement,
+      improveSelectedText: settings.improveSelectedText ?? defaultSettings.improveSelectedText,
       maxHistoryItems: settings.maxHistoryItems ?? defaultSettings.maxHistoryItems,
       hotkeys: {
         speak:
@@ -31,6 +32,7 @@ export class SettingsService {
       migratedSettings.hotkeys.transcript !== settings.hotkeys.transcript ||
       migratedSettings.pasteAfterDictation !== settings.pasteAfterDictation ||
       migratedSettings.pasteAfterImprovement !== settings.pasteAfterImprovement ||
+      migratedSettings.improveSelectedText !== settings.improveSelectedText ||
       migratedSettings.maxHistoryItems !== settings.maxHistoryItems
     ) {
       await this.save(migratedSettings);

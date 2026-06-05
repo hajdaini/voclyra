@@ -182,11 +182,11 @@ export class OllamaService {
 
   private appendCliLog(args: string[], stdout: string, stderr: string, status: string): Promise<void> {
     const command = ['ollama', ...args].map((part) => `"${part}"`).join(' ');
-    return this.logger.append('ollama.log', [`command: ${command}`, stdout, stderr, status]);
+    return this.logger.append('improve-ollama.log', [`command: ${command}`, stdout, stderr, status]);
   }
 
   private appendApiLog(model: string, response: string, status: string): Promise<void> {
-    return this.logger.append('ollama.log', [
+    return this.logger.append('improve-ollama.log', [
       'request: POST http://127.0.0.1:11434/api/generate',
       `model: ${model}`,
       response,

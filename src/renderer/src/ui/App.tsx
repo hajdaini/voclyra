@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import type {
   AppSection,
@@ -25,7 +25,8 @@ import {
 } from './appState';
 
 export const App = (): JSX.Element => {
-  if (new URLSearchParams(window.location.search).get('overlay') === 'speak') {
+  const overlayMode = new URLSearchParams(window.location.search).get('overlay');
+  if (overlayMode === 'speak' || overlayMode === 'improve' || overlayMode === 'transcript') {
     return <SpeakOverlay />;
   }
 
@@ -55,6 +56,9 @@ export const App = (): JSX.Element => {
   const [toast, setToast] = useState<Toast | null>(null);
   const [isShortcutEditing, setIsShortcutEditing] = useState(false);
   const [isImproveInputFocused, setIsImproveInputFocused] = useState(false);
+  const overlayNoticeRef = useRef<
+    Partial<Record<'speak' | 'improve' | 'transcript', { message: string; messageType: 'error' | 'success' | 'warning' }>>
+  >({});
   const result =
     mode === 'speak' ? speakResult : mode === 'improve' ? improveResult : transcriptResult;
   const audioLockState = {
@@ -63,6 +67,12 @@ export const App = (): JSX.Element => {
     transcriptRecording: Boolean(transcriptRecorder),
     transcriptProcessing: isTranscriptProcessing,
   };
+  const actionBlockMessage =
+    mode === 'improve'
+      ? isImproveProcessing
+        ? improveRunningMessage
+        : null
+      : audioActionBlockMessage(mode, audioLockState);
 
   const loadModels = async (): Promise<void> => {
     const [nextOllamaModels, nextWhisperModels, nextAvailableWhisperModels, nextWhisperRuntime] = await Promise.all([
@@ -121,20 +131,28 @@ export const App = (): JSX.Element => {
     }
     setMode('speak');
     setSpeakResult({ text: '', status: 'listening', message: 'Listening...' });
-    setRecorder(
-      await startWavRecorder((level) => {
-        setWaveform((current) => {
-          const nextWaveform = [...current.slice(1), Math.max(0.08, level)];
-          void api.overlay.setState({
-            active: true,
-            mode: 'speak',
-            status: 'recording',
-            waveform: nextWaveform.slice(-8),
+    try {
+      setRecorder(
+        await startWavRecorder((level) => {
+          setWaveform((current) => {
+            const nextWaveform = [...current.slice(1), Math.max(0.08, level)];
+            void api.overlay.setState({
+              active: true,
+              mode: 'speak',
+              status: 'recording',
+              waveform: nextWaveform.slice(-8),
+              message: overlayNoticeRef.current.speak?.message,
+              messageType: overlayNoticeRef.current.speak?.messageType,
+            });
+            return nextWaveform;
           });
-          return nextWaveform;
-        });
-      }),
-    );
+        }),
+      );
+    } catch (error) {
+      const message = errorMessage(error);
+      setSpeakResult({ text: '', status: 'error', message });
+      showOverlayWarning('speak', message, 'error');
+    }
   };
 
   const stopRecording = async (): Promise<void> => {
@@ -165,6 +183,10 @@ export const App = (): JSX.Element => {
         return;
       }
       showCompletionOverlay('speak', nextResult);
+    } catch (error) {
+      const message = errorMessage(error);
+      setSpeakResult({ text: '', status: 'error', message });
+      showOverlayWarning('speak', message, 'error');
     } finally {
       setIsSpeakProcessing(false);
     }
@@ -185,12 +207,22 @@ export const App = (): JSX.Element => {
       showOverlayWarning('improve', improveRunningMessage);
       return;
     }
-    setIsImproveProcessing(true);
     setMode('improve');
-    const sourceText = isImproveInputFocused ? improveInput : await api.clipboard.read();
+    const sourceText = isImproveInputFocused
+      ? improveInput
+      : settings.improveSelectedText
+        ? await api.clipboard.readSelection()
+        : await api.clipboard.read();
     if (!isImproveInputFocused && sourceText) {
       setImproveInput(sourceText);
     }
+    if (!sourceText.trim()) {
+      const message = isImproveInputFocused ? 'Enter text to improve.' : 'Clipboard is empty.';
+      setImproveResult({ text: '', status: 'error', message });
+      showOverlayWarning('improve', message);
+      return;
+    }
+    setIsImproveProcessing(true);
     setImproveResult({ text: '', status: 'processing', message: 'Improving text...' });
     void api.overlay.setState({
       active: true,
@@ -207,6 +239,10 @@ export const App = (): JSX.Element => {
         return;
       }
       showCompletionOverlay('improve', nextResult);
+    } catch (error) {
+      const message = errorMessage(error);
+      setImproveResult({ text: '', status: 'error', message });
+      showOverlayWarning('improve', message, 'error');
     } finally {
       setIsImproveProcessing(false);
     }
@@ -221,32 +257,40 @@ export const App = (): JSX.Element => {
     setSection('home');
     setMode('transcript');
     setTranscriptResult({ text: '', status: 'listening', message: 'Recording transcript...' });
-    setTranscriptRecorder(
-      await startTranscriptRecorder(
-        (level) => {
-          setWaveform((current) => {
-            const nextWaveform = [...current.slice(1), Math.max(0.08, level)];
-            void api.overlay.setState({
-              active: true,
-              mode: 'transcript',
-              status: 'recording',
-              waveform: nextWaveform.slice(-8),
+    try {
+      setTranscriptRecorder(
+        await startTranscriptRecorder(
+          (level) => {
+            setWaveform((current) => {
+              const nextWaveform = [...current.slice(1), Math.max(0.08, level)];
+              void api.overlay.setState({
+                active: true,
+                mode: 'transcript',
+                status: 'recording',
+                waveform: nextWaveform.slice(-8),
+                message: overlayNoticeRef.current.transcript?.message,
+                messageType: overlayNoticeRef.current.transcript?.messageType,
+              });
+              return nextWaveform;
             });
-            return nextWaveform;
-          });
-        },
-        {
-          onSystemAudioChange: (active) => {
-            setTranscriptResult((current) => ({
-              ...current,
-              message: active
-                ? 'Recording transcript with microphone and computer audio...'
-                : 'Recording transcript. Computer audio is not captured.',
-            }));
           },
-        },
-      ),
-    );
+          {
+            onSystemAudioChange: (active) => {
+              setTranscriptResult((current) => ({
+                ...current,
+                message: active
+                  ? 'Recording transcript with microphone and computer audio...'
+                  : 'Recording transcript. Computer audio is not captured.',
+              }));
+            },
+          },
+        ),
+      );
+    } catch (error) {
+      const message = errorMessage(error);
+      setTranscriptResult({ text: '', status: 'error', message });
+      showOverlayWarning('transcript', message, 'error');
+    }
   };
 
   const stopTranscript = async (): Promise<void> => {
@@ -277,6 +321,10 @@ export const App = (): JSX.Element => {
         return;
       }
       showCompletionOverlay('transcript', nextResult);
+    } catch (error) {
+      const message = errorMessage(error);
+      setTranscriptResult({ text: '', status: 'error', message });
+      showOverlayWarning('transcript', message, 'error');
     } finally {
       setIsTranscriptProcessing(false);
     }
@@ -303,6 +351,10 @@ export const App = (): JSX.Element => {
 
   const toggleHistoryFavorite = async (id: string): Promise<void> => {
     setHistory(await api.history.toggleFavorite(id));
+  };
+
+  const updateHistoryTitle = async (id: string, title: string): Promise<void> => {
+    setHistory(await api.history.updateTitle(id, title));
   };
 
   const deleteSelectedEntries = async (ids: string[]): Promise<void> => {
@@ -347,7 +399,10 @@ export const App = (): JSX.Element => {
     nextResult: ResultState,
   ): void => {
     if (nextResult.status !== 'ready' || !nextResult.text) {
-      void api.overlay.setState(inactiveOverlayState);
+      void api.overlay.setState({
+        ...inactiveOverlayState,
+        mode: overlayMode,
+      });
       return;
     }
     void api.overlay.setState({
@@ -356,6 +411,7 @@ export const App = (): JSX.Element => {
       status: 'done',
       waveform: [],
       message: nextResult.message,
+      messageType: 'success',
     });
     window.setTimeout(() => {
       void api.overlay.setState({
@@ -370,16 +426,67 @@ export const App = (): JSX.Element => {
   const showOverlayWarning = (
     overlayMode: 'speak' | 'improve' | 'transcript',
     message: string,
+    messageType: 'error' | 'success' | 'warning' = 'warning',
   ): void => {
-    void api.overlay.setState({
-      active: true,
-      mode: overlayMode,
-      status: 'warning',
-      waveform: [],
-      message,
-    });
+    overlayNoticeRef.current[overlayMode] = { message, messageType };
+    if (overlayMode === 'speak' && recorder) {
+      void api.overlay.setState({
+        active: true,
+        mode: 'speak',
+        status: 'recording',
+        waveform: waveform.slice(-8),
+        message,
+        messageType,
+      });
+    } else if (overlayMode === 'speak' && isSpeakProcessing) {
+      void api.overlay.setState({
+        active: true,
+        mode: 'speak',
+        status: 'transcribing',
+        waveform: waveform.slice(-8),
+        message,
+        messageType,
+      });
+    } else if (overlayMode === 'transcript' && transcriptRecorder) {
+      void api.overlay.setState({
+        active: true,
+        mode: 'transcript',
+        status: 'recording',
+        waveform: waveform.slice(-8),
+        message,
+        messageType,
+      });
+    } else if (overlayMode === 'transcript' && isTranscriptProcessing) {
+      void api.overlay.setState({
+        active: true,
+        mode: 'transcript',
+        status: 'transcribing',
+        waveform: waveform.slice(-8),
+        message,
+        messageType,
+      });
+    } else if (overlayMode === 'improve' && isImproveProcessing) {
+      void api.overlay.setState({
+        active: true,
+        mode: 'improve',
+        status: 'improving',
+        waveform: [],
+        message,
+        messageType,
+      });
+    } else {
+      void api.overlay.setState({
+        active: true,
+        mode: overlayMode,
+        status: 'warning',
+        waveform: [],
+        message,
+        messageType,
+      });
+    }
     window.setTimeout(() => {
-      if (recorder) {
+      delete overlayNoticeRef.current[overlayMode];
+      if (overlayMode === 'speak' && recorder) {
         void api.overlay.setState({
           active: true,
           mode: 'speak',
@@ -388,7 +495,7 @@ export const App = (): JSX.Element => {
         });
         return;
       }
-      if (isSpeakProcessing) {
+      if (overlayMode === 'speak' && isSpeakProcessing) {
         void api.overlay.setState({
           active: true,
           mode: 'speak',
@@ -397,7 +504,7 @@ export const App = (): JSX.Element => {
         });
         return;
       }
-      if (transcriptRecorder) {
+      if (overlayMode === 'transcript' && transcriptRecorder) {
         void api.overlay.setState({
           active: true,
           mode: 'transcript',
@@ -406,7 +513,7 @@ export const App = (): JSX.Element => {
         });
         return;
       }
-      if (isTranscriptProcessing) {
+      if (overlayMode === 'transcript' && isTranscriptProcessing) {
         void api.overlay.setState({
           active: true,
           mode: 'transcript',
@@ -415,7 +522,7 @@ export const App = (): JSX.Element => {
         });
         return;
       }
-      if (isImproveProcessing) {
+      if (overlayMode === 'improve' && isImproveProcessing) {
         void api.overlay.setState({
           active: true,
           mode: 'improve',
@@ -424,19 +531,14 @@ export const App = (): JSX.Element => {
         });
         return;
       }
-      void api.overlay.setState(inactiveOverlayState);
+      void api.overlay.setState({
+        ...inactiveOverlayState,
+        mode: overlayMode,
+      });
     }, 2400);
   };
 
   const changeMode = (nextMode: HomeMode): void => {
-    if (nextMode === 'speak' && (transcriptRecorder || isTranscriptProcessing)) {
-      showOverlayWarning('speak', audioActionBlockMessage('speak', audioLockState) ?? 'Transcript is already running.');
-      return;
-    }
-    if (nextMode === 'transcript' && (recorder || isSpeakProcessing)) {
-      showOverlayWarning('transcript', audioActionBlockMessage('transcript', audioLockState) ?? 'Speak is already running.');
-      return;
-    }
     setMode(nextMode);
   };
 
@@ -483,6 +585,9 @@ export const App = (): JSX.Element => {
     const removeImproveResultListener = api.actions.onImproveResult((nextResult) => {
       setMode('improve');
       setImproveResult(nextResult);
+      if (nextResult.status === 'error' || !nextResult.text) {
+        showOverlayWarning('improve', nextResult.message, nextResult.status === 'error' ? 'error' : 'warning');
+      }
       void refreshHistoryAndModels();
     });
     const removeTranscriptListener = api.actions.onTranscript(() => {
@@ -538,6 +643,7 @@ export const App = (): JSX.Element => {
         result={result}
         improveInput={improveInput}
         isRecording={mode === 'transcript' ? Boolean(transcriptRecorder) : Boolean(recorder)}
+        actionBlockMessage={actionBlockMessage}
         waveform={waveform}
         settings={settings}
         whisperRuntime={whisperRuntime}
@@ -572,6 +678,7 @@ export const App = (): JSX.Element => {
         onOpenDataFolder={() => void api.app.openDataFolder()}
         onHistoryCopy={(entry) => void api.clipboard.write(entry.text)}
         onHistoryFavoriteToggle={(id) => void toggleHistoryFavorite(id)}
+        onHistoryTitleUpdate={(id, title) => void updateHistoryTitle(id, title)}
         onHistoryDelete={(id) => void deleteEntry(id)}
         onHistoryDeleteSelected={(ids) => void deleteSelectedEntries(ids)}
         onHistoryClear={() => void clearHistory()}
@@ -587,8 +694,12 @@ const settingsAreEqual = (left: SettingsType, right: SettingsType): boolean =>
   left.correctionPrompt === right.correctionPrompt &&
   left.pasteAfterDictation === right.pasteAfterDictation &&
   left.pasteAfterImprovement === right.pasteAfterImprovement &&
+  left.improveSelectedText === right.improveSelectedText &&
   left.maxHistoryItems === right.maxHistoryItems &&
   left.language === right.language &&
   left.hotkeys.speak === right.hotkeys.speak &&
   left.hotkeys.improveText === right.hotkeys.improveText &&
   left.hotkeys.transcript === right.hotkeys.transcript;
+
+const errorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : 'Operation failed.';

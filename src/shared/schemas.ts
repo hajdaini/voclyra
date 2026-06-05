@@ -12,6 +12,7 @@ export const settingsSchema = z.object({
   correctionPrompt: z.string().min(1).max(4000),
   pasteAfterDictation: z.boolean(),
   pasteAfterImprovement: z.boolean(),
+  improveSelectedText: z.boolean(),
   maxHistoryItems: z.number().int().min(1).max(10000),
   hotkeys: hotkeysSchema,
   language: z.literal('auto'),
@@ -21,6 +22,11 @@ export const textSchema = z.string().max(200000);
 
 export const idSchema = z.string().min(1).max(120);
 
+export const historyTitleUpdateSchema = z.object({
+  id: idSchema,
+  title: z.string().min(1).max(120),
+});
+
 export const whisperModelIdSchema = z.enum(['tiny', 'base', 'small', 'medium', 'large']);
 
 export const overlayStateSchema = z.object({
@@ -29,4 +35,5 @@ export const overlayStateSchema = z.object({
   status: z.enum(['recording', 'transcribing', 'improving', 'done', 'warning']),
   waveform: z.array(z.number().min(0).max(1)).max(16),
   message: z.string().max(160).optional(),
+  messageType: z.enum(['error', 'success', 'warning']).optional(),
 });

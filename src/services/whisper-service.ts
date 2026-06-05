@@ -110,11 +110,11 @@ export class WhisperService {
 
   async transcribe(audio: Uint8Array, modelFileName: string, options: TranscribeOptions = {}): Promise<string> {
     const modelPath = await this.modelPath(modelFileName);
-    const temporaryRoot = await this.storage.ensureDir('tmp');
     const id = crypto.randomUUID();
+    const temporaryRoot = await this.storage.ensureDir('tmp', id);
 
     try {
-      const audioPath = join(temporaryRoot, `${id}.wav`);
+      const audioPath = join(temporaryRoot, 'input.wav');
       await writeFile(audioPath, audio);
       return this.transcribeAudioFile(
         modelPath,
@@ -126,14 +126,14 @@ export class WhisperService {
         options.debugName,
       );
     } finally {
-      await this.cleanupTemporaryFiles(temporaryRoot, id);
+      await this.cleanupTemporaryFiles(temporaryRoot);
     }
   }
 
   async transcribeFile(audioPath: string, modelFileName: string, options: TranscribeOptions = {}): Promise<string> {
     const modelPath = await this.modelPath(modelFileName);
-    const temporaryRoot = await this.storage.ensureDir('tmp');
     const id = crypto.randomUUID();
+    const temporaryRoot = await this.storage.ensureDir('tmp', id);
 
     try {
       await access(audioPath);
@@ -175,19 +175,19 @@ export class WhisperService {
       }
       return texts.join('\n').trim();
     } finally {
-      await this.cleanupTemporaryFiles(temporaryRoot, id);
+      await this.cleanupTemporaryFiles(temporaryRoot);
     }
   }
 
   async transcribeMeeting(audio: Uint8Array, modelFileName: string, options: TranscribeOptions = {}): Promise<string> {
     const modelPath = await this.modelPath(modelFileName);
-    const temporaryRoot = await this.storage.ensureDir('tmp');
     const id = crypto.randomUUID();
+    const temporaryRoot = await this.storage.ensureDir('tmp', id);
 
     try {
       return this.transcribeMeetingAudio(audio, modelPath, temporaryRoot, id, options.timeoutMs, options.debugName);
     } finally {
-      await this.cleanupTemporaryFiles(temporaryRoot, id);
+      await this.cleanupTemporaryFiles(temporaryRoot);
     }
   }
 
@@ -199,7 +199,7 @@ export class WhisperService {
     timeoutMs: number | null | undefined,
     debugName?: string,
   ): Promise<string> {
-    const audioPath = join(temporaryRoot, `${id}.wav`);
+    const audioPath = join(temporaryRoot, 'input.wav');
     await writeFile(audioPath, audio);
     return this.transcribeAudioFile(
       modelPath,
@@ -250,14 +250,12 @@ export class WhisperService {
         attempt.outputMode,
         timeoutMs,
         prompt,
+        debugName,
       ).catch((error: unknown) => {
         errors.push(error instanceof Error ? error.message : 'Whisper failed.');
         return null;
       });
       if (run) {
-        if (debugName) {
-          await this.writeDebugOutput(temporaryRoot, debugName, run.stdout, run.stderr);
-        }
         const text = await this.readTranscript(temporaryRoot, outputId, run.stdout, run.stderr);
         if (text) {
           this.lastBackend = run.backend;
@@ -272,18 +270,6 @@ export class WhisperService {
         : this.lastBackend;
     }
     return '';
-  }
-
-  private async writeDebugOutput(
-    _temporaryRoot: string,
-    name: string,
-    stdout: string,
-    stderr: string,
-  ): Promise<void> {
-    const logsRoot = await this.storage.ensureDir('logs');
-    await writeFile(join(logsRoot, `${name}.whisper.stdout.txt`), stdout, 'utf8');
-    await writeFile(join(logsRoot, `${name}.whisper.stderr.txt`), stderr, 'utf8');
-    await writeFile(join(logsRoot, `${name}.whisper.raw.txt`), `${stdout}\n${stderr}`.trim(), 'utf8');
   }
 
   private async modelPath(modelFileName: string): Promise<string> {
@@ -333,6 +319,7 @@ export class WhisperService {
     outputMode: 'file' | 'stdout',
     timeoutMs: number | null | undefined = 180000,
     prompt?: string,
+    logName?: string,
   ): Promise<WhisperRunResult> {
     return new Promise((resolvePromise, reject) => {
       const args = [
@@ -382,6 +369,7 @@ export class WhisperService {
                 cwd,
                 Buffer.concat(rawOutput).toString('utf8'),
                 'timeout',
+                logName,
               );
               process.kill();
               reject(new Error('Whisper transcription timed out.'));
@@ -401,7 +389,7 @@ export class WhisperService {
         if (timeout) {
           clearTimeout(timeout);
         }
-        await this.appendWhisperLog(args, cwd, '', error.message);
+        await this.appendWhisperLog(args, cwd, '', error.message, logName);
         reject(error);
       });
 
@@ -412,7 +400,7 @@ export class WhisperService {
         const stderr = Buffer.concat(errors).toString('utf8');
         const stdout = Buffer.concat(output).toString('utf8');
         const raw = Buffer.concat(rawOutput).toString('utf8');
-        await this.appendWhisperLog(args, cwd, raw, `exit code: ${code ?? 'unknown'}`);
+        await this.appendWhisperLog(args, cwd, raw, `exit code: ${code ?? 'unknown'}`, logName);
         if (code !== 0) {
           reject(new Error(stderr.trim() || stdout.trim() || 'Whisper failed.'));
           return;
@@ -431,10 +419,16 @@ export class WhisperService {
     cwd: string,
     rawOutput: string,
     status: string,
+    logName?: string,
   ): Promise<void> {
     const executable = this.executablePath();
     const command = [executable, ...args].map((part) => `"${part}"`).join(' ');
-    await this.logger.append('whisper.log', [`cwd: ${cwd}`, `command: ${command}`, rawOutput, status]);
+    const fileName = logName === 'transcript'
+      ? 'transcript-whisper.log'
+      : logName === 'speak'
+        ? 'speak-whisper.log'
+        : 'whisper.log';
+    await this.logger.append(fileName, [`cwd: ${cwd}`, `command: ${command}`, rawOutput, status]);
   }
 
   private async readTranscript(
@@ -683,14 +677,9 @@ export class WhisperService {
     }
   }
 
-  private async cleanupTemporaryFiles(temporaryRoot: string, id: string): Promise<void> {
+  private async cleanupTemporaryFiles(temporaryRoot: string): Promise<void> {
     try {
-      const files = await readdir(temporaryRoot);
-      await Promise.all(
-        files
-          .filter((file) => file.startsWith(id))
-          .map((file) => rm(join(temporaryRoot, file), { force: true })),
-      );
+      await rm(temporaryRoot, { recursive: true, force: true });
     } catch {}
   }
 

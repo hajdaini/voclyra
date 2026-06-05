@@ -16,6 +16,7 @@ export type Settings = {
   correctionPrompt: string;
   pasteAfterDictation: boolean;
   pasteAfterImprovement: boolean;
+  improveSelectedText: boolean;
   maxHistoryItems: number;
   hotkeys: Hotkeys;
   language: LanguageMode;
@@ -72,6 +73,7 @@ export type OverlayState = {
   status: 'recording' | 'transcribing' | 'improving' | 'done' | 'warning';
   waveform: number[];
   message?: string;
+  messageType?: 'error' | 'success' | 'warning';
 };
 
 export type AppApi = {
@@ -99,11 +101,13 @@ export type AppApi = {
   };
   clipboard: {
     read: () => Promise<string>;
+    readSelection: () => Promise<string>;
     write: (text: string) => Promise<void>;
   };
   history: {
     list: () => Promise<HistoryEntry[]>;
     toggleFavorite: (id: string) => Promise<HistoryEntry[]>;
+    updateTitle: (id: string, title: string) => Promise<HistoryEntry[]>;
     delete: (id: string) => Promise<void>;
     clear: () => Promise<HistoryEntry[]>;
   };
@@ -123,9 +127,9 @@ export type AppApi = {
   };
   overlay: {
     setState: (state: OverlayState) => Promise<void>;
-    getState: () => Promise<OverlayState>;
-    stopSpeak: () => Promise<void>;
-    dismiss: () => Promise<void>;
+    getState: (mode?: OverlayState['mode']) => Promise<OverlayState>;
+    stopSpeak: (mode?: OverlayState['mode']) => Promise<void>;
+    dismiss: (mode?: OverlayState['mode']) => Promise<void>;
     onState: (callback: (state: OverlayState) => void) => () => void;
   };
   window: {

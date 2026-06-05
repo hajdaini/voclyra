@@ -7,6 +7,7 @@ type AppHomeProps = {
   result: ResultState;
   improveInput: string;
   isRecording: boolean;
+  actionBlockMessage: string | null;
   waveform: number[];
   settings: Settings;
   whisperRuntime: WhisperRuntimeInfo;
@@ -27,6 +28,7 @@ export const AppHome = ({
   result,
   improveInput,
   isRecording,
+  actionBlockMessage,
   waveform,
   settings,
   whisperRuntime,
@@ -46,6 +48,7 @@ export const AppHome = ({
     result={result}
     improveInput={improveInput}
     isRecording={isRecording}
+    actionBlockMessage={actionBlockMessage}
     waveform={waveform}
     whisperModel={settings.whisperModel}
     ollamaModel={settings.ollamaModel}

@@ -1,61 +1,79 @@
 import type { JSX } from 'react';
-import { Bot, Cpu, Headphones, HelpCircle, Mic, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
+import { Bot, Cpu, Headphones, Mic, ShieldCheck, UserRound, Wand2, Zap } from 'lucide-react';
 
 export const AboutView = (): JSX.Element => (
   <section className="page about-page">
     <div className="page-heading">
       <div>
         <h1>About</h1>
-      </div>
-    </div>
-    <div className="about-intro">
-      <div className="about-intro-icon">
-        <Mic size={24} />
-      </div>
-      <div>
-        <h2>Built to avoid typing</h2>
-        <p>
-          Speaking is much faster than typing. Voclyra turns speech into text locally with Whisper, copies it to your clipboard, and keeps the workflow fast on your Windows PC.
+        <p className="page-subtitle">
+          Voclyra is built around shortcuts, voice capture, and local AI to make writing workflows faster.
         </p>
       </div>
     </div>
+
     <div className="about-faq" aria-label="About Voclyra">
       <article>
         <h2>
-          <HelpCircle size={18} />
-          What is Voclyra for?
+          <Zap size={18} />
+          Why Voclyra exists
         </h2>
-        <p>It is a compact assistant for dictating instead of typing, so you can capture ideas, messages, and notes with less friction.</p>
+        <p>
+          Typing is slow compared to speaking. Voclyra helps you capture ideas, notes, and messages faster by turning voice into usable text from quick shortcuts.
+        </p>
       </article>
+
       <article>
         <h2>
-          <Sparkles size={18} />
-          Why does it exist?
+          <Mic size={18} />
+          Speak
         </h2>
-        <p>Writing by hand is slow. Voclyra makes speech-to-text the default path while keeping everything local and available from shortcuts or the tray.</p>
+        <p>
+          Speak is made for short dictations. Use a shortcut, talk naturally, and get text copied quickly so you can paste it back into the app, chat, document, or input you were using.
+        </p>
       </article>
-      <article>
-        <h2>
-          <Bot size={18} />
-          How does improvement work?
-        </h2>
-        <p>Voclyra reads selected text when possible. If nothing is selected, it uses the text currently copied to your clipboard, then improves it with your local Ollama model.</p>
-      </article>
+
       <article>
         <h2>
           <Headphones size={18} />
-          What is Transcript?
+          Transcript
         </h2>
-        <p>Transcript records longer conversations and sends the captured audio to local Whisper so you can copy the meeting text afterward.</p>
+        <p>
+          Transcript is made for longer captures, such as meetings, notes, or conversations. It keeps the transcript local, then lets you reuse that text with another AI to summarize, organize, or extract action items.
+        </p>
       </article>
+
+      <article>
+        <h2>
+          <Wand2 size={18} />
+          Improve
+        </h2>
+        <p>
+          Improve gives you one shortcut to correct spelling, grammar, and badly phrased sentences without jumping between tools. It helps you clean up text faster and stay productive.
+        </p>
+      </article>
+
+      <article>
+        <h2>
+          <Bot size={18} />
+          Local AI
+        </h2>
+        <p>
+          Whisper handles speech-to-text locally, while Ollama improves text on your machine. Core processing does not require a remote API.
+        </p>
+      </article>
+
       <article>
         <h2>
           <ShieldCheck size={18} />
-          What stays local?
+          Privacy
         </h2>
-        <p>Dictation uses local Whisper models and text improvement uses Ollama on your machine. Core processing does not require a remote API.</p>
+        <p>
+          Dictation, transcription, and improvement are designed to run locally, keeping your main workflow private, fast, and under your control.
+        </p>
       </article>
     </div>
+
     <dl className="about-list">
       <div>
         <dt>

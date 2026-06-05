@@ -29,12 +29,15 @@ const api: AppApi = {
   },
   clipboard: {
     read: () => ipcRenderer.invoke(channels.clipboardRead) as Promise<string>,
+    readSelection: () => ipcRenderer.invoke(channels.clipboardReadSelection) as Promise<string>,
     write: (text) => ipcRenderer.invoke(channels.clipboardWrite, text) as Promise<void>,
   },
   history: {
     list: () => ipcRenderer.invoke(channels.historyList) as ReturnType<AppApi['history']['list']>,
     toggleFavorite: (id) =>
       ipcRenderer.invoke(channels.historyToggleFavorite, id) as ReturnType<AppApi['history']['toggleFavorite']>,
+    updateTitle: (id, title) =>
+      ipcRenderer.invoke(channels.historyUpdateTitle, { id, title }) as ReturnType<AppApi['history']['updateTitle']>,
     delete: (id) => ipcRenderer.invoke(channels.historyDelete, id) as Promise<void>,
     clear: () => ipcRenderer.invoke(channels.historyClear) as ReturnType<AppApi['history']['clear']>,
   },
@@ -113,9 +116,9 @@ const api: AppApi = {
   },
   overlay: {
     setState: (state) => ipcRenderer.invoke(channels.overlaySetState, state) as Promise<void>,
-    getState: () => ipcRenderer.invoke(channels.overlayGetState) as Promise<OverlayState>,
-    stopSpeak: () => ipcRenderer.invoke(channels.overlayStopSpeak) as Promise<void>,
-    dismiss: () => ipcRenderer.invoke(channels.overlayDismiss) as Promise<void>,
+    getState: (mode) => ipcRenderer.invoke(channels.overlayGetState, mode) as Promise<OverlayState>,
+    stopSpeak: (mode) => ipcRenderer.invoke(channels.overlayStopSpeak, mode) as Promise<void>,
+    dismiss: (mode) => ipcRenderer.invoke(channels.overlayDismiss, mode) as Promise<void>,
     onState: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, state: OverlayState): void => {
         callback(state);

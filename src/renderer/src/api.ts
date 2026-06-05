@@ -32,11 +32,13 @@ const fallbackApi: AppApi = {
   },
   clipboard: {
     read: () => Promise.resolve(''),
+    readSelection: () => Promise.resolve(''),
     write: () => Promise.resolve(),
   },
   history: {
     list: () => Promise.resolve([]),
     toggleFavorite: () => Promise.resolve([]),
+    updateTitle: () => Promise.resolve([]),
     delete: () => Promise.resolve(),
     clear: () => Promise.resolve([]),
   },
@@ -56,6 +58,13 @@ const fallbackApi: AppApi = {
   },
   overlay: {
     setState: () => Promise.resolve(),
+    getState: () =>
+      Promise.resolve({
+        active: false,
+        mode: 'speak',
+        status: 'recording',
+        waveform: [],
+      }),
     stopSpeak: () => Promise.resolve(),
     dismiss: () => Promise.resolve(),
     onState: () => () => {},

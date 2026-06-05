@@ -97,6 +97,14 @@ export const SettingsView = ({
           />
           <span>Paste Improve result into active app</span>
         </label>
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={settings.improveSelectedText}
+            onChange={(event) => onChange({ ...settings, improveSelectedText: event.target.checked })}
+          />
+          <span>Use active selection for Improve</span>
+        </label>
         <label className="compact-number-field">
           Max history items
           <input

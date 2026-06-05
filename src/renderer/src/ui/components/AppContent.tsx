@@ -21,6 +21,7 @@ type AppContentProps = {
   result: ResultState;
   improveInput: string;
   isRecording: boolean;
+  actionBlockMessage: string | null;
   waveform: number[];
   settings: Settings;
   whisperRuntime: WhisperRuntimeInfo;
@@ -52,6 +53,7 @@ type AppContentProps = {
   onOpenDataFolder: () => void;
   onHistoryCopy: (entry: HistoryEntry) => void;
   onHistoryFavoriteToggle: (id: string) => void;
+  onHistoryTitleUpdate: (id: string, title: string) => void;
   onHistoryDelete: (id: string) => void;
   onHistoryDeleteSelected: (ids: string[]) => void;
   onHistoryClear: () => void;
@@ -63,6 +65,7 @@ export const AppContent = ({
   result,
   improveInput,
   isRecording,
+  actionBlockMessage,
   waveform,
   settings,
   whisperRuntime,
@@ -94,6 +97,7 @@ export const AppContent = ({
   onOpenDataFolder,
   onHistoryCopy,
   onHistoryFavoriteToggle,
+  onHistoryTitleUpdate,
   onHistoryDelete,
   onHistoryDeleteSelected,
   onHistoryClear,
@@ -107,6 +111,7 @@ export const AppContent = ({
         result={result}
         improveInput={improveInput}
         isRecording={isRecording}
+        actionBlockMessage={actionBlockMessage}
         waveform={waveform}
         settings={settings}
         whisperRuntime={whisperRuntime}
@@ -144,6 +149,7 @@ export const AppContent = ({
         history={history}
         onHistoryCopy={onHistoryCopy}
         onHistoryFavoriteToggle={onHistoryFavoriteToggle}
+        onHistoryTitleUpdate={onHistoryTitleUpdate}
         onHistoryDelete={onHistoryDelete}
         onHistoryDeleteSelected={onHistoryDeleteSelected}
         onHistoryClear={onHistoryClear}

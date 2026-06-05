@@ -8,7 +8,10 @@ export class TranscriptService {
   ) {}
 
   async transcribe(audio: Uint8Array, whisperModel: string, maxHistoryItems: number): Promise<string> {
-    const text = await this.whisperService.transcribeMeeting(audio, whisperModel, { timeoutMs: null });
+    const text = await this.whisperService.transcribeMeeting(audio, whisperModel, {
+      timeoutMs: null,
+      debugName: 'transcript',
+    });
     if (text.trim()) {
       await this.historyService.add({ kind: 'transcript', text }, maxHistoryItems);
     }

@@ -1,9 +1,9 @@
-import { writeFile } from 'node:fs/promises';
 import { BrowserWindow, clipboard, ipcMain, shell } from 'electron';
+import { randomUUID } from 'node:crypto';
 import { channels } from '@shared/channels';
 import { defaultSettings } from '@shared/defaults';
 import { improveRunningMessage } from '@shared/action-locks';
-import { idSchema, overlayStateSchema, settingsSchema, textSchema } from '@shared/schemas';
+import { historyTitleUpdateSchema, idSchema, overlayStateSchema, settingsSchema, textSchema } from '@shared/schemas';
 import { whisperModelIdSchema } from '@shared/schemas';
 import type { ResultState, Settings } from '@shared/types';
 import { ActivePasteService } from '@services/active-paste-service';
@@ -50,13 +50,16 @@ export const improveClipboardFromHotkey = async (): Promise<void> => {
       status: 'warning',
       waveform: [],
       message: improveRunningMessage,
+      messageType: 'warning',
     });
     return;
   }
   improveShortcutRunning = true;
   try {
     settings = await settingsService.get();
-    const text = clipboard.readText();
+    const text = settings.improveSelectedText
+      ? await readActiveSelection()
+      : clipboard.readText();
     if (!text.trim()) {
       sendImproveResult(ready('', 'Clipboard is empty.'));
       return;
@@ -66,7 +69,6 @@ export const improveClipboardFromHotkey = async (): Promise<void> => {
       mode: 'improve',
       status: 'improving',
       waveform: [],
-      message: 'Improving text...',
     });
     const improved = await ollamaService.improveText(
       settings.ollamaModel,
@@ -154,9 +156,6 @@ export const registerIpc = (): void => {
     if (!audio || audio.byteLength === 0) {
       return ready('', 'No audio captured.');
     }
-    await appStorage.ensureDir('tmp');
-    const audioPath = appStorage.path('tmp', 'last-speak.wav');
-    await writeFile(audioPath, audio);
     const whisperModels = await whisperModelService.downloadedModelNames();
     const whisperModel = whisperModels.includes(settings.whisperModel)
       ? settings.whisperModel
@@ -165,8 +164,7 @@ export const registerIpc = (): void => {
       return ready('', 'Select a Whisper model first.');
     }
     try {
-      const text = await whisperService.transcribeFile(audioPath, whisperModel, { debugName: 'last-speak' });
-      await writeFile(appStorage.path('tmp', 'last-speak.txt'), text, 'utf8');
+      const text = singleLineText(await whisperService.transcribe(audio, whisperModel, { debugName: 'speak' }));
       if (!text.trim()) {
         return ready('', 'No speech detected.');
       }
@@ -189,9 +187,6 @@ export const registerIpc = (): void => {
     if (!audio || audio.byteLength === 0) {
       return ready('', 'No audio captured.');
     }
-    await appStorage.ensureDir('tmp');
-    const audioPath = appStorage.path('tmp', 'last-transcript.wav');
-    await writeFile(audioPath, audio);
     const whisperModels = await whisperModelService.downloadedModelNames();
     const whisperModel = whisperModels.includes(settings.whisperModel)
       ? settings.whisperModel
@@ -200,17 +195,16 @@ export const registerIpc = (): void => {
       return ready('', 'Select a Whisper model first.');
     }
     try {
-      const text = await whisperService.transcribeFile(audioPath, whisperModel, {
+      const text = await whisperService.transcribe(audio, whisperModel, {
         timeoutMs: null,
-        debugName: 'last-transcript',
+        debugName: 'transcript',
       });
-      await writeFile(appStorage.path('tmp', 'last-transcript.txt'), text, 'utf8');
       if (!text.trim()) {
         return ready('', 'No speech detected.');
       }
       await historyService.add({ kind: 'transcript', text }, settings.maxHistoryItems);
       showCompletionOverlay('transcript');
-      return ready(text, 'Transcript completed.');
+      return ready(text, 'Transcript generated.');
     } catch (error) {
       return failed(error);
     }
@@ -224,6 +218,7 @@ export const registerIpc = (): void => {
         status: 'warning',
         waveform: [],
         message: improveRunningMessage,
+        messageType: 'warning',
       });
       return ready('', improveRunningMessage);
     }
@@ -257,6 +252,8 @@ export const registerIpc = (): void => {
 
   ipcMain.handle(channels.clipboardRead, () => clipboard.readText());
 
+  ipcMain.handle(channels.clipboardReadSelection, async () => readActiveSelection());
+
   ipcMain.handle(channels.clipboardWrite, (_event, value: unknown) => {
     clipboard.writeText(textSchema.parse(value));
   });
@@ -272,6 +269,11 @@ export const registerIpc = (): void => {
     return historyService.toggleFavorite(id);
   });
 
+  ipcMain.handle(channels.historyUpdateTitle, async (_event, value: unknown) => {
+    const update = historyTitleUpdateSchema.parse(value);
+    return historyService.updateTitle(update.id, update.title);
+  });
+
   ipcMain.handle(channels.historyDelete, async (_event, value: unknown) => {
     const id = idSchema.parse(value);
     await historyService.delete(id);
@@ -283,14 +285,19 @@ export const registerIpc = (): void => {
     setSpeakOverlayState(overlayStateSchema.parse(value));
   });
 
-  ipcMain.handle(channels.overlayGetState, () => getSpeakOverlayState());
-
-  ipcMain.handle(channels.overlayStopSpeak, () => {
-    stopSpeakFromOverlay();
+  ipcMain.handle(channels.overlayGetState, (_event, value: unknown) => {
+    const mode = value === 'improve' || value === 'transcript' ? value : 'speak';
+    return getSpeakOverlayState(mode);
   });
 
-  ipcMain.handle(channels.overlayDismiss, () => {
-    dismissSpeakOverlay();
+  ipcMain.handle(channels.overlayStopSpeak, (_event, value: unknown) => {
+    const mode = value === 'transcript' ? value : 'speak';
+    stopSpeakFromOverlay(mode);
+  });
+
+  ipcMain.handle(channels.overlayDismiss, (_event, value: unknown) => {
+    const mode = value === 'improve' || value === 'transcript' ? value : 'speak';
+    dismissSpeakOverlay(mode);
   });
 
   ipcMain.handle(channels.windowMinimize, (event) => {
@@ -320,6 +327,22 @@ const failed = (error: unknown): ResultState => ({
   status: 'error',
   message: error instanceof Error ? error.message : 'Operation failed.',
 });
+
+const singleLineText = (text: string): string => text.replace(/\s*\r?\n+\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+
+const readActiveSelection = async (): Promise<string> => {
+  const previousText = clipboard.readText();
+  const sentinel = `__VOCLYRA_SELECTION_${randomUUID()}__`;
+  clipboard.writeText(sentinel);
+  await activePasteService.copySelection();
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  const selectedText = clipboard.readText();
+  if (selectedText === sentinel) {
+    clipboard.writeText(previousText);
+    return '';
+  }
+  return selectedText;
+};
 
 const showCompletionOverlay = (mode: 'speak' | 'improve' | 'transcript'): void => {
   setSpeakOverlayState({

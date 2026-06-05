@@ -2,6 +2,14 @@ import { spawn } from 'node:child_process';
 
 export class ActivePasteService {
   paste(): Promise<void> {
+    return this.sendKeys('^v');
+  }
+
+  copySelection(): Promise<void> {
+    return this.sendKeys('^c');
+  }
+
+  private sendKeys(keys: string): Promise<void> {
     return new Promise((resolve) => {
       const child = spawn(
         'powershell.exe',
@@ -11,7 +19,7 @@ export class ActivePasteService {
           '-WindowStyle',
           'Hidden',
           '-Command',
-          "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')",
+          `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${keys}')`,
         ],
         { windowsHide: true },
       );

@@ -5,14 +5,20 @@ import type { OverlayState, ResultState } from '@shared/types';
 import { applyWindowSecurity } from './security';
 
 let mainWindow: BrowserWindow | null = null;
-let speakOverlayWindow: BrowserWindow | null = null;
-let speakOverlayDismissed = false;
-let speakOverlayState: OverlayState = {
+type OverlayMode = OverlayState['mode'];
+
+const overlayModes: OverlayMode[] = ['speak', 'improve', 'transcript'];
+const overlayWindows = new Map<OverlayMode, BrowserWindow>();
+const overlayDismissed = new Map<OverlayMode, boolean>();
+const defaultOverlayState: OverlayState = {
   active: false,
   mode: 'speak',
   status: 'recording',
   waveform: [],
 };
+const overlayStates = new Map<OverlayMode, OverlayState>(
+  overlayModes.map((mode) => [mode, { ...defaultOverlayState, mode }]),
+);
 
 const getAppIconPath = (): string =>
   app.isPackaged
@@ -114,53 +120,66 @@ export const sendImproveResult = (result: ResultState): void => {
 };
 
 export const setSpeakOverlayState = (state: OverlayState): void => {
+  const mode = state.mode;
   if (!state.active) {
-    speakOverlayDismissed = false;
+    overlayDismissed.set(mode, false);
   }
   if (state.active) {
-    speakOverlayDismissed = false;
+    overlayDismissed.set(mode, false);
   }
-  speakOverlayState = state;
+  overlayStates.set(mode, state);
   updateSpeakOverlayVisibility();
 };
 
-export const getSpeakOverlayState = (): OverlayState => speakOverlayState;
+export const getSpeakOverlayState = (mode: OverlayMode = 'speak'): OverlayState =>
+  overlayStates.get(mode) ?? { ...defaultOverlayState, mode };
 
-export const stopSpeakFromOverlay = (): void => {
-  if (speakOverlayState.mode === 'transcript') {
+export const stopSpeakFromOverlay = (mode: OverlayMode = 'speak'): void => {
+  if (mode === 'transcript') {
     mainWindow?.webContents.send(channels.appTranscript);
+    return;
+  }
+  if (mode === 'improve') {
     return;
   }
   mainWindow?.webContents.send(channels.appSpeak);
 };
 
-export const dismissSpeakOverlay = (): void => {
-  speakOverlayDismissed = true;
-  speakOverlayWindow?.hide();
+export const dismissSpeakOverlay = (mode: OverlayMode = 'speak'): void => {
+  overlayDismissed.set(mode, true);
+  overlayWindows.get(mode)?.hide();
+  updateSpeakOverlayVisibility();
 };
 
 const updateSpeakOverlayVisibility = (): void => {
-  if (
-    !speakOverlayState.active ||
-    speakOverlayDismissed
-  ) {
-    speakOverlayWindow?.hide();
-    return;
+  const activeStates = overlayModes
+    .map((mode) => overlayStates.get(mode) ?? { ...defaultOverlayState, mode })
+    .filter((state) => state.active && !overlayDismissed.get(state.mode));
+
+  for (const mode of overlayModes) {
+    const state = overlayStates.get(mode) ?? { ...defaultOverlayState, mode };
+    const window = overlayWindows.get(mode);
+    if (!state.active || overlayDismissed.get(mode)) {
+      window?.hide();
+    }
   }
-  const window = createSpeakOverlayWindow();
-  if (!window.isVisible()) {
-    positionSpeakOverlay(window);
-  }
-  window.webContents.send(channels.overlayStateChanged, speakOverlayState);
-  window.show();
+
+  activeStates.forEach((state, index) => {
+    const window = createSpeakOverlayWindow(state.mode);
+    positionSpeakOverlay(window, index);
+    window.setFocusable(false);
+    window.webContents.send(channels.overlayStateChanged, state);
+    window.showInactive();
+  });
 };
 
-const createSpeakOverlayWindow = (): BrowserWindow => {
-  if (speakOverlayWindow && !speakOverlayWindow.isDestroyed()) {
-    return speakOverlayWindow;
+const createSpeakOverlayWindow = (mode: OverlayMode): BrowserWindow => {
+  const existingWindow = overlayWindows.get(mode);
+  if (existingWindow && !existingWindow.isDestroyed()) {
+    return existingWindow;
   }
 
-  speakOverlayWindow = new BrowserWindow({
+  const window = new BrowserWindow({
     width: 246,
     height: 86,
     resizable: false,
@@ -173,7 +192,7 @@ const createSpeakOverlayWindow = (): BrowserWindow => {
     focusable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    title: 'Voclyra Speak',
+    title: `Voclyra ${mode}`,
     icon: getAppIconPath(),
     backgroundColor: '#00000000',
     webPreferences: {
@@ -187,37 +206,39 @@ const createSpeakOverlayWindow = (): BrowserWindow => {
     },
   });
 
-  speakOverlayWindow.setAlwaysOnTop(true, 'floating');
-  speakOverlayWindow.setFocusable(false);
-  applyWindowSecurity(speakOverlayWindow);
+  window.setAlwaysOnTop(true, 'floating');
+  window.setFocusable(false);
+  applyWindowSecurity(window);
 
-  speakOverlayWindow.on('closed', () => {
-    speakOverlayWindow = null;
+  window.on('closed', () => {
+    overlayWindows.delete(mode);
   });
 
-  speakOverlayWindow.webContents.once('did-finish-load', () => {
-    speakOverlayWindow?.webContents.send(channels.overlayStateChanged, speakOverlayState);
+  window.webContents.once('did-finish-load', () => {
+    window.webContents.send(channels.overlayStateChanged, getSpeakOverlayState(mode));
   });
 
   if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
-    void speakOverlayWindow.loadURL(`${process.env.ELECTRON_RENDERER_URL}?overlay=speak`);
+    void window.loadURL(`${process.env.ELECTRON_RENDERER_URL}?overlay=${mode}`);
   } else {
-    void speakOverlayWindow.loadFile(join(__dirname, '../renderer/index.html'), {
-      query: { overlay: 'speak' },
+    void window.loadFile(join(__dirname, '../renderer/index.html'), {
+      query: { overlay: mode },
     });
   }
 
-  return speakOverlayWindow;
+  overlayWindows.set(mode, window);
+  return window;
 };
 
-const positionSpeakOverlay = (window: BrowserWindow): void => {
+const positionSpeakOverlay = (window: BrowserWindow, index: number): void => {
   const { workArea } = screen.getPrimaryDisplay();
   const size = window.getSize();
   const width = size[0] ?? 246;
   const height = size[1] ?? 86;
+  const gap = 10;
   window.setBounds({
     x: workArea.x + workArea.width - width - 18,
-    y: workArea.y + workArea.height - height - 18,
+    y: workArea.y + workArea.height - height - 18 - index * (height + gap),
     width,
     height,
   });

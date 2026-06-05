@@ -31,6 +31,15 @@ export class HistoryService {
     return this.storage.writeJson(this.fileName, this.sort(nextEntries));
   }
 
+  async updateTitle(id: string, title: string): Promise<HistoryEntry[]> {
+    const entries = await this.list();
+    const normalizedTitle = title.replace(/\s+/g, ' ').trim();
+    const nextEntries = entries.map((entry) =>
+      entry.id === id ? { ...entry, title: normalizedTitle } : entry,
+    );
+    return this.storage.writeJson(this.fileName, this.sort(nextEntries));
+  }
+
   async delete(id: string): Promise<void> {
     const entries = await this.list();
     await this.storage.writeJson(
