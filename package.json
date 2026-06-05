@@ -1,0 +1,84 @@
+{
+  "name": "voclyra",
+  "version": "0.1.0",
+  "description": "Local Windows dictation and text improvement app.",
+  "main": "./out/main/index.js",
+  "author": "timtim",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "start": "electron-vite preview",
+    "build": "npm run typecheck && electron-vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "lucide-react": "1.17.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@swc/core": "1.15.40",
+    "@types/node": "25.9.1",
+    "@types/react": "19.2.16",
+    "@types/react-dom": "19.2.3",
+    "electron": "42.3.3",
+    "electron-builder": "26.8.1",
+    "electron-vite": "5.0.0",
+    "eslint": "10.4.1",
+    "prettier": "3.8.3",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.60.1",
+    "vite": "7.3.5"
+  },
+  "build": {
+    "appId": "app.voclyra.desktop",
+    "productName": "Voclyra",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "src/assets/logo.svg",
+        "to": "assets/logo.svg"
+      },
+      {
+        "from": "resources/icon.png",
+        "to": "assets/icon.png"
+      },
+      {
+        "from": "resources/icon.ico",
+        "to": "assets/icon.ico"
+      },
+      {
+        "from": "resources/whisper/win-x64",
+        "to": "whisper/win-x64",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "resources/icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

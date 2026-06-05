@@ -1,0 +1,39 @@
+:root {
+  color-scheme: dark;
+  --bg: #1e1e1e;
+  --shell: #1e1e1e;
+  --sidebar: #252526;
+  --surface: #252526;
+  --surface-soft: #2d2d30;
+  --surface-raised: #333333;
+  --border: #3c3c3c;
+  --border-strong: #505050;
+  --text: #cccccc;
+  --muted: #a6a6a6;
+  --soft: #858585;
+  --primary: #ff9c4d;
+  --primary-strong: #ffc17f;
+  --primary-soft: rgba(255, 156, 77, 0.18);
+  --primary-tint: #211a13;
+  --primary-surface: rgba(255, 156, 77, 0.1);
+  --hover-border: rgba(255, 156, 77, 0.42);
+  --hover-bg: linear-gradient(180deg, rgba(255, 156, 77, 0.1), rgba(255, 156, 77, 0.035)), #2d2d30;
+  --hover-bg-strong: linear-gradient(180deg, rgba(255, 156, 77, 0.14), rgba(255, 156, 77, 0.05)), #211a13;
+  --success: #89d185;
+  --danger: #f48771;
+  --radius: 6px;
+  --ease: 160ms ease;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+}

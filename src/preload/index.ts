@@ -1,0 +1,136 @@
+import { contextBridge, ipcRenderer } from 'electron';
+import { channels } from '@shared/channels';
+import type { AppApi, OverlayState, Settings, WhisperDownloadProgress } from '@shared/types';
+
+const api: AppApi = {
+  settings: {
+    get: () => ipcRenderer.invoke(channels.settingsGet) as Promise<Settings>,
+    save: (settings) => ipcRenderer.invoke(channels.settingsSave, settings) as Promise<Settings>,
+  },
+  app: {
+    openDataFolder: () => ipcRenderer.invoke(channels.appOpenDataFolder) as Promise<void>,
+  },
+  models: {
+    listOllama: () => ipcRenderer.invoke(channels.modelsListOllama) as Promise<string[]>,
+    listWhisper: () => ipcRenderer.invoke(channels.whisperListModels) as Promise<string[]>,
+  },
+  dictation: {
+    start: (audio) =>
+      ipcRenderer.invoke(channels.dictationStart, audio) as ReturnType<AppApi['dictation']['start']>,
+    stop: () => ipcRenderer.invoke(channels.dictationStop) as ReturnType<AppApi['dictation']['stop']>,
+  },
+  transcript: {
+    start: (audio) =>
+      ipcRenderer.invoke(channels.transcriptStart, audio) as ReturnType<AppApi['transcript']['start']>,
+  },
+  text: {
+    improve: (text) => ipcRenderer.invoke(channels.textImprove, text) as ReturnType<AppApi['text']['improve']>,
+    replaceActive: (text) => ipcRenderer.invoke(channels.textReplaceActive, text) as Promise<void>,
+  },
+  clipboard: {
+    read: () => ipcRenderer.invoke(channels.clipboardRead) as Promise<string>,
+    write: (text) => ipcRenderer.invoke(channels.clipboardWrite, text) as Promise<void>,
+  },
+  history: {
+    list: () => ipcRenderer.invoke(channels.historyList) as ReturnType<AppApi['history']['list']>,
+    toggleFavorite: (id) =>
+      ipcRenderer.invoke(channels.historyToggleFavorite, id) as ReturnType<AppApi['history']['toggleFavorite']>,
+    delete: (id) => ipcRenderer.invoke(channels.historyDelete, id) as Promise<void>,
+    clear: () => ipcRenderer.invoke(channels.historyClear) as ReturnType<AppApi['history']['clear']>,
+  },
+  whisper: {
+    availableModels: () =>
+      ipcRenderer.invoke(channels.whisperAvailableModels) as ReturnType<AppApi['whisper']['availableModels']>,
+    downloadModel: (id) =>
+      ipcRenderer.invoke(channels.whisperDownloadModel, id) as ReturnType<AppApi['whisper']['downloadModel']>,
+    deleteModel: (id) =>
+      ipcRenderer.invoke(channels.whisperDeleteModel, id) as ReturnType<AppApi['whisper']['deleteModel']>,
+    runtimeInfo: () =>
+      ipcRenderer.invoke(channels.whisperRuntimeInfo) as ReturnType<AppApi['whisper']['runtimeInfo']>,
+    onDownloadProgress: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, progress: WhisperDownloadProgress): void => {
+        callback(progress);
+      };
+      ipcRenderer.on(channels.whisperDownloadProgress, listener);
+      return () => {
+        ipcRenderer.removeListener(channels.whisperDownloadProgress, listener);
+      };
+    },
+  },
+  actions: {
+    onSpeak: (callback) => {
+      const listener = (): void => {
+        callback();
+      };
+      ipcRenderer.on(channels.appSpeak, listener);
+      return () => {
+        ipcRenderer.removeListener(channels.appSpeak, listener);
+      };
+    },
+    onImproveText: (callback) => {
+      const listener = (): void => {
+        callback();
+      };
+      ipcRenderer.on(channels.appImproveText, listener);
+      return () => {
+        ipcRenderer.removeListener(channels.appImproveText, listener);
+      };
+    },
+    onTranscript: (callback) => {
+      const listener = (): void => {
+        callback();
+      };
+      ipcRenderer.on(channels.appTranscript, listener);
+      return () => {
+        ipcRenderer.removeListener(channels.appTranscript, listener);
+      };
+    },
+    onImproveResult: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, result: Parameters<typeof callback>[0]): void => {
+        callback(result);
+      };
+      ipcRenderer.on(channels.appImproveResult, listener);
+      return () => {
+        ipcRenderer.removeListener(channels.appImproveResult, listener);
+      };
+    },
+    onSection: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, section: unknown): void => {
+        if (
+          section === 'home' ||
+          section === 'settings' ||
+          section === 'history' ||
+          section === 'about'
+        ) {
+          callback(section);
+        }
+      };
+      ipcRenderer.on(channels.navigationSection, listener);
+      return () => {
+        ipcRenderer.removeListener(channels.navigationSection, listener);
+      };
+    },
+  },
+  overlay: {
+    setState: (state) => ipcRenderer.invoke(channels.overlaySetState, state) as Promise<void>,
+    getState: () => ipcRenderer.invoke(channels.overlayGetState) as Promise<OverlayState>,
+    stopSpeak: () => ipcRenderer.invoke(channels.overlayStopSpeak) as Promise<void>,
+    dismiss: () => ipcRenderer.invoke(channels.overlayDismiss) as Promise<void>,
+    onState: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, state: OverlayState): void => {
+        callback(state);
+      };
+      ipcRenderer.on(channels.overlayStateChanged, listener);
+      return () => {
+        ipcRenderer.removeListener(channels.overlayStateChanged, listener);
+      };
+    },
+  },
+  window: {
+    minimize: () => ipcRenderer.invoke(channels.windowMinimize) as Promise<void>,
+    toggleMaximize: () => ipcRenderer.invoke(channels.windowToggleMaximize) as Promise<void>,
+    close: () => ipcRenderer.invoke(channels.windowClose) as Promise<void>,
+  },
+};
+
+contextBridge.exposeInMainWorld('voclyra', api);

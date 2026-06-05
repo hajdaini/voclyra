@@ -1,0 +1,52 @@
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 168px minmax(0, 1fr);
+  }
+
+  .content {
+    padding: 46px 14px 16px;
+  }
+
+  .titlebar {
+    left: 169px;
+  }
+
+  .home-actions,
+  .settings-grid,
+  .about-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .home-heading,
+  .page-heading,
+  .settings-title-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .speak-task {
+    grid-template-columns: 1fr;
+  }
+
+  .record-button {
+    width: 100%;
+  }
+
+  .task-meta {
+    justify-content: flex-start;
+  }
+
+  .result-title {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .model-download-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .model-state {
+    justify-content: space-between;
+  }
+}
