@@ -11,19 +11,19 @@ export const navItems: Array<{ id: AppSection; label: string; icon: typeof Home 
 export const speakFallbackResult: ResultState = {
   text: '',
   status: 'ready',
-  message: 'No dictation yet.',
+  message: 'Speak ready',
 };
 
 export const improveFallbackResult: ResultState = {
   text: '',
   status: 'ready',
-  message: 'No improved text yet.',
+  message: 'Improve ready',
 };
 
 export const transcriptFallbackResult: ResultState = {
   text: '',
   status: 'ready',
-  message: 'No transcript yet.',
+  message: 'Transcription ready',
 };
 
 export const inactiveOverlayState: OverlayState = {

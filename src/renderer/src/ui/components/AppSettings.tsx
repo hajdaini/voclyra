@@ -7,7 +7,7 @@ type AppSettingsProps = {
   ollamaModels: string[];
   whisperModels: string[];
   availableWhisperModels: WhisperAvailableModel[];
-  settingsFocus: 'shortcuts' | null;
+  settingsFocus: 'models' | 'shortcuts' | null;
   onSettingsChange: (settings: Settings) => void;
   onRefreshModels: () => void;
   onDownloadWhisperModel: (id: WhisperModelId) => void;

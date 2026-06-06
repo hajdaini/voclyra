@@ -1,5 +1,5 @@
 import { useEffect, useState, type JSX } from 'react';
-import { AlertTriangle, CheckCircle2, Headphones, Mic, Pencil, TriangleAlert } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Headphones, Info, Mic, TriangleAlert, Wand2 } from 'lucide-react';
 import type { OverlayState } from '@shared/types';
 import { defaultSettings } from '@shared/defaults';
 import { api } from '../../api';
@@ -28,7 +28,7 @@ export const SpeakOverlay = (): JSX.Element => {
         : overlayState.status === 'improving'
           ? 'Improving'
           : overlayState.status === 'done'
-            ? `${modeLabel} done${overlayState.message ? ` · ${overlayState.message}` : ''}`
+            ? `${modeLabel} done`
           : overlayState.mode === 'speak'
             ? 'Speak done'
             : overlayState.mode === 'improve'
@@ -39,7 +39,9 @@ export const SpeakOverlay = (): JSX.Element => {
       ? CheckCircle2
       : overlayState.messageType === 'warning'
         ? TriangleAlert
-        : AlertTriangle;
+        : overlayState.messageType === 'info'
+          ? Info
+          : AlertTriangle;
 
   useEffect(() => {
     let mounted = true;
@@ -66,19 +68,22 @@ export const SpeakOverlay = (): JSX.Element => {
 
   return (
     <main className={`speak-overlay ${overlayState.status}`}>
-      <div className={`speak-overlay-icon ${overlayState.status === 'done' ? 'done' : ''} ${overlayState.status === 'warning' ? 'warning' : ''}`}>
+      <div className="speak-overlay-icon">
         {overlayState.status === 'warning' ? (
           <AlertTriangle size={18} />
         ) : overlayState.mode === 'speak' ? (
           <Mic size={20} />
         ) : overlayState.mode === 'improve' ? (
-          <Pencil size={18} />
+          <Wand2 size={18} />
         ) : (
           <Headphones size={18} />
         )}
       </div>
       <div className="speak-overlay-main">
-        <strong>{label}</strong>
+        <div className="speak-overlay-title">
+          {overlayState.status === 'done' && <CheckCircle2 size={14} />}
+          <strong>{label}</strong>
+        </div>
         {overlayState.status === 'recording' ? (
           <div className="speak-overlay-wave" aria-hidden="true">
             {Array.from({ length: 8 }, (_, index) => (
@@ -91,13 +96,13 @@ export const SpeakOverlay = (): JSX.Element => {
         ) : overlayState.status === 'transcribing' || overlayState.status === 'improving' ? (
           <div className="speak-overlay-spinner" aria-hidden="true" />
         ) : null}
+        {overlayState.message && (
+          <span className={`speak-overlay-message ${overlayState.messageType ?? 'error'}`}>
+            <MessageIcon size={13} />
+            <span>{overlayState.message}</span>
+          </span>
+        )}
       </div>
-      {overlayState.message && overlayState.status !== 'done' && (
-        <span className={`speak-overlay-message ${overlayState.messageType ?? 'error'}`}>
-          <MessageIcon size={13} />
-          <span>{overlayState.message}</span>
-        </span>
-      )}
       {overlayState.status === 'recording' && (
         <button
           className="speak-overlay-stop"

@@ -236,16 +236,8 @@ const createSpeakOverlayWindow = (mode: OverlayMode): BrowserWindow => {
 
 const positionSpeakOverlay = (window: BrowserWindow, index: number, state: OverlayState): void => {
   const { workArea } = screen.getPrimaryDisplay();
-  const size = window.getSize();
-  const width =
-    state.status === 'recording'
-      ? 310
-      : state.message
-        ? 330
-        : state.status === 'done'
-          ? 250
-          : 230;
-  const height = size[1] ?? 86;
+  const width = overlayWidth(state);
+  const height = state.message ? 72 : 62;
   const gap = 10;
   window.setBounds({
     x: workArea.x + workArea.width - width - 18,
@@ -253,4 +245,21 @@ const positionSpeakOverlay = (window: BrowserWindow, index: number, state: Overl
     width,
     height,
   });
+};
+
+const overlayWidth = (state: OverlayState): number => {
+  if (state.status === 'recording') {
+    return 310;
+  }
+  const modeLabel = state.mode === 'speak' ? 'Speak' : state.mode === 'improve' ? 'Improve' : 'Transcript';
+  const title =
+    state.status === 'done'
+      ? `${modeLabel} done`
+      : state.status === 'transcribing'
+        ? 'Transcribing'
+        : state.status === 'improving'
+          ? 'Improving'
+          : 'Action unavailable';
+  const longestText = Math.max(title.length, state.message?.length ?? 0);
+  return Math.min(360, Math.max(180, 86 + longestText * 6.5));
 };

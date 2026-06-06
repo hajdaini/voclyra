@@ -4,12 +4,28 @@ export type WavRecorder = {
 };
 
 type TranscriptRecorderOptions = {
-  captureSystemAudio?: boolean;
+  microphoneDevice?: MicrophoneDevice;
+  microphoneOptions?: MicrophoneOptions;
   onSystemAudioChange?: (active: boolean) => void;
 };
 
-export const startWavRecorder = async (onLevel: (level: number) => void): Promise<WavRecorder> => {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+export type MicrophoneDevice = {
+  id: string;
+  label: string;
+};
+
+export type MicrophoneOptions = {
+  echoCancellation: boolean;
+  noiseSuppression: boolean;
+  autoGainControl: boolean;
+};
+
+export const startWavRecorder = async (
+  onLevel: (level: number) => void,
+  microphoneDevice?: MicrophoneDevice,
+  microphoneOptions?: MicrophoneOptions,
+): Promise<WavRecorder> => {
+  const stream = await getMicrophoneStream(microphoneDevice, microphoneOptions);
   const context = new AudioContext();
   const source = context.createMediaStreamSource(stream);
   const processor = context.createScriptProcessor(4096, 1, 1);
@@ -45,6 +61,79 @@ export const startWavRecorder = async (onLevel: (level: number) => void): Promis
   };
 };
 
+const microphoneOnlyConstraints = (options: MicrophoneOptions = defaultMicrophoneOptions): MediaTrackConstraints => ({
+  channelCount: 1,
+  echoCancellation: options.echoCancellation,
+  noiseSuppression: options.noiseSuppression,
+  autoGainControl: options.autoGainControl,
+});
+
+const defaultMicrophoneOptions: MicrophoneOptions = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+};
+
+const getMicrophoneStream = async (
+  microphoneDevice?: MicrophoneDevice,
+  microphoneOptions: MicrophoneOptions = defaultMicrophoneOptions,
+): Promise<MediaStream> => {
+  const selectedDevice = await resolveMicrophoneDevice(microphoneDevice);
+  if (selectedDevice?.deviceId) {
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        audio: {
+          ...microphoneOnlyConstraints(microphoneOptions),
+          deviceId: { exact: selectedDevice.deviceId },
+        },
+      });
+    } catch {
+      if (!microphoneDevice?.label) {
+        throw new Error('Selected microphone is not available.');
+      }
+    }
+  }
+  const initialStream = await navigator.mediaDevices.getUserMedia({
+    audio: microphoneOnlyConstraints(microphoneOptions),
+  });
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const microphone = devices.find(
+    (device) => device.kind === 'audioinput' && isLikelyMicrophone(device.label),
+  );
+  const currentDeviceId = initialStream.getAudioTracks()[0]?.getSettings().deviceId;
+  if (!microphone?.deviceId || microphone.deviceId === currentDeviceId) {
+    return initialStream;
+  }
+  initialStream.getTracks().forEach((track) => track.stop());
+  return navigator.mediaDevices.getUserMedia({
+    audio: {
+      ...microphoneOnlyConstraints(microphoneOptions),
+      deviceId: { exact: microphone.deviceId },
+    },
+  });
+};
+
+const resolveMicrophoneDevice = async (microphoneDevice?: MicrophoneDevice): Promise<MediaDeviceInfo | null> => {
+  if (!microphoneDevice?.id && !microphoneDevice?.label) {
+    return null;
+  }
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const audioInputs = devices.filter((device) => device.kind === 'audioinput');
+  return (
+    audioInputs.find((device) => device.deviceId === microphoneDevice.id) ??
+    audioInputs.find((device) => device.label === microphoneDevice.label) ??
+    null
+  );
+};
+
+const isLikelyMicrophone = (label: string): boolean => {
+  const normalizedLabel = label.toLowerCase();
+  if (/(stereo mix|loopback|monitor|output|speaker|cable|virtual|wasapi)/i.test(normalizedLabel)) {
+    return false;
+  }
+  return /(mic|microphone|headset|casque)/i.test(normalizedLabel);
+};
+
 export const startTranscriptRecorder = async (
   onLevel: (level: number) => void,
   options: TranscriptRecorderOptions = {},
@@ -61,7 +150,7 @@ export const startTranscriptRecorder = async (
   let stopped = false;
 
   const connectMic = async (): Promise<void> => {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await getMicrophoneStream(options.microphoneDevice, options.microphoneOptions);
     micStream?.getTracks().forEach((track) => track.stop());
     micStream = stream;
     streams.push(stream);
@@ -72,10 +161,7 @@ export const startTranscriptRecorder = async (
 
   await connectMic();
 
-  if (options.captureSystemAudio === false) {
-    options.onSystemAudioChange?.(false);
-  } else {
-    try {
+  try {
     const systemStream = await navigator.mediaDevices.getDisplayMedia({
       audio: true,
       video: true,
@@ -94,9 +180,8 @@ export const startTranscriptRecorder = async (
     } else {
       options.onSystemAudioChange?.(false);
     }
-    } catch {
-      options.onSystemAudioChange?.(false);
-    }
+  } catch {
+    options.onSystemAudioChange?.(false);
   }
 
   const source = context.createMediaStreamSource(destination.stream);

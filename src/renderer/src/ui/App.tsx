@@ -52,12 +52,12 @@ export const App = (): JSX.Element => {
   const [isTranscriptProcessing, setIsTranscriptProcessing] = useState(false);
   const [isImproveProcessing, setIsImproveProcessing] = useState(false);
   const [waveform, setWaveform] = useState<number[]>(Array.from({ length: 28 }, () => 0.08));
-  const [settingsFocus, setSettingsFocus] = useState<'shortcuts' | null>(null);
+  const [settingsFocus, setSettingsFocus] = useState<'models' | 'shortcuts' | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [isShortcutEditing, setIsShortcutEditing] = useState(false);
   const [isImproveInputFocused, setIsImproveInputFocused] = useState(false);
   const overlayNoticeRef = useRef<
-    Partial<Record<'speak' | 'improve' | 'transcript', { message: string; messageType: 'error' | 'success' | 'warning' }>>
+    Partial<Record<'speak' | 'improve' | 'transcript', { message: string; messageType: 'error' | 'success' | 'warning' | 'info' }>>
   >({});
   const result =
     mode === 'speak' ? speakResult : mode === 'improve' ? improveResult : transcriptResult;
@@ -133,20 +133,31 @@ export const App = (): JSX.Element => {
     setSpeakResult({ text: '', status: 'listening', message: 'Listening...' });
     try {
       setRecorder(
-        await startWavRecorder((level) => {
-          setWaveform((current) => {
-            const nextWaveform = [...current.slice(1), Math.max(0.08, level)];
-            void api.overlay.setState({
-              active: true,
-              mode: 'speak',
-              status: 'recording',
-              waveform: nextWaveform.slice(-8),
-              message: overlayNoticeRef.current.speak?.message,
-              messageType: overlayNoticeRef.current.speak?.messageType,
+        await startWavRecorder(
+          (level) => {
+            setWaveform((current) => {
+              const nextWaveform = [...current.slice(1), Math.max(0.08, level)];
+              void api.overlay.setState({
+                active: true,
+                mode: 'speak',
+                status: 'recording',
+                waveform: nextWaveform.slice(-8),
+                message: overlayNoticeRef.current.speak?.message,
+                messageType: overlayNoticeRef.current.speak?.messageType,
+              });
+              return nextWaveform;
             });
-            return nextWaveform;
-          });
-        }),
+          },
+          {
+            id: settings.microphoneDeviceId,
+            label: settings.microphoneDeviceLabel,
+          },
+          {
+            echoCancellation: settings.microphoneEchoCancellation,
+            noiseSuppression: settings.microphoneNoiseSuppression,
+            autoGainControl: settings.microphoneAutoGainControl,
+          },
+        ),
       );
     } catch (error) {
       const message = errorMessage(error);
@@ -175,7 +186,8 @@ export const App = (): JSX.Element => {
     try {
       const audio = await recorder.stop();
       const nextResult = await api.dictation.start(audio);
-      setSpeakResult(nextResult);
+      setSpeakResult(normalizeCopyResult('speak', nextResult));
+      showCopyToast(nextResult);
       setWhisperRuntime(await api.whisper.runtimeInfo());
       await refreshHistoryAndModels();
       if (!nextResult.text) {
@@ -253,7 +265,8 @@ export const App = (): JSX.Element => {
     });
     try {
       const nextResult = await api.text.improve(sourceText);
-      setImproveResult(nextResult);
+      setImproveResult(normalizeCopyResult('improve', nextResult));
+      showCopyToast(nextResult);
       await refreshHistoryAndModels();
       if (!nextResult.text) {
         showOverlayWarning('improve', nextResult.message);
@@ -296,11 +309,20 @@ export const App = (): JSX.Element => {
             });
           },
           {
+            microphoneDevice: {
+              id: settings.microphoneDeviceId,
+              label: settings.microphoneDeviceLabel,
+            },
+            microphoneOptions: {
+              echoCancellation: settings.microphoneEchoCancellation,
+              noiseSuppression: settings.microphoneNoiseSuppression,
+              autoGainControl: settings.microphoneAutoGainControl,
+            },
             onSystemAudioChange: (active) => {
               setTranscriptResult((current) => ({
                 ...current,
                 message: active
-                  ? 'Recording transcript with microphone and computer audio...'
+                  ? 'Recording transcript...'
                   : 'Recording transcript. Computer audio is not captured.',
               }));
             },
@@ -353,15 +375,7 @@ export const App = (): JSX.Element => {
 
   const copy = async (): Promise<void> => {
     await api.clipboard.write(result.text);
-    if (mode === 'speak') {
-      setSpeakResult({ ...result, message: 'Copied to clipboard' });
-      return;
-    }
-    if (mode === 'transcript') {
-      setTranscriptResult({ ...result, message: 'Copied to clipboard' });
-      return;
-    }
-    setImproveResult({ ...result, message: 'Copied to clipboard' });
+    showToast('info', 'Copied to clipboard');
   };
 
   const deleteEntry = async (id: string): Promise<void> => {
@@ -415,6 +429,12 @@ export const App = (): JSX.Element => {
     setToast({ id: Date.now(), type, message });
   };
 
+  const showCopyToast = (nextResult: ResultState): void => {
+    if (nextResult.message === 'Copied to clipboard') {
+      showToast('info', 'Copied to clipboard');
+    }
+  };
+
   const showCompletionOverlay = (
     overlayMode: 'speak' | 'improve' | 'transcript',
     nextResult: ResultState,
@@ -432,7 +452,7 @@ export const App = (): JSX.Element => {
       status: 'done',
       waveform: [],
       message: nextResult.message,
-      messageType: 'success',
+      messageType: nextResult.message === 'Copied to clipboard' ? 'info' : 'success',
     });
     window.setTimeout(() => {
       void api.overlay.setState({
@@ -447,7 +467,7 @@ export const App = (): JSX.Element => {
   const showOverlayWarning = (
     overlayMode: 'speak' | 'improve' | 'transcript',
     message: string,
-    messageType: 'error' | 'success' | 'warning' = 'warning',
+    messageType: 'error' | 'success' | 'warning' | 'info' = 'warning',
   ): void => {
     overlayNoticeRef.current[overlayMode] = { message, messageType };
     if (overlayMode === 'speak' && recorder) {
@@ -605,7 +625,8 @@ export const App = (): JSX.Element => {
     });
     const removeImproveResultListener = api.actions.onImproveResult((nextResult) => {
       setMode('improve');
-      setImproveResult(nextResult);
+      setImproveResult(normalizeCopyResult('improve', nextResult));
+      showCopyToast(nextResult);
       if (nextResult.status === 'error' || !nextResult.text) {
         showOverlayWarning('improve', nextResult.message, nextResult.status === 'error' ? 'error' : 'warning');
       } else {
@@ -682,7 +703,10 @@ export const App = (): JSX.Element => {
         onMinimize={() => void api.window.minimize()}
         onMaximize={() => void api.window.toggleMaximize()}
         onClose={() => void api.window.close()}
-        onOpenSettings={() => setSection('settings')}
+        onOpenSettings={() => {
+          setSettingsFocus('models');
+          setSection('settings');
+        }}
         onModeChange={changeMode}
         onStartRecording={() => void startRecording()}
         onStopRecording={() => void stopRecording()}
@@ -704,7 +728,10 @@ export const App = (): JSX.Element => {
         onShortcutUnavailable={() => showToast('error', 'This shortcut cannot be used.')}
         onShortcutEditingChange={setIsShortcutEditing}
         onOpenDataFolder={() => void api.app.openDataFolder()}
-        onHistoryCopy={(entry) => void api.clipboard.write(entry.text)}
+        onHistoryCopy={(entry) => {
+          void api.clipboard.write(entry.text);
+          showToast('info', 'Copied to clipboard');
+        }}
         onHistoryFavoriteToggle={(id) => void toggleHistoryFavorite(id)}
         onHistoryTitleUpdate={(id, title) => void updateHistoryTitle(id, title)}
         onHistoryDelete={(id) => void deleteEntry(id)}
@@ -723,6 +750,11 @@ const settingsAreEqual = (left: SettingsType, right: SettingsType): boolean =>
   left.pasteAfterDictation === right.pasteAfterDictation &&
   left.pasteAfterImprovement === right.pasteAfterImprovement &&
   left.improveSelectedText === right.improveSelectedText &&
+  left.microphoneDeviceId === right.microphoneDeviceId &&
+  left.microphoneDeviceLabel === right.microphoneDeviceLabel &&
+  left.microphoneEchoCancellation === right.microphoneEchoCancellation &&
+  left.microphoneNoiseSuppression === right.microphoneNoiseSuppression &&
+  left.microphoneAutoGainControl === right.microphoneAutoGainControl &&
   left.maxHistoryItems === right.maxHistoryItems &&
   left.language === right.language &&
   left.hotkeys.speak === right.hotkeys.speak &&
@@ -731,3 +763,19 @@ const settingsAreEqual = (left: SettingsType, right: SettingsType): boolean =>
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : 'Operation failed.';
+
+const normalizeCopyResult = (
+  mode: 'speak' | 'improve' | 'transcript',
+  result: ResultState,
+): ResultState => {
+  if (result.message !== 'Copied to clipboard') {
+    return result;
+  }
+  const message =
+    mode === 'speak'
+      ? speakFallbackResult.message
+      : mode === 'improve'
+        ? improveFallbackResult.message
+        : transcriptFallbackResult.message;
+  return { ...result, message };
+};

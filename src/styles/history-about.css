@@ -130,6 +130,60 @@
   cursor: pointer;
 }
 
+.history-title-editor {
+  gap: 6px;
+}
+
+.history-title-editor input {
+  min-width: 0;
+  flex: 1;
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  background: #1b1b1b;
+  color: var(--text);
+  outline: none;
+}
+
+.history-title-editor button {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #2d2d30;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.history-title-editor .history-title-save {
+  border-color: rgba(137, 209, 133, 0.48);
+  background: rgba(137, 209, 133, 0.12);
+  color: var(--success);
+}
+
+.history-favorite {
+  display: inline-grid;
+  width: 24px;
+  height: 34px;
+  flex: 0 0 24px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.history-favorite:hover,
+.history-favorite.active {
+  color: var(--primary);
+}
+
 .history-entry:hover {
   border-color: var(--hover-border);
   background: var(--hover-bg);

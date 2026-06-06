@@ -12,6 +12,14 @@ export class SettingsService {
       pasteAfterDictation: settings.pasteAfterDictation ?? defaultSettings.pasteAfterDictation,
       pasteAfterImprovement: settings.pasteAfterImprovement ?? defaultSettings.pasteAfterImprovement,
       improveSelectedText: settings.improveSelectedText ?? defaultSettings.improveSelectedText,
+      microphoneDeviceId: settings.microphoneDeviceId ?? defaultSettings.microphoneDeviceId,
+      microphoneDeviceLabel: settings.microphoneDeviceLabel ?? defaultSettings.microphoneDeviceLabel,
+      microphoneEchoCancellation:
+        settings.microphoneEchoCancellation ?? defaultSettings.microphoneEchoCancellation,
+      microphoneNoiseSuppression:
+        settings.microphoneNoiseSuppression ?? defaultSettings.microphoneNoiseSuppression,
+      microphoneAutoGainControl:
+        settings.microphoneAutoGainControl ?? defaultSettings.microphoneAutoGainControl,
       maxHistoryItems: settings.maxHistoryItems ?? defaultSettings.maxHistoryItems,
       hotkeys: {
         speak:
@@ -33,6 +41,11 @@ export class SettingsService {
       migratedSettings.pasteAfterDictation !== settings.pasteAfterDictation ||
       migratedSettings.pasteAfterImprovement !== settings.pasteAfterImprovement ||
       migratedSettings.improveSelectedText !== settings.improveSelectedText ||
+      migratedSettings.microphoneDeviceId !== settings.microphoneDeviceId ||
+      migratedSettings.microphoneDeviceLabel !== settings.microphoneDeviceLabel ||
+      migratedSettings.microphoneEchoCancellation !== settings.microphoneEchoCancellation ||
+      migratedSettings.microphoneNoiseSuppression !== settings.microphoneNoiseSuppression ||
+      migratedSettings.microphoneAutoGainControl !== settings.microphoneAutoGainControl ||
       migratedSettings.maxHistoryItems !== settings.maxHistoryItems
     ) {
       await this.save(migratedSettings);

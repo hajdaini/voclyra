@@ -29,7 +29,7 @@ type AppContentProps = {
   ollamaModels: string[];
   whisperModels: string[];
   availableWhisperModels: WhisperAvailableModel[];
-  settingsFocus: 'shortcuts' | null;
+  settingsFocus: 'models' | 'shortcuts' | null;
   onMinimize: () => void;
   onMaximize: () => void;
   onClose: () => void;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type JSX, type MouseEvent } from 'react';
-import { Calendar, CheckSquare, Clipboard, FileText, Headphones, Mic, Pencil, Search, Square, Star, Trash2, Wand2 } from 'lucide-react';
+import { Calendar, Check, CheckSquare, Clipboard, FileText, Headphones, History, Mic, Pencil, Search, Square, Star, Trash2, Wand2, X } from 'lucide-react';
 import type { HistoryEntry } from '@shared/types';
 
 export type HistoryViewProps = {
@@ -25,6 +25,8 @@ export const HistoryView = ({
   const [kindFilter, setKindFilter] = useState<'all' | 'dictation' | 'improvement' | 'transcript'>('all');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
   const filteredEntries = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return entries.filter((entry) => {
@@ -76,11 +78,23 @@ export const HistoryView = ({
     setLastSelectedId(null);
   };
 
+  const saveTitle = (): void => {
+    const title = editingTitle.trim();
+    if (editingId && title) {
+      onTitleUpdate(editingId, title);
+    }
+    setEditingId(null);
+    setEditingTitle('');
+  };
+
   return (
     <section className="page">
       <div className="page-heading">
         <div>
-          <h1>History</h1>
+          <h1 className="view-title">
+            <History size={21} />
+            <span>History</span>
+          </h1>
         </div>
         <button className="danger-action" type="button" title="Clear all history" disabled={entries.length === 0} onClick={onClear}>
           <Trash2 size={17} />
@@ -148,6 +162,48 @@ export const HistoryView = ({
               >
                 {selected ? <CheckSquare size={18} /> : <Square size={18} />}
               </button>
+              <button
+                className={`history-favorite ${entry.favorite ? 'active' : ''}`}
+                type="button"
+                title={entry.favorite ? 'Remove favorite' : 'Add favorite'}
+                aria-label={entry.favorite ? 'Remove favorite' : 'Add favorite'}
+                onClick={() => onFavoriteToggle(entry.id)}
+              >
+                <Star size={18} fill={entry.favorite ? 'currentColor' : 'none'} />
+              </button>
+              {editingId === entry.id ? (
+                <div className="history-open history-title-editor">
+                  <input
+                    autoFocus
+                    value={editingTitle}
+                    maxLength={120}
+                    aria-label="History title"
+                    onChange={(event) => setEditingTitle(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        saveTitle();
+                      } else if (event.key === 'Escape') {
+                        setEditingId(null);
+                        setEditingTitle('');
+                      }
+                    }}
+                  />
+                  <button className="history-title-save" type="button" title="Save title" aria-label="Save title" onClick={saveTitle}>
+                    <Check size={17} />
+                  </button>
+                  <button
+                    type="button"
+                    title="Cancel editing"
+                    aria-label="Cancel editing"
+                    onClick={() => {
+                      setEditingId(null);
+                      setEditingTitle('');
+                    }}
+                  >
+                    <X size={17} />
+                  </button>
+                </div>
+              ) : (
               <button className="history-open" type="button" title="Select entry" onClick={(event) => toggleSelected(entry, event)}>
                 <div className="history-content">
                   <p>{entry.title}</p>
@@ -174,31 +230,23 @@ export const HistoryView = ({
                   </div>
                 </div>
               </button>
+              )}
               <div className="history-actions">
-                <button
-                  className={`favorite-action ${entry.favorite ? 'active' : ''}`}
-                  type="button"
-                  title={entry.favorite ? 'Remove favorite' : 'Add favorite'}
-                  aria-label={entry.favorite ? 'Remove favorite' : 'Add favorite'}
-                  onClick={() => onFavoriteToggle(entry.id)}
-                >
-                  <Star size={18} />
-                </button>
+                {editingId !== entry.id && (
+                  <button
+                    type="button"
+                    title="Edit title"
+                    aria-label="Edit title"
+                    onClick={() => {
+                      setEditingId(entry.id);
+                      setEditingTitle(entry.title);
+                    }}
+                  >
+                    <Pencil size={18} />
+                  </button>
+                )}
                 <button type="button" title="Copy entry" aria-label="Copy entry" onClick={() => onCopy(entry)}>
                   <Clipboard size={18} />
-                </button>
-                <button
-                  type="button"
-                  title="Edit title"
-                  aria-label="Edit title"
-                  onClick={() => {
-                    const title = window.prompt('Edit title', entry.title)?.trim();
-                    if (title && title !== entry.title) {
-                      onTitleUpdate(entry.id, title);
-                    }
-                  }}
-                >
-                  <Pencil size={18} />
                 </button>
                 <button
                   className="danger-action"

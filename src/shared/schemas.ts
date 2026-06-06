@@ -13,6 +13,11 @@ export const settingsSchema = z.object({
   pasteAfterDictation: z.boolean(),
   pasteAfterImprovement: z.boolean(),
   improveSelectedText: z.boolean(),
+  microphoneDeviceId: z.string().max(260),
+  microphoneDeviceLabel: z.string().max(260),
+  microphoneEchoCancellation: z.boolean(),
+  microphoneNoiseSuppression: z.boolean(),
+  microphoneAutoGainControl: z.boolean(),
   maxHistoryItems: z.number().int().min(1).max(10000),
   hotkeys: hotkeysSchema,
   language: z.literal('auto'),
@@ -35,5 +40,5 @@ export const overlayStateSchema = z.object({
   status: z.enum(['recording', 'transcribing', 'improving', 'done', 'warning']),
   waveform: z.array(z.number().min(0).max(1)).max(16),
   message: z.string().max(160).optional(),
-  messageType: z.enum(['error', 'success', 'warning']).optional(),
+  messageType: z.enum(['error', 'success', 'warning', 'info']).optional(),
 });

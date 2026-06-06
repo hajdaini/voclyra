@@ -17,6 +17,11 @@ export type Settings = {
   pasteAfterDictation: boolean;
   pasteAfterImprovement: boolean;
   improveSelectedText: boolean;
+  microphoneDeviceId: string;
+  microphoneDeviceLabel: string;
+  microphoneEchoCancellation: boolean;
+  microphoneNoiseSuppression: boolean;
+  microphoneAutoGainControl: boolean;
   maxHistoryItems: number;
   hotkeys: Hotkeys;
   language: LanguageMode;
@@ -73,7 +78,7 @@ export type OverlayState = {
   status: 'recording' | 'transcribing' | 'improving' | 'done' | 'warning';
   waveform: number[];
   message?: string;
-  messageType?: 'error' | 'success' | 'warning';
+  messageType?: 'error' | 'success' | 'warning' | 'info';
 };
 
 export type AppApi = {

@@ -7,6 +7,7 @@ import {
   Cpu,
   FileText,
   Headphones,
+  Home,
   LoaderCircle,
   Mic,
   Signal,
@@ -83,7 +84,10 @@ export const HomeView = ({
       <section className="workspace">
         <div className="home-heading">
           <div>
-            <h1>Home</h1>
+            <h1 className="view-title">
+              <Home size={21} />
+              <span>Home</span>
+            </h1>
           </div>
           <button type="button" title="Open model settings" onClick={onOpenSettings}>
             <Bot size={17} />
@@ -223,7 +227,7 @@ export const HomeView = ({
               onClick={onImprove}
               disabled={isActionBlocked}
             >
-              <Wand2 size={17} />
+              <Wand2 size={28} />
               <span className="action-button-text">
                 <span>Improve</span>
                 <small>{formatShortcut(hotkeys.improveText)}</small>
@@ -246,12 +250,14 @@ export const HomeView = ({
                 </span>
               </h2>
               <div className={`inline-status ${statusClass}`}>
-                {result.status === 'processing' ? (
-                  <span className="status-spinner" aria-hidden="true" />
-                ) : (
-                  <StatusIcon size={18} />
-                )}
-                <span>{statusMessage}</span>
+                <span className="inline-status-badge">
+                  {result.status === 'processing' ? (
+                    <span className="status-spinner" aria-hidden="true" />
+                  ) : (
+                    <StatusIcon size={15} />
+                  )}
+                  <span>{statusMessage}</span>
+                </span>
                 {(mode === 'speak' || mode === 'transcript') && (
                   <small className="inline-runtime-badge">
                     <Cpu size={14} />

@@ -24,6 +24,11 @@ import type {
   WhisperModelId,
 } from '@shared/types';
 
+type AudioInputDevice = {
+  deviceId: string;
+  label: string;
+};
+
 export type SettingsViewProps = {
   settings: SettingsType;
   ollamaModels: string[];
@@ -33,7 +38,7 @@ export type SettingsViewProps = {
   onRefreshModels: () => void;
   onDownloadWhisperModel: (id: WhisperModelId) => void;
   onDeleteWhisperModel: (id: WhisperModelId) => void;
-  focusSection: 'shortcuts' | null;
+  focusSection: 'models' | 'shortcuts' | null;
   onFocusHandled: () => void;
   onShortcutUnavailable: () => void;
   onShortcutEditingChange: (editing: boolean) => void;
@@ -56,22 +61,61 @@ export const SettingsView = ({
   onOpenDataFolder,
 }: SettingsViewProps): JSX.Element => {
   const shortcutsRef = useRef<HTMLDivElement>(null);
+  const modelsRef = useRef<HTMLElement>(null);
   const speakShortcutRef = useRef<HTMLButtonElement>(null);
+  const [audioInputs, setAudioInputs] = useState<AudioInputDevice[]>([]);
 
   useEffect(() => {
-    if (focusSection !== 'shortcuts') {
+    if (!focusSection) {
       return;
     }
-    shortcutsRef.current?.scrollIntoView({ block: 'center' });
-    speakShortcutRef.current?.focus();
+    if (focusSection === 'models') {
+      modelsRef.current?.scrollIntoView({ block: 'center' });
+    } else {
+      shortcutsRef.current?.scrollIntoView({ block: 'center' });
+      speakShortcutRef.current?.focus();
+    }
     onFocusHandled();
   }, [focusSection, onFocusHandled]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadAudioInputs = async (): Promise<void> => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        if (!mounted) {
+          return;
+        }
+        setAudioInputs(
+          devices
+            .filter((device) => device.kind === 'audioinput')
+            .map((device, index) => ({
+              deviceId: device.deviceId,
+              label: device.label || `Microphone ${index + 1}`,
+            })),
+        );
+      } catch {
+        if (mounted) {
+          setAudioInputs([]);
+        }
+      }
+    };
+    void loadAudioInputs();
+    navigator.mediaDevices.addEventListener('devicechange', loadAudioInputs);
+    return () => {
+      mounted = false;
+      navigator.mediaDevices.removeEventListener('devicechange', loadAudioInputs);
+    };
+  }, []);
 
   return (
     <section className="page settings-page">
       <div className="page-heading">
         <div>
-          <h1>Settings</h1>
+          <h1 className="view-title">
+            <Settings2 size={21} />
+            <span>Settings</span>
+          </h1>
         </div>
         <button type="button" title="Open .voclyra folder" onClick={onOpenDataFolder}>
           <FolderOpen size={17} />
@@ -79,7 +123,7 @@ export const SettingsView = ({
         </button>
       </div>
 
-      <section className="settings-section">
+      <section className="settings-section focused-target" ref={modelsRef}>
         <SectionTitle icon={Settings2} title="General" />
         <label className="settings-checkbox">
           <input
@@ -104,6 +148,51 @@ export const SettingsView = ({
             onChange={(event) => onChange({ ...settings, improveSelectedText: event.target.checked })}
           />
           <span>Use active selection for Improve</span>
+        </label>
+        <label>
+          Microphone input
+          <select
+            value={settings.microphoneDeviceId}
+            onChange={(event) => {
+              const device = audioInputs.find((input) => input.deviceId === event.target.value);
+              onChange({
+                ...settings,
+                microphoneDeviceId: event.target.value,
+                microphoneDeviceLabel: device?.label ?? '',
+              });
+            }}
+          >
+            <option value="">System default microphone</option>
+            {audioInputs.map((device) => (
+              <option key={device.deviceId} value={device.deviceId}>
+                {device.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={settings.microphoneEchoCancellation}
+            onChange={(event) => onChange({ ...settings, microphoneEchoCancellation: event.target.checked })}
+          />
+          <span>Echo cancellation</span>
+        </label>
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={settings.microphoneNoiseSuppression}
+            onChange={(event) => onChange({ ...settings, microphoneNoiseSuppression: event.target.checked })}
+          />
+          <span>Noise suppression</span>
+        </label>
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={settings.microphoneAutoGainControl}
+            onChange={(event) => onChange({ ...settings, microphoneAutoGainControl: event.target.checked })}
+          />
+          <span>Auto gain control</span>
         </label>
         <label className="compact-number-field">
           Max history items

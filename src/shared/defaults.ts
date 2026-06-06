@@ -34,6 +34,11 @@ export const defaultSettings: Settings = {
   pasteAfterDictation: false,
   pasteAfterImprovement: false,
   improveSelectedText: false,
+  microphoneDeviceId: '',
+  microphoneDeviceLabel: '',
+  microphoneEchoCancellation: true,
+  microphoneNoiseSuppression: true,
+  microphoneAutoGainControl: true,
   maxHistoryItems: 100,
   hotkeys: {
     speak: 'Alt+A',

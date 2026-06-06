@@ -1,11 +1,14 @@
 import type { JSX } from 'react';
-import { Bot, Cpu, Headphones, Mic, ShieldCheck, UserRound, Wand2, Zap } from 'lucide-react';
+import { Bot, Cpu, Headphones, Info, Mic, ShieldCheck, UserRound, Wand2, Zap } from 'lucide-react';
 
 export const AboutView = (): JSX.Element => (
   <section className="page about-page">
     <div className="page-heading">
       <div>
-        <h1>About</h1>
+        <h1 className="view-title">
+          <Info size={21} />
+          <span>About</span>
+        </h1>
         <p className="page-subtitle">
           Voclyra is built around shortcuts, voice capture, and local AI to make writing workflows faster.
         </p>
