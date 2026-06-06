@@ -3,13 +3,16 @@ import { randomUUID } from 'node:crypto';
 import { channels } from '@shared/channels';
 import { defaultSettings } from '@shared/defaults';
 import { appMessages } from '@shared/GlobalVars';
-import { improveRunningMessage } from '@shared/action-locks';
-import { historyTitleUpdateSchema, idSchema, overlayStateSchema, settingsSchema, textSchema } from '@shared/schemas';
+import { actionMessages } from '@shared/action-messages';
+import { actionBlockMessage } from '@shared/action-locks';
+import { historyTitleUpdateSchema, idSchema, llmModelIdSchema, overlayStateSchema, settingsSchema, textSchema } from '@shared/schemas';
 import { whisperModelIdSchema } from '@shared/schemas';
 import type { ResultState, Settings } from '@shared/types';
 import { ActivePasteService } from '@services/active-paste-service';
 import { HistoryService } from '@services/history-service';
-import { OllamaService } from '@services/ollama-service';
+import { HardwareService } from '@services/hardware-service';
+import { LlamaService } from '@services/llama-service';
+import { LlmModelService } from '@services/llm-model-service';
 import { SettingsService } from '@services/settings-service';
 import { TranscriptService } from '@services/transcript-service';
 import { WhisperModelService } from '@services/whisper-model-service';
@@ -30,7 +33,9 @@ import { updateTray } from './tray';
 let settings: Settings = defaultSettings;
 const activePasteService = new ActivePasteService();
 const historyService = new HistoryService();
-const ollamaService = new OllamaService();
+const hardwareService = new HardwareService();
+const llamaService = new LlamaService();
+const llmModelService = new LlmModelService();
 const settingsService = new SettingsService();
 const appStorage = new AppStorage();
 const whisperModelService = new WhisperModelService();
@@ -39,22 +44,45 @@ const transcriptService = new TranscriptService(whisperService, historyService);
 const hotkeyService = new HotkeyService();
 let improveShortcutRunning = false;
 
-const ready = (text: string, message: string): ResultState => ({
+const mainActionLockState = () => ({
+  speakRecording: false,
+  speakProcessing: false,
+  improveProcessing: improveShortcutRunning,
+  transcriptRecording: false,
+  transcriptProcessing: false,
+});
+
+const ready = (text: string, message: string, durationMs?: number): ResultState => ({
   text,
   status: 'ready',
   message,
+  durationMs,
 });
 
+const showImproveBlocked = (message: string): void => {
+  setSpeakOverlayState({
+    active: true,
+    mode: 'improve',
+    status: 'warning',
+    waveform: [],
+    message,
+    messageType: 'warning',
+  });
+};
+
+const showImproveProcessing = (): void => {
+  setSpeakOverlayState({
+    active: true,
+    mode: 'improve',
+    status: 'improving',
+    waveform: [],
+  });
+};
+
 export const improveClipboardFromHotkey = async (): Promise<void> => {
-  if (improveShortcutRunning) {
-    setSpeakOverlayState({
-      active: true,
-      mode: 'improve',
-      status: 'warning',
-      waveform: [],
-      message: improveRunningMessage,
-      messageType: 'warning',
-    });
+  const blockMessage = actionBlockMessage('improve', mainActionLockState());
+  if (blockMessage) {
+    showImproveBlocked(blockMessage);
     return;
   }
   improveShortcutRunning = true;
@@ -64,22 +92,19 @@ export const improveClipboardFromHotkey = async (): Promise<void> => {
       ? await readActiveSelection()
       : clipboard.readText();
     if (!text.trim()) {
-      sendImproveResult(ready('', 'Clipboard is empty.'));
+      sendImproveResult(ready('', actionMessages.clipboardEmpty));
       return;
     }
-    setSpeakOverlayState({
-      active: true,
-      mode: 'improve',
-      status: 'improving',
-      waveform: [],
-    });
-    const improved = await ollamaService.improveText(
-      settings.ollamaModel,
+    showImproveProcessing();
+    const startedAt = performance.now();
+    const improved = await llamaService.improveText(
+      llmModelService.modelPath(settings.llmModel),
       settings.correctionPrompt,
       text,
     );
+    const durationMs = elapsedMs(startedAt);
     if (!improved.trim()) {
-      sendImproveResult(failed(new Error('Ollama returned an empty response.')));
+      sendImproveResult(failed(new Error('Local AI returned an empty response.')));
       return;
     }
     clipboard.writeText(improved);
@@ -87,7 +112,7 @@ export const improveClipboardFromHotkey = async (): Promise<void> => {
       await activePasteService.paste();
     }
     await historyService.add({ kind: 'improvement', text: improved }, settings.maxHistoryItems);
-    sendImproveResult(ready(improved, appMessages.copiedToClipboard));
+    sendImproveResult(ready(improved, appMessages.copiedToClipboard, durationMs));
   } catch (error) {
     sendImproveResult(failed(error));
   } finally {
@@ -141,7 +166,7 @@ export const registerIpc = (): void => {
     app.quit();
   });
 
-  ipcMain.handle(channels.modelsListOllama, () => ollamaService.listModels());
+  ipcMain.handle(channels.modelsListLlm, () => llmModelService.downloadedModelNames());
 
   ipcMain.handle(channels.whisperListModels, async () => {
     const [downloadedModels, discoveredModels] = await Promise.all([
@@ -154,6 +179,24 @@ export const registerIpc = (): void => {
   ipcMain.handle(channels.whisperAvailableModels, () => whisperModelService.availableModels());
 
   ipcMain.handle(channels.whisperRuntimeInfo, () => whisperService.runtimeInfo());
+
+  ipcMain.handle(channels.llmAvailableModels, () => llmModelService.availableModels());
+
+  ipcMain.handle(channels.llmRuntimeInfo, () => llamaService.runtimeInfo());
+
+  ipcMain.handle(channels.hardwareInfo, () => hardwareService.info());
+
+  ipcMain.handle(channels.llmDownloadModel, (event, value: unknown) => {
+    const id = llmModelIdSchema.parse(value);
+    return llmModelService.downloadModel(id, (progress) => {
+      event.sender.send(channels.llmDownloadProgress, progress);
+    });
+  });
+
+  ipcMain.handle(channels.llmDeleteModel, (_event, value: unknown) => {
+    const id = llmModelIdSchema.parse(value);
+    return llmModelService.deleteModel(id);
+  });
 
   ipcMain.handle(channels.whisperDownloadModel, (event, value: unknown) => {
     const id = whisperModelIdSchema.parse(value);
@@ -180,16 +223,18 @@ export const registerIpc = (): void => {
       return ready('', 'Select a Whisper model first.');
     }
     try {
+      const startedAt = performance.now();
       const text = singleLineText(await whisperService.transcribe(audio, whisperModel, { debugName: 'speak' }));
+      const durationMs = elapsedMs(startedAt);
       if (!text.trim()) {
-        return ready('', 'No speech detected.');
+        return ready('', 'No speech detected.', durationMs);
       }
       clipboard.writeText(text);
       if (settings.pasteAfterDictation) {
         await activePasteService.paste();
       }
       await historyService.add({ kind: 'dictation', text }, settings.maxHistoryItems);
-      return ready(text, appMessages.copiedToClipboard);
+      return ready(text, appMessages.copiedToClipboard, durationMs);
     } catch (error) {
       return failed(error);
     }
@@ -210,52 +255,50 @@ export const registerIpc = (): void => {
       return ready('', 'Select a Whisper model first.');
     }
     try {
+      const startedAt = performance.now();
       const text = await whisperService.transcribe(audio, whisperModel, {
         timeoutMs: null,
         debugName: 'transcript',
       });
+      const durationMs = elapsedMs(startedAt);
       if (!text.trim()) {
-        return ready('', 'No speech detected.');
+        return ready('', 'No speech detected.', durationMs);
       }
       await historyService.add({ kind: 'transcript', text }, settings.maxHistoryItems);
-      return ready(text, 'Transcript generated.');
+      return ready(text, 'Transcript generated.', durationMs);
     } catch (error) {
       return failed(error);
     }
   });
 
   ipcMain.handle(channels.textImprove, async (_event, value: unknown) => {
-    if (improveShortcutRunning) {
-      setSpeakOverlayState({
-        active: true,
-        mode: 'improve',
-        status: 'warning',
-        waveform: [],
-        message: improveRunningMessage,
-        messageType: 'warning',
-      });
-      return ready('', improveRunningMessage);
+    const blockMessage = actionBlockMessage('improve', mainActionLockState());
+    if (blockMessage) {
+      showImproveBlocked(blockMessage);
+      return ready('', blockMessage);
     }
     const text = textSchema.parse(value);
     if (!text.trim()) {
-      return ready('', 'Enter text to improve.');
+      return ready('', actionMessages.enterTextToImprove);
     }
     improveShortcutRunning = true;
     try {
-      const improved = await ollamaService.improveText(
-        settings.ollamaModel,
+      const startedAt = performance.now();
+      const improved = await llamaService.improveText(
+        llmModelService.modelPath(settings.llmModel),
         settings.correctionPrompt,
         text,
       );
+      const durationMs = elapsedMs(startedAt);
       if (!improved.trim()) {
-        return failed(new Error('Ollama returned an empty response.'));
+        return failed(new Error('Local AI returned an empty response.'));
       }
       clipboard.writeText(improved);
       if (settings.pasteAfterImprovement) {
         await activePasteService.paste();
       }
       await historyService.add({ kind: 'improvement', text: improved }, settings.maxHistoryItems);
-      return ready(improved, appMessages.copiedToClipboard);
+      return ready(improved, appMessages.copiedToClipboard, durationMs);
     } catch (error) {
       return failed(error);
     } finally {
@@ -348,6 +391,8 @@ const failed = (error: unknown): ResultState => ({
 });
 
 const singleLineText = (text: string): string => text.replace(/\s*\r?\n+\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+
+const elapsedMs = (startedAt: number): number => Math.max(0, Math.round(performance.now() - startedAt));
 
 const readActiveSelection = async (): Promise<string> => {
   const previousText = clipboard.readText();

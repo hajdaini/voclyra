@@ -6,6 +6,7 @@ import {
   Clipboard,
   Cpu,
   FileText,
+  Hash,
   Headphones,
   Home,
   LoaderCircle,
@@ -13,9 +14,11 @@ import {
   Signal,
   Square,
   TriangleAlert,
+  Timer,
   Wand2,
 } from 'lucide-react';
-import type { HomeMode, Hotkeys, ResultState, WhisperRuntimeInfo } from '@shared/types';
+import type { HomeMode, Hotkeys, LlmRuntimeInfo, ResultState, WhisperRuntimeInfo } from '@shared/types';
+import { missingActionMessage } from '@shared/action-messages';
 
 export type HomeViewProps = {
   mode: HomeMode;
@@ -25,9 +28,12 @@ export type HomeViewProps = {
   actionBlockMessage: string | null;
   waveform: number[];
   whisperModel: string;
-  ollamaModel: string;
+  llmModel: string;
   hotkeys: Hotkeys;
   whisperRuntime: WhisperRuntimeInfo;
+  llmRuntime: LlmRuntimeInfo;
+  whisperModelAvailable: boolean;
+  llmModelAvailable: boolean;
   onOpenSettings: () => void;
   onModeChange: (mode: HomeMode) => void;
   onStartRecording: () => void;
@@ -49,9 +55,12 @@ export const HomeView = ({
   actionBlockMessage,
   waveform,
   whisperModel,
-  ollamaModel,
+  llmModel,
   hotkeys,
   whisperRuntime,
+  llmRuntime,
+  whisperModelAvailable,
+  llmModelAvailable,
   onOpenSettings,
   onModeChange,
   onStartRecording,
@@ -67,17 +76,34 @@ export const HomeView = ({
   const isActionBlocked = Boolean(actionBlockMessage) && !isRecording;
   const showsActionBlockMessage =
     Boolean(actionBlockMessage) && result.status !== 'listening' && result.status !== 'processing';
-  const statusMessage = showsActionBlockMessage ? actionBlockMessage : result.message;
-  const statusClass = showsActionBlockMessage ? 'warning' : result.status;
+  const missingMessage = missingActionMessage({
+    mode,
+    resultStatus: result.status,
+    whisperRuntime,
+    llmRuntime,
+    whisperModelAvailable,
+    llmModelAvailable,
+  });
+  const statusMessage = showsActionBlockMessage ? actionBlockMessage : (missingMessage ?? result.message);
+  const statusClass = missingMessage ? 'error' : showsActionBlockMessage ? 'warning' : result.status;
   const StatusIcon = statusIcon[statusClass];
-  const backendLabel =
+  const whisperBackendLabel =
     whisperRuntime.backend === 'gpu'
-      ? 'GPU used'
+      ? 'GPU ready'
       : whisperRuntime.backend === 'cpu'
         ? 'CPU used — slower'
         : whisperRuntime.gpuAvailable
           ? 'GPU ready'
           : 'CPU only — slower';
+  const llmBackendLabel =
+    llmRuntime.backend === 'gpu'
+      ? 'GPU ready'
+      : llmRuntime.backend === 'cpu'
+        ? 'CPU used — slower'
+        : llmRuntime.runtimeAvailable
+          ? 'CPU only — slower'
+          : 'Runtime missing';
+  const runtimeLabel = mode === 'improve' ? llmBackendLabel : whisperBackendLabel;
 
   return (
     <div className="home-grid">
@@ -106,12 +132,12 @@ export const HomeView = ({
             <div className="home-action-content">
               <span className="action-title-row">
                 <strong>Speak</strong>
-                <small className="action-badge model-badge" title={whisperModel || 'No model'}>
-                  <Bot size={14} />
-                  <span>{whisperModel || 'No model'}</span>
-                </small>
               </span>
               <span className="action-description">Dictate. Paste. Move on.</span>
+              <small className="action-badge model-badge" title={whisperModel || 'No model'}>
+                <Bot size={12} />
+                <span>{whisperModel || 'No model'}</span>
+              </small>
             </div>
           </button>
 
@@ -125,12 +151,12 @@ export const HomeView = ({
             <div className="home-action-content">
               <span className="action-title-row">
                 <strong>Improve</strong>
-                <small className="action-badge model-badge" title={ollamaModel || 'No model'}>
-                  <Bot size={14} />
-                  <span>{ollamaModel || 'No model'}</span>
-                </small>
               </span>
               <span className="action-description">Correct text in one shortcut.</span>
+              <small className="action-badge model-badge" title={llmModel || 'No model'}>
+                <Bot size={12} />
+                <span>{llmModel || 'No model'}</span>
+              </small>
             </div>
           </button>
 
@@ -144,12 +170,12 @@ export const HomeView = ({
             <div className="home-action-content">
               <span className="action-title-row">
                 <strong>Transcript</strong>
-                <small className="action-badge model-badge" title={whisperModel || 'No model'}>
-                  <Bot size={14} />
-                  <span>{whisperModel || 'No model'}</span>
-                </small>
               </span>
               <span className="action-description">Record now. Summarize later.</span>
+              <small className="action-badge model-badge" title={whisperModel || 'No model'}>
+                <Bot size={12} />
+                <span>{whisperModel || 'No model'}</span>
+              </small>
             </div>
           </button>
         </div>
@@ -176,15 +202,15 @@ export const HomeView = ({
               disabled={isActionBlocked}
             >
               {isRecording ? (
-                <Square size={24} />
+                <Square size={21} />
               ) : mode === 'transcript' ? (
-                <Headphones size={28} />
+                <Headphones size={24} />
               ) : (
-                <Mic size={28} />
+                <Mic size={24} />
               )}
               <span className="action-button-text">
                 <span>{isRecording ? 'Stop' : mode === 'transcript' ? 'Transcript' : 'Speak'}</span>
-                <small>{formatShortcut(mode === 'transcript' ? hotkeys.transcript : hotkeys.speak)}</small>
+                <small>({formatShortcut(mode === 'transcript' ? hotkeys.transcript : hotkeys.speak)})</small>
               </span>
             </button>
 
@@ -208,7 +234,7 @@ export const HomeView = ({
         )}
 
         {mode === 'improve' && (
-          <div className="task-panel">
+          <div className="task-panel improve-task">
             <label className="improve-input">
               Text to improve
               <textarea
@@ -227,10 +253,10 @@ export const HomeView = ({
               onClick={onImprove}
               disabled={isActionBlocked}
             >
-              <Wand2 size={28} />
+              <Wand2 size={24} />
               <span className="action-button-text">
                 <span>Improve</span>
-                <small>{formatShortcut(hotkeys.improveText)}</small>
+                <small>({formatShortcut(hotkeys.improveText)})</small>
               </span>
             </button>
           </div>
@@ -258,10 +284,10 @@ export const HomeView = ({
                   )}
                   <span>{statusMessage}</span>
                 </span>
-                {(mode === 'speak' || mode === 'transcript') && (
+                {(mode === 'speak' || mode === 'transcript' || mode === 'improve') && (
                   <small className="inline-runtime-badge">
                     <Cpu size={14} />
-                    <span>{backendLabel}</span>
+                    <span>{runtimeLabel}</span>
                   </small>
                 )}
               </div>
@@ -285,7 +311,16 @@ export const HomeView = ({
           </div>
 
           <div className="result-actions">
-            <span>{result.text.length} characters</span>
+            <span>
+              <Hash size={14} />
+              <span>{result.text.length} characters</span>
+              {typeof result.durationMs === 'number' && (
+                <>
+                  <Timer size={14} />
+                  <span>{formatDuration(result.durationMs)}</span>
+                </>
+              )}
+            </span>
           </div>
         </section>
       </section>
@@ -294,6 +329,13 @@ export const HomeView = ({
 };
 
 const formatShortcut = (shortcut: string): string => shortcut.replace('CommandOrControl', 'Ctrl');
+
+const formatDuration = (durationMs: number): string => {
+  if (durationMs < 1000) {
+    return `${durationMs} ms`;
+  }
+  return `${(durationMs / 1000).toFixed(durationMs < 10000 ? 1 : 0)} s`;
+};
 
 const statusIcon = {
   ready: CheckCircle2,

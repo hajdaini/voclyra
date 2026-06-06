@@ -1,13 +1,12 @@
-import { existsSync } from 'node:fs';
 import { access, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { basename, dirname, join, resolve } from 'node:path';
-import { homedir } from 'node:os';
-import { app } from 'electron';
+import { basename, dirname, join } from 'node:path';
+import { cpus, homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { AppStorage } from '@storage/app-storage';
 import { ProcessLogService } from '@services/process-log-service';
-import { appStorageConfig, whisperRuntimeConfig } from '@shared/GlobalVars';
-import type { WhisperRuntimeInfo } from '@shared/types';
+import { appStorageConfig, whisperCudaRuntimeVersionConfig, whisperRuntimeConfig } from '@shared/GlobalVars';
+import { SettingsService } from '@services/settings-service';
+import type { LanguageMode, Settings, SilenceSensitivity, WhisperRuntimeInfo } from '@shared/types';
 
 type WhisperRunResult = {
   stdout: string;
@@ -43,6 +42,7 @@ const exactTranscriptionPrompt = [
 export class WhisperService {
   private readonly storage = new AppStorage();
   private readonly logger = new ProcessLogService();
+  private readonly settingsService = new SettingsService();
   private lastBackend: 'gpu' | 'cpu' | 'unknown' = 'unknown';
 
   async listModels(): Promise<string[]> {
@@ -54,9 +54,11 @@ export class WhisperService {
   }
 
   async runtimeInfo(): Promise<WhisperRuntimeInfo> {
-    const executablePath = this.executablePath();
+    const executablePath = await this.executablePath();
+    const version = (await this.settingsService.get()).whisperCudaRuntimeVersion;
     const executableExists = await this.exists(executablePath);
     const help = executableExists ? await this.helpText() : '';
+    const runtimeStarts = help.trim().length > 0;
     const canSelectDevice = /(?:^|\s)(?:-dev|--device)\b/i.test(help);
     const canDisableGpu = /(?:^|\s)(?:-ng|--no-gpu)\b/i.test(help);
     const cudaRuntimeExists =
@@ -64,8 +66,10 @@ export class WhisperService {
 
     return {
       backend: this.lastBackend,
+      runtimeAvailable: executableExists && runtimeStarts,
       gpuAvailable: executableExists && canSelectDevice && canDisableGpu && cudaRuntimeExists,
       device: this.lastBackend === 'cpu' ? 'CPU' : this.lastBackend === 'gpu' ? 'CUDA0' : 'Auto',
+      version,
     };
   }
 
@@ -117,6 +121,33 @@ export class WhisperService {
     try {
       const audioPath = join(temporaryRoot, 'input.wav');
       await writeFile(audioPath, audio);
+      const settings = await this.settingsService.get();
+      const segments = this.speechSegments(audio, settings.silenceSensitivity);
+      if (segments.length > 1) {
+        const texts: string[] = [];
+        for (let index = 0; index < segments.length; index += 1) {
+          const segment = segments[index];
+          if (!segment) {
+            continue;
+          }
+          const segmentId = `${id}-segment-${index}`;
+          const segmentPath = join(temporaryRoot, `${segmentId}.wav`);
+          await writeFile(segmentPath, segment);
+          const text = await this.transcribeAudioFile(
+            modelPath,
+            segmentPath,
+            temporaryRoot,
+            segmentId,
+            options.timeoutMs,
+            exactTranscriptionPrompt,
+            options.debugName ? `${options.debugName}-segment-${index}` : undefined,
+          );
+          if (text) {
+            texts.push(text);
+          }
+        }
+        return texts.join('\n').trim();
+      }
       return await this.transcribeAudioFile(
         modelPath,
         audioPath,
@@ -139,7 +170,8 @@ export class WhisperService {
     try {
       await access(audioPath);
       const audio = await readFile(audioPath);
-      const segments = this.speechSegments(audio);
+      const settings = await this.settingsService.get();
+      const segments = this.speechSegments(audio, settings.silenceSensitivity);
       if (segments.length <= 1) {
         return await this.transcribeAudioFile(
           modelPath,
@@ -289,34 +321,20 @@ export class WhisperService {
     return match;
   }
 
-  private executablePath(): string {
-    const cudaPath = join(
+  private async executablePath(): Promise<string> {
+    const version = (await this.settingsService.get()).whisperCudaRuntimeVersion;
+    return join(
       homedir(),
       appStorageConfig.directoryName,
-      ...whisperRuntimeConfig.cudaRuntimeParts,
-      whisperRuntimeConfig.executableName,
-    );
-
-    if (process.platform === 'win32' && existsSync(cudaPath)) {
-      return cudaPath;
-    }
-
-    if (app.isPackaged) {
-      return join(
-        process.resourcesPath,
-        ...whisperRuntimeConfig.packagedRuntimeParts,
-        whisperRuntimeConfig.executableName,
-      );
-    }
-
-    return resolve(
-      process.cwd(),
-      ...whisperRuntimeConfig.devRuntimeParts,
+      ...whisperRuntimeConfig.runtimeParts,
+      whisperRuntimeConfig.engineDirectory,
+      whisperCudaRuntimeVersionConfig[version].directory,
+      whisperRuntimeConfig.platformDirectory,
       whisperRuntimeConfig.executableName,
     );
   }
 
-  private runWhisper(
+  private async runWhisper(
     modelPath: string,
     audioPath: string,
     outputBase: string,
@@ -328,16 +346,19 @@ export class WhisperService {
     prompt?: string,
     logName?: string,
   ): Promise<WhisperRunResult> {
+    const executable = await this.executablePath();
+    const settings = await this.settingsService.get();
     return new Promise((resolvePromise, reject) => {
       const args = [
         '-m',
         modelPath,
         '-l',
-        'auto',
+        whisperLanguage(settings.whisperLanguage),
         '-nt',
         '-t',
-        '12',
+        String(whisperThreadCount()),
       ];
+      args.push(...whisperQualityArgs(settings.whisperQualityMode));
 
       if (outputMode === 'file') {
         args.push('-otxt', '-of', outputBase);
@@ -359,7 +380,7 @@ export class WhisperService {
         args.push(audioPath);
       }
 
-      const process = spawn(this.executablePath(), args, {
+      const process = spawn(executable, args, {
         cwd,
         windowsHide: true,
         shell: false,
@@ -428,7 +449,7 @@ export class WhisperService {
     status: string,
     logName?: string,
   ): Promise<void> {
-    const executable = this.executablePath();
+    const executable = await this.executablePath();
     const command = [executable, ...args].map((part) => `"${part}"`).join(' ');
     const fileName = logName === 'transcript'
       ? 'transcript.log'
@@ -475,13 +496,13 @@ export class WhisperService {
     return '';
   }
 
-  private speechSegments(audio: Uint8Array): Uint8Array[] {
+  private speechSegments(audio: Uint8Array, sensitivity: SilenceSensitivity): Uint8Array[] {
     const info = this.wavInfo(audio);
     if (!info || info.bitsPerSample !== 16) {
       return [audio];
     }
 
-    const ranges = this.detectSpeechRanges(audio, info);
+    const ranges = this.detectSpeechRanges(audio, info, sensitivity);
     if (ranges.length === 0) {
       return [audio];
     }
@@ -527,7 +548,7 @@ export class WhisperService {
     return { dataOffset, dataSize, sampleRate, channels, bitsPerSample };
   }
 
-  private detectSpeechRanges(audio: Uint8Array, info: WavInfo): SpeechRange[] {
+  private detectSpeechRanges(audio: Uint8Array, info: WavInfo, sensitivity: SilenceSensitivity): SpeechRange[] {
     const frameSamples = Math.max(1, Math.round(info.sampleRate * 0.03));
     const samples = Math.floor(info.dataSize / (info.channels * 2));
     const levels: number[] = [];
@@ -544,9 +565,14 @@ export class WhisperService {
 
     const sorted = [...levels].sort((left, right) => left - right);
     const noise = sorted[Math.floor(sorted.length * 0.2)] ?? 0;
-    const threshold = Math.max(0.004, Math.min(0.035, noise * 3), peak * 0.055);
+    const config = silenceSensitivityConfig[sensitivity];
+    const threshold = Math.max(
+      config.minimumThreshold,
+      Math.min(0.035, noise * config.noiseMultiplier),
+      peak * config.peakMultiplier,
+    );
     const minSpeechFrames = Math.max(1, Math.round(0.18 / 0.03));
-    const minSilenceFrames = Math.max(1, Math.round(0.45 / 0.03));
+    const minSilenceFrames = Math.max(1, Math.round(config.minSilenceSeconds / 0.03));
     const ranges: SpeechRange[] = [];
     let startFrame = -1;
     let silenceFrames = 0;
@@ -713,9 +739,10 @@ export class WhisperService {
       .trim();
   }
 
-  private helpText(): Promise<string> {
+  private async helpText(): Promise<string> {
+    const executable = await this.executablePath();
     return new Promise((resolveHelp) => {
-      const process = spawn(this.executablePath(), ['--help'], {
+      const process = spawn(executable, ['--help'], {
         windowsHide: true,
         shell: false,
       });
@@ -754,3 +781,46 @@ export class WhisperService {
     }
   }
 }
+
+const whisperLanguage = (language: LanguageMode): string => language;
+
+const whisperThreadCount = (): number => Math.max(1, Math.min(12, cpus().length || 4));
+
+const whisperQualityArgs = (mode: Settings['whisperQualityMode']): string[] => {
+  if (mode === 'fast') {
+    return ['-bs', '1', '-bo', '1'];
+  }
+  if (mode === 'accurate') {
+    return ['-bs', '5', '-bo', '5'];
+  }
+  return [];
+};
+
+const silenceSensitivityConfig: Record<
+  SilenceSensitivity,
+  {
+    minimumThreshold: number;
+    noiseMultiplier: number;
+    peakMultiplier: number;
+    minSilenceSeconds: number;
+  }
+> = {
+  low: {
+    minimumThreshold: 0.003,
+    noiseMultiplier: 2.4,
+    peakMultiplier: 0.04,
+    minSilenceSeconds: 0.7,
+  },
+  normal: {
+    minimumThreshold: 0.004,
+    noiseMultiplier: 3,
+    peakMultiplier: 0.055,
+    minSilenceSeconds: 0.45,
+  },
+  high: {
+    minimumThreshold: 0.006,
+    noiseMultiplier: 3.8,
+    peakMultiplier: 0.075,
+    minSilenceSeconds: 0.25,
+  },
+};

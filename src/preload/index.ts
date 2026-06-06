@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { channels } from '@shared/channels';
-import type { AppApi, OverlayState, Settings, WhisperDownloadProgress } from '@shared/types';
+import type { AppApi, LlmDownloadProgress, OverlayState, Settings, WhisperDownloadProgress } from '@shared/types';
 
 const api: AppApi = {
   settings: {
@@ -13,7 +13,7 @@ const api: AppApi = {
     quit: () => ipcRenderer.invoke(channels.appQuit) as Promise<void>,
   },
   models: {
-    listOllama: () => ipcRenderer.invoke(channels.modelsListOllama) as Promise<string[]>,
+    listLlm: () => ipcRenderer.invoke(channels.modelsListLlm) as Promise<string[]>,
     listWhisper: () => ipcRenderer.invoke(channels.whisperListModels) as Promise<string[]>,
   },
   dictation: {
@@ -61,6 +61,28 @@ const api: AppApi = {
         ipcRenderer.removeListener(channels.whisperDownloadProgress, listener);
       };
     },
+  },
+  llm: {
+    availableModels: () =>
+      ipcRenderer.invoke(channels.llmAvailableModels) as ReturnType<AppApi['llm']['availableModels']>,
+    downloadModel: (id) =>
+      ipcRenderer.invoke(channels.llmDownloadModel, id) as ReturnType<AppApi['llm']['downloadModel']>,
+    deleteModel: (id) =>
+      ipcRenderer.invoke(channels.llmDeleteModel, id) as ReturnType<AppApi['llm']['deleteModel']>,
+    runtimeInfo: () =>
+      ipcRenderer.invoke(channels.llmRuntimeInfo) as ReturnType<AppApi['llm']['runtimeInfo']>,
+    onDownloadProgress: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, progress: LlmDownloadProgress): void => {
+        callback(progress);
+      };
+      ipcRenderer.on(channels.llmDownloadProgress, listener);
+      return () => {
+        ipcRenderer.removeListener(channels.llmDownloadProgress, listener);
+      };
+    },
+  },
+  hardware: {
+    info: () => ipcRenderer.invoke(channels.hardwareInfo) as ReturnType<AppApi['hardware']['info']>,
   },
   actions: {
     onSpeak: (callback) => {

@@ -2,8 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import type {
   AppSection,
+  HardwareInfo,
   HistoryEntry,
   HomeMode,
+  LlmAvailableModel,
+  LlmRuntimeInfo,
   ResultState,
   Settings as SettingsType,
   WhisperAvailableModel,
@@ -11,7 +14,8 @@ import type {
 } from '@shared/types';
 import { defaultSettings } from '@shared/defaults';
 import { appMessages } from '@shared/GlobalVars';
-import { audioActionBlockMessage, improveRunningMessage } from '@shared/action-locks';
+import { actionMessages } from '@shared/action-messages';
+import { actionBlockMessage, improveRunningMessage } from '@shared/action-locks';
 import { api } from '../api';
 import { startTranscriptRecorder, startWavRecorder, type WavRecorder } from '../audio/wav-recorder';
 import { AppContent } from './components/AppContent';
@@ -19,12 +23,16 @@ import { AppToast, type Toast, type ToastType } from './components/AppToast';
 import { AppSidebar } from './components/AppSidebar';
 import { AppTopbar } from './components/AppTopbar';
 import { SpeakOverlay } from './components/SpeakOverlay';
+import { syncModelSettings } from './modelSettingsSync';
+import { overlayDone, overlayInactive, overlayProcessing, overlayRecording, overlayWarning } from './overlayStates';
 import {
   improveFallbackResult,
   inactiveOverlayState,
   speakFallbackResult,
   transcriptFallbackResult,
 } from './appState';
+
+const defaultWaveform = (): number[] => Array.from({ length: 28 }, () => 0.08);
 
 export const App = (): JSX.Element => {
   const overlayMode = new URLSearchParams(window.location.search).get('overlay');
@@ -38,13 +46,23 @@ export const App = (): JSX.Element => {
   const [transcriptResult, setTranscriptResult] = useState<ResultState>(transcriptFallbackResult);
   const [settings, setSettings] = useState<SettingsType>(defaultSettings);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [llmModels, setLlmModels] = useState<string[]>([]);
   const [whisperModels, setWhisperModels] = useState<string[]>([]);
   const [availableWhisperModels, setAvailableWhisperModels] = useState<WhisperAvailableModel[]>([]);
+  const [availableLlmModels, setAvailableLlmModels] = useState<LlmAvailableModel[]>([]);
+  const [hardwareInfo, setHardwareInfo] = useState<HardwareInfo>({ gpuName: 'Unknown GPU', gpuVramGb: null });
   const [whisperRuntime, setWhisperRuntime] = useState<WhisperRuntimeInfo>({
     backend: 'unknown',
+    runtimeAvailable: false,
     gpuAvailable: false,
     device: 'Auto',
+    version: defaultSettings.whisperCudaRuntimeVersion,
+  });
+  const [llmRuntime, setLlmRuntime] = useState<LlmRuntimeInfo>({
+    backend: 'unknown',
+    runtimeAvailable: false,
+    device: 'Unknown',
+    version: defaultSettings.llmCudaRuntimeVersion,
   });
   const [mode, setMode] = useState<HomeMode>('speak');
   const [improveInput, setImproveInput] = useState('');
@@ -53,11 +71,12 @@ export const App = (): JSX.Element => {
   const [isSpeakProcessing, setIsSpeakProcessing] = useState(false);
   const [isTranscriptProcessing, setIsTranscriptProcessing] = useState(false);
   const [isImproveProcessing, setIsImproveProcessing] = useState(false);
-  const [waveform, setWaveform] = useState<number[]>(Array.from({ length: 28 }, () => 0.08));
-  const [settingsFocus, setSettingsFocus] = useState<'models' | 'microphone' | 'history' | 'shortcuts' | null>(null);
+  const [waveform, setWaveform] = useState<number[]>(defaultWaveform);
+  const [settingsFocus, setSettingsFocus] = useState<'improveAi' | 'speechAi' | 'microphone' | 'history' | 'shortcuts' | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [isShortcutEditing, setIsShortcutEditing] = useState(false);
   const [isImproveInputFocused, setIsImproveInputFocused] = useState(false);
+  const settingsRef = useRef(defaultSettings);
   const overlayNoticeRef = useRef<
     Partial<Record<'speak' | 'improve' | 'transcript', { message: string; messageType: 'error' | 'success' | 'warning' | 'info' }>>
   >({});
@@ -66,43 +85,56 @@ export const App = (): JSX.Element => {
   const audioLockState = {
     speakRecording: Boolean(recorder),
     speakProcessing: isSpeakProcessing,
+    improveProcessing: isImproveProcessing,
     transcriptRecording: Boolean(transcriptRecorder),
     transcriptProcessing: isTranscriptProcessing,
   };
-  const actionBlockMessage =
-    mode === 'improve'
-      ? isImproveProcessing
-        ? improveRunningMessage
-        : null
-      : audioActionBlockMessage(mode, audioLockState);
+  const currentActionBlockMessage = actionBlockMessage(mode, audioLockState);
+  const whisperModelAvailable = Boolean(settings.whisperModel && whisperModels.includes(settings.whisperModel));
+  const llmModelAvailable = Boolean(settings.llmModel && llmModels.includes(settings.llmModel));
 
-  const loadModels = async (): Promise<void> => {
-    const [nextOllamaModels, nextWhisperModels, nextAvailableWhisperModels, nextWhisperRuntime] = await Promise.all([
-      api.models.listOllama(),
+  const loadModels = async (baseSettings = settingsRef.current): Promise<void> => {
+    const [
+      nextLlmModels,
+      nextWhisperModels,
+      nextAvailableWhisperModels,
+      nextAvailableLlmModels,
+      nextWhisperRuntime,
+      nextLlmRuntime,
+    ] = await Promise.all([
+      api.models.listLlm(),
       api.models.listWhisper(),
       api.whisper.availableModels(),
+      api.llm.availableModels(),
       api.whisper.runtimeInfo(),
+      api.llm.runtimeInfo(),
     ]);
-    setOllamaModels(nextOllamaModels);
+    setLlmModels(nextLlmModels);
     setWhisperModels(nextWhisperModels);
     setAvailableWhisperModels(nextAvailableWhisperModels);
+    setAvailableLlmModels(nextAvailableLlmModels);
     setWhisperRuntime(nextWhisperRuntime);
-    setSettings((currentSettings) => ({
-      ...currentSettings,
-      ollamaModel: nextOllamaModels.includes(currentSettings.ollamaModel)
-        ? currentSettings.ollamaModel
-        : (nextOllamaModels[0] ?? currentSettings.ollamaModel),
-      whisperModel: nextWhisperModels.includes(currentSettings.whisperModel)
-        ? currentSettings.whisperModel
-        : (nextWhisperModels[0] ?? currentSettings.whisperModel),
-    }));
+    setLlmRuntime(nextLlmRuntime);
+    const syncedSettings = syncModelSettings(baseSettings, {
+      llm: nextLlmModels,
+      whisper: nextWhisperModels,
+    });
+    const nextSettings = settingsAreEqual(baseSettings, syncedSettings)
+      ? syncedSettings
+      : await api.settings.save(syncedSettings);
+    settingsRef.current = nextSettings;
+    setSettings(nextSettings);
   };
 
   useEffect(() => {
-    void api.settings.get().then(setSettings);
+    void api.settings.get().then((nextSettings) => {
+      settingsRef.current = nextSettings;
+      setSettings(nextSettings);
+      void loadModels(nextSettings);
+    });
     void api.history.list().then(setHistory);
-    void loadModels();
-    return api.whisper.onDownloadProgress((progress) => {
+    void api.hardware.info().then(setHardwareInfo);
+    const removeWhisperDownloadListener = api.whisper.onDownloadProgress((progress) => {
       setAvailableWhisperModels((models) =>
         models.map((model) =>
           model.id === progress.id
@@ -111,6 +143,19 @@ export const App = (): JSX.Element => {
         ),
       );
     });
+    const removeLlmDownloadListener = api.llm.onDownloadProgress((progress) => {
+      setAvailableLlmModels((models) =>
+        models.map((model) =>
+          model.id === progress.id
+            ? { ...model, state: progress.state, progress: progress.progress }
+            : model,
+        ),
+      );
+    });
+    return () => {
+      removeWhisperDownloadListener();
+      removeLlmDownloadListener();
+    };
   }, []);
 
   const downloadWhisperModel = async (id: WhisperAvailableModel['id']): Promise<void> => {
@@ -125,8 +170,32 @@ export const App = (): JSX.Element => {
     await loadModels();
   };
 
+  const downloadLlmModel = async (id: LlmAvailableModel['id']): Promise<void> => {
+    const nextAvailableLlmModels = await api.llm.downloadModel(id);
+    setAvailableLlmModels(nextAvailableLlmModels);
+    await loadModels();
+  };
+
+  const deleteLlmModel = async (id: LlmAvailableModel['id']): Promise<void> => {
+    const nextAvailableLlmModels = await api.llm.deleteModel(id);
+    setAvailableLlmModels(nextAvailableLlmModels);
+    await loadModels();
+  };
+
   const startRecording = async (): Promise<void> => {
-    const blockMessage = audioActionBlockMessage('speak', audioLockState);
+    if (!whisperRuntime.runtimeAvailable) {
+      setMode('speak');
+      setSpeakResult({ text: '', status: 'error', message: actionMessages.whisperMissing });
+      showOverlayWarning('speak', actionMessages.whisperMissing, 'error');
+      return;
+    }
+    if (!whisperModelAvailable) {
+      setMode('speak');
+      setSpeakResult({ text: '', status: 'error', message: actionMessages.whisperModelMissing });
+      showOverlayWarning('speak', actionMessages.whisperModelMissing, 'error');
+      return;
+    }
+    const blockMessage = actionBlockMessage('speak', audioLockState);
     if (blockMessage) {
       showOverlayWarning('speak', blockMessage);
       return;
@@ -139,14 +208,12 @@ export const App = (): JSX.Element => {
           (level) => {
             setWaveform((current) => {
               const nextWaveform = [...current.slice(1), Math.max(0.08, level)];
-              void api.overlay.setState({
-                active: true,
-                mode: 'speak',
-                status: 'recording',
-                waveform: nextWaveform.slice(-8),
-                message: overlayNoticeRef.current.speak?.message,
-                messageType: overlayNoticeRef.current.speak?.messageType,
-              });
+              void api.overlay.setState(overlayRecording(
+                'speak',
+                nextWaveform.slice(-8),
+                overlayNoticeRef.current.speak?.message,
+                overlayNoticeRef.current.speak?.messageType,
+              ));
               return nextWaveform;
             });
           },
@@ -171,20 +238,16 @@ export const App = (): JSX.Element => {
   const stopRecording = async (): Promise<void> => {
     if (!recorder) {
       if (isSpeakProcessing) {
-        showOverlayWarning('speak', audioActionBlockMessage('speak', audioLockState) ?? 'Speak is already running.');
+        showOverlayWarning('speak', actionBlockMessage('speak', audioLockState) ?? 'Speak is already running.');
       }
       return;
     }
 
     setRecorder(null);
+    setWaveform(defaultWaveform());
     setIsSpeakProcessing(true);
     setSpeakResult({ text: '', status: 'processing', message: 'Transcribing...' });
-    void api.overlay.setState({
-      active: true,
-      mode: 'speak',
-      status: 'transcribing',
-      waveform: waveform.slice(-8),
-    });
+    void api.overlay.setState(overlayProcessing('speak', defaultWaveform().slice(-8)));
     try {
       const audio = await recorder.stop();
       const nextResult = await api.dictation.start(audio);
@@ -213,18 +276,15 @@ export const App = (): JSX.Element => {
     }
     if (recordingMode === 'speak') {
       setRecorder(null);
-      setSpeakResult({ text: '', status: 'ready', message: 'Recording cancelled.' });
+      setSpeakResult({ text: '', status: 'ready', message: actionMessages.recordingCancelled });
     } else {
       setTranscriptRecorder(null);
-      setTranscriptResult({ text: '', status: 'ready', message: 'Recording cancelled.' });
+      setTranscriptResult({ text: '', status: 'ready', message: actionMessages.recordingCancelled });
     }
     delete overlayNoticeRef.current[recordingMode];
-    setWaveform(Array.from({ length: 28 }, () => 0.08));
+    setWaveform(defaultWaveform());
     await activeRecorder.cancel();
-    void api.overlay.setState({
-      ...inactiveOverlayState,
-      mode: recordingMode,
-    });
+    void api.overlay.setState(overlayInactive(recordingMode));
   };
 
   const refreshHistoryAndModels = async (): Promise<void> => {
@@ -239,10 +299,20 @@ export const App = (): JSX.Element => {
 
   const improve = async (): Promise<void> => {
     if (isImproveProcessing) {
-      showOverlayWarning('improve', improveRunningMessage);
+      blockImproveRun();
       return;
     }
     setMode('improve');
+    if (!llmRuntime.runtimeAvailable) {
+      setImproveResult({ text: '', status: 'error', message: actionMessages.llamaMissing });
+      showOverlayWarning('improve', actionMessages.llamaMissing, 'error');
+      return;
+    }
+    if (!llmModelAvailable) {
+      setImproveResult({ text: '', status: 'error', message: actionMessages.llamaModelMissing });
+      showOverlayWarning('improve', actionMessages.llamaModelMissing, 'error');
+      return;
+    }
     const sourceText = isImproveInputFocused
       ? improveInput
       : settings.improveSelectedText
@@ -252,19 +322,14 @@ export const App = (): JSX.Element => {
       setImproveInput(sourceText);
     }
     if (!sourceText.trim()) {
-      const message = isImproveInputFocused ? 'Enter text to improve.' : 'Clipboard is empty.';
+      const message = isImproveInputFocused ? actionMessages.enterTextToImprove : actionMessages.clipboardEmpty;
       setImproveResult({ text: '', status: 'error', message });
       showOverlayWarning('improve', message);
       return;
     }
     setIsImproveProcessing(true);
     setImproveResult({ text: '', status: 'processing', message: 'Improving text...' });
-    void api.overlay.setState({
-      active: true,
-      mode: 'improve',
-      status: 'improving',
-      waveform: [],
-    });
+    void api.overlay.setState(overlayProcessing('improve'));
     try {
       const nextResult = await api.text.improve(sourceText);
       setImproveResult(normalizeCopyResult('improve', nextResult));
@@ -284,8 +349,28 @@ export const App = (): JSX.Element => {
     }
   };
 
+  const blockImproveRun = (): void => {
+    setMode('improve');
+    setImproveResult({ text: improveResult.text, status: 'ready', message: improveRunningMessage });
+    showOverlayWarning('improve', improveRunningMessage);
+  };
+
   const startTranscript = async (): Promise<void> => {
-    const blockMessage = audioActionBlockMessage('transcript', audioLockState);
+    if (!whisperRuntime.runtimeAvailable) {
+      setSection('home');
+      setMode('transcript');
+      setTranscriptResult({ text: '', status: 'error', message: actionMessages.whisperMissing });
+      showOverlayWarning('transcript', actionMessages.whisperMissing, 'error');
+      return;
+    }
+    if (!whisperModelAvailable) {
+      setSection('home');
+      setMode('transcript');
+      setTranscriptResult({ text: '', status: 'error', message: actionMessages.whisperModelMissing });
+      showOverlayWarning('transcript', actionMessages.whisperModelMissing, 'error');
+      return;
+    }
+    const blockMessage = actionBlockMessage('transcript', audioLockState);
     if (blockMessage) {
       showOverlayWarning('transcript', blockMessage);
       return;
@@ -299,14 +384,12 @@ export const App = (): JSX.Element => {
           (level) => {
             setWaveform((current) => {
               const nextWaveform = [...current.slice(1), Math.max(0.08, level)];
-              void api.overlay.setState({
-                active: true,
-                mode: 'transcript',
-                status: 'recording',
-                waveform: nextWaveform.slice(-8),
-                message: overlayNoticeRef.current.transcript?.message,
-                messageType: overlayNoticeRef.current.transcript?.messageType,
-              });
+              void api.overlay.setState(overlayRecording(
+                'transcript',
+                nextWaveform.slice(-8),
+                overlayNoticeRef.current.transcript?.message,
+                overlayNoticeRef.current.transcript?.messageType,
+              ));
               return nextWaveform;
             });
           },
@@ -341,20 +424,16 @@ export const App = (): JSX.Element => {
   const stopTranscript = async (): Promise<void> => {
     if (!transcriptRecorder) {
       if (isTranscriptProcessing) {
-        showOverlayWarning('transcript', audioActionBlockMessage('transcript', audioLockState) ?? 'Transcript is already running.');
+        showOverlayWarning('transcript', actionBlockMessage('transcript', audioLockState) ?? 'Transcript is already running.');
       }
       return;
     }
 
     setTranscriptRecorder(null);
+    setWaveform(defaultWaveform());
     setIsTranscriptProcessing(true);
     setTranscriptResult({ text: '', status: 'processing', message: 'Transcribing transcript...' });
-    void api.overlay.setState({
-      active: true,
-      mode: 'transcript',
-      status: 'transcribing',
-      waveform: waveform.slice(-8),
-    });
+    void api.overlay.setState(overlayProcessing('transcript', defaultWaveform().slice(-8)));
     try {
       const audio = await transcriptRecorder.stop();
       const nextResult = await api.transcript.start(audio);
@@ -412,7 +491,12 @@ export const App = (): JSX.Element => {
     if (!window.confirm('Reset all settings to defaults? This cannot be undone.')) {
       return;
     }
-    await saveSettings(defaultSettings);
+    await saveSettings({
+      ...defaultSettings,
+      llmModel: settingsRef.current.llmModel,
+      whisperModel: settingsRef.current.whisperModel,
+    });
+    await loadModels(settingsRef.current);
     showToast('success', 'Settings reset.');
   };
 
@@ -420,6 +504,7 @@ export const App = (): JSX.Element => {
     const previousSettings = settings;
     const savedSettings = await api.settings.save(nextSettings);
     const saved = settingsAreEqual(nextSettings, savedSettings);
+    settingsRef.current = savedSettings;
     setSettings(savedSettings);
     if (!saved) {
       showToast('error', 'This shortcut cannot be used.');
@@ -435,6 +520,13 @@ export const App = (): JSX.Element => {
     }
     if (nextSettings.hotkeys.transcript !== previousSettings.hotkeys.transcript) {
       showToast('success', 'Transcript shortcut updated.');
+      return;
+    }
+    if (
+      nextSettings.whisperCudaRuntimeVersion !== previousSettings.whisperCudaRuntimeVersion ||
+      nextSettings.llmCudaRuntimeVersion !== previousSettings.llmCudaRuntimeVersion
+    ) {
+      await loadModels();
     }
   };
 
@@ -453,27 +545,16 @@ export const App = (): JSX.Element => {
     nextResult: ResultState,
   ): void => {
     if (nextResult.status !== 'ready' || !nextResult.text) {
-      void api.overlay.setState({
-        ...inactiveOverlayState,
-        mode: overlayMode,
-      });
+      void api.overlay.setState(overlayInactive(overlayMode));
       return;
     }
-    void api.overlay.setState({
-      active: true,
-      mode: overlayMode,
-      status: 'done',
-      waveform: [],
-      message: nextResult.message,
-      messageType: nextResult.message === appMessages.copiedToClipboard ? 'info' : 'success',
-    });
+    void api.overlay.setState(overlayDone(
+      overlayMode,
+      nextResult.message,
+      nextResult.message === appMessages.copiedToClipboard ? 'info' : 'success',
+    ));
     window.setTimeout(() => {
-      void api.overlay.setState({
-        active: false,
-        mode: overlayMode,
-        status: 'done',
-        waveform: [],
-      });
+      void api.overlay.setState(overlayInactive(overlayMode));
     }, 1800);
   };
 
@@ -484,111 +565,41 @@ export const App = (): JSX.Element => {
   ): void => {
     overlayNoticeRef.current[overlayMode] = { message, messageType };
     if (overlayMode === 'speak' && recorder) {
-      void api.overlay.setState({
-        active: true,
-        mode: 'speak',
-        status: 'recording',
-        waveform: waveform.slice(-8),
-        message,
-        messageType,
-      });
+      void api.overlay.setState(overlayRecording('speak', waveform.slice(-8), message, messageType));
     } else if (overlayMode === 'speak' && isSpeakProcessing) {
-      void api.overlay.setState({
-        active: true,
-        mode: 'speak',
-        status: 'transcribing',
-        waveform: waveform.slice(-8),
-        message,
-        messageType,
-      });
+      void api.overlay.setState(overlayProcessing('speak', waveform.slice(-8), message, messageType));
     } else if (overlayMode === 'transcript' && transcriptRecorder) {
-      void api.overlay.setState({
-        active: true,
-        mode: 'transcript',
-        status: 'recording',
-        waveform: waveform.slice(-8),
-        message,
-        messageType,
-      });
+      void api.overlay.setState(overlayRecording('transcript', waveform.slice(-8), message, messageType));
     } else if (overlayMode === 'transcript' && isTranscriptProcessing) {
-      void api.overlay.setState({
-        active: true,
-        mode: 'transcript',
-        status: 'transcribing',
-        waveform: waveform.slice(-8),
-        message,
-        messageType,
-      });
+      void api.overlay.setState(overlayProcessing('transcript', waveform.slice(-8), message, messageType));
     } else if (overlayMode === 'improve' && isImproveProcessing) {
-      void api.overlay.setState({
-        active: true,
-        mode: 'improve',
-        status: 'improving',
-        waveform: [],
-        message,
-        messageType,
-      });
+      void api.overlay.setState(overlayProcessing('improve', [], message, messageType));
     } else {
-      void api.overlay.setState({
-        active: true,
-        mode: overlayMode,
-        status: 'warning',
-        waveform: [],
-        message,
-        messageType,
-      });
+      void api.overlay.setState(overlayWarning(overlayMode, message, messageType));
     }
     window.setTimeout(() => {
       delete overlayNoticeRef.current[overlayMode];
       if (overlayMode === 'speak' && recorder) {
-        void api.overlay.setState({
-          active: true,
-          mode: 'speak',
-          status: 'recording',
-          waveform: waveform.slice(-8),
-        });
+        void api.overlay.setState(overlayRecording('speak', waveform.slice(-8)));
         return;
       }
       if (overlayMode === 'speak' && isSpeakProcessing) {
-        void api.overlay.setState({
-          active: true,
-          mode: 'speak',
-          status: 'transcribing',
-          waveform: waveform.slice(-8),
-        });
+        void api.overlay.setState(overlayProcessing('speak', waveform.slice(-8)));
         return;
       }
       if (overlayMode === 'transcript' && transcriptRecorder) {
-        void api.overlay.setState({
-          active: true,
-          mode: 'transcript',
-          status: 'recording',
-          waveform: waveform.slice(-8),
-        });
+        void api.overlay.setState(overlayRecording('transcript', waveform.slice(-8)));
         return;
       }
       if (overlayMode === 'transcript' && isTranscriptProcessing) {
-        void api.overlay.setState({
-          active: true,
-          mode: 'transcript',
-          status: 'transcribing',
-          waveform: waveform.slice(-8),
-        });
+        void api.overlay.setState(overlayProcessing('transcript', waveform.slice(-8)));
         return;
       }
       if (overlayMode === 'improve' && isImproveProcessing) {
-        void api.overlay.setState({
-          active: true,
-          mode: 'improve',
-          status: 'improving',
-          waveform: [],
-        });
+        void api.overlay.setState(overlayProcessing('improve'));
         return;
       }
-      void api.overlay.setState({
-        ...inactiveOverlayState,
-        mode: overlayMode,
-      });
+      void api.overlay.setState(overlayInactive(overlayMode));
     }, 2400);
   };
 
@@ -644,7 +655,7 @@ export const App = (): JSX.Element => {
         void stopRecording();
         return;
       }
-      const blockMessage = audioActionBlockMessage('speak', audioLockState);
+      const blockMessage = actionBlockMessage('speak', audioLockState);
       if (blockMessage) {
         showOverlayWarning('speak', blockMessage);
         return;
@@ -656,7 +667,7 @@ export const App = (): JSX.Element => {
         return;
       }
       if (isImproveProcessing) {
-        showOverlayWarning('improve', improveRunningMessage);
+        blockImproveRun();
         return;
       }
       void improve();
@@ -680,7 +691,7 @@ export const App = (): JSX.Element => {
         void stopTranscript();
         return;
       }
-      const blockMessage = audioActionBlockMessage('transcript', audioLockState);
+      const blockMessage = actionBlockMessage('transcript', audioLockState);
       if (blockMessage) {
         showOverlayWarning('transcript', blockMessage);
         return;
@@ -714,15 +725,19 @@ export const App = (): JSX.Element => {
       <AppTopbar
         hotkeys={settings.hotkeys}
         hasRecording={Boolean(recorder || transcriptRecorder)}
+        isImproveProcessing={isImproveProcessing}
         onOpenLogsFolder={() => void api.app.openLogsFolder()}
-        onOpenSettings={() => openSettingsFocus('models')}
+        onOpenSettings={() => {
+          setSection('settings');
+          setSettingsFocus(null);
+        }}
         onQuit={() => void api.app.quit()}
         onSpeak={() => void (recorder ? stopRecording() : startRecording())}
         onImprove={() => void improve()}
         onTranscript={() => void (transcriptRecorder ? stopTranscript() : startTranscript())}
         onStopRecording={stopActiveRecording}
         onCancelRecording={cancelActiveRecording}
-        onModelSettings={() => openSettingsFocus('models')}
+        onModelSettings={() => openSettingsFocus(mode === 'improve' ? 'improveAi' : 'speechAi')}
         onMicrophoneSettings={() => openSettingsFocus('microphone')}
         onShortcutSettings={() => openSettingsFocus('shortcuts')}
         onHistorySettings={() => openSettingsFocus('history')}
@@ -747,17 +762,22 @@ export const App = (): JSX.Element => {
         result={result}
         improveInput={improveInput}
         isRecording={mode === 'transcript' ? Boolean(transcriptRecorder) : Boolean(recorder)}
-        actionBlockMessage={actionBlockMessage}
+        actionBlockMessage={currentActionBlockMessage}
         waveform={waveform}
         settings={settings}
         whisperRuntime={whisperRuntime}
+        llmRuntime={llmRuntime}
+        whisperModelAvailable={whisperModelAvailable}
+        llmModelAvailable={llmModelAvailable}
         history={history}
-        ollamaModels={ollamaModels}
+        llmModels={llmModels}
         whisperModels={whisperModels}
         availableWhisperModels={availableWhisperModels}
+        availableLlmModels={availableLlmModels}
+        hardwareInfo={hardwareInfo}
         settingsFocus={settingsFocus}
         onOpenSettings={() => {
-          openSettingsFocus('models');
+          openSettingsFocus(mode === 'improve' ? 'improveAi' : 'speechAi');
         }}
         onModeChange={changeMode}
         onStartRecording={() => void startRecording()}
@@ -770,12 +790,15 @@ export const App = (): JSX.Element => {
         onStartTranscript={() => void startTranscript()}
         onStopTranscript={() => void stopTranscript()}
         onSettingsChange={(nextSettings) => {
+          settingsRef.current = nextSettings;
           setSettings(nextSettings);
           void saveSettings(nextSettings);
         }}
         onRefreshModels={() => void refreshModelsFromSettings()}
         onDownloadWhisperModel={(id) => void downloadWhisperModel(id)}
         onDeleteWhisperModel={(id) => void deleteWhisperModel(id)}
+        onDownloadLlmModel={(id) => void downloadLlmModel(id)}
+        onDeleteLlmModel={(id) => void deleteLlmModel(id)}
         onFocusHandled={() => setSettingsFocus(null)}
         onShortcutUnavailable={() => showToast('error', 'This shortcut cannot be used.')}
         onShortcutEditingChange={setIsShortcutEditing}
@@ -796,8 +819,16 @@ export const App = (): JSX.Element => {
 };
 
 const settingsAreEqual = (left: SettingsType, right: SettingsType): boolean =>
-  left.ollamaModel === right.ollamaModel &&
+  left.llmModel === right.llmModel &&
   left.whisperModel === right.whisperModel &&
+  left.whisperCudaRuntimeVersion === right.whisperCudaRuntimeVersion &&
+  left.whisperLanguage === right.whisperLanguage &&
+  left.whisperQualityMode === right.whisperQualityMode &&
+  left.llmCudaRuntimeVersion === right.llmCudaRuntimeVersion &&
+  left.llmMaxTokensMode === right.llmMaxTokensMode &&
+  left.llmMaxTokens === right.llmMaxTokens &&
+  left.llmContextSize === right.llmContextSize &&
+  left.llmTemperature === right.llmTemperature &&
   left.correctionPrompt === right.correctionPrompt &&
   left.pasteAfterDictation === right.pasteAfterDictation &&
   left.pasteAfterImprovement === right.pasteAfterImprovement &&
@@ -807,8 +838,8 @@ const settingsAreEqual = (left: SettingsType, right: SettingsType): boolean =>
   left.microphoneEchoCancellation === right.microphoneEchoCancellation &&
   left.microphoneNoiseSuppression === right.microphoneNoiseSuppression &&
   left.microphoneAutoGainControl === right.microphoneAutoGainControl &&
+  left.silenceSensitivity === right.silenceSensitivity &&
   left.maxHistoryItems === right.maxHistoryItems &&
-  left.language === right.language &&
   left.hotkeys.speak === right.hotkeys.speak &&
   left.hotkeys.improveText === right.hotkeys.improveText &&
   left.hotkeys.transcript === right.hotkeys.transcript;

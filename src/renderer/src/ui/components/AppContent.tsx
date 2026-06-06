@@ -1,8 +1,11 @@
 import type { JSX } from 'react';
 import type {
   AppSection,
+  HardwareInfo,
   HistoryEntry,
   HomeMode,
+  LlmAvailableModel,
+  LlmRuntimeInfo,
   ResultState,
   Settings,
   WhisperAvailableModel,
@@ -24,11 +27,16 @@ type AppContentProps = {
   waveform: number[];
   settings: Settings;
   whisperRuntime: WhisperRuntimeInfo;
+  llmRuntime: LlmRuntimeInfo;
+  whisperModelAvailable: boolean;
+  llmModelAvailable: boolean;
   history: HistoryEntry[];
-  ollamaModels: string[];
+  llmModels: string[];
   whisperModels: string[];
   availableWhisperModels: WhisperAvailableModel[];
-  settingsFocus: 'models' | 'microphone' | 'history' | 'shortcuts' | null;
+  availableLlmModels: LlmAvailableModel[];
+  hardwareInfo: HardwareInfo;
+  settingsFocus: 'improveAi' | 'speechAi' | 'microphone' | 'history' | 'shortcuts' | null;
   onOpenSettings: () => void;
   onModeChange: (mode: HomeMode) => void;
   onStartRecording: () => void;
@@ -44,6 +52,8 @@ type AppContentProps = {
   onRefreshModels: () => void;
   onDownloadWhisperModel: (id: WhisperModelId) => void;
   onDeleteWhisperModel: (id: WhisperModelId) => void;
+  onDownloadLlmModel: (id: LlmAvailableModel['id']) => void;
+  onDeleteLlmModel: (id: LlmAvailableModel['id']) => void;
   onFocusHandled: () => void;
   onShortcutUnavailable: () => void;
   onShortcutEditingChange: (editing: boolean) => void;
@@ -66,10 +76,15 @@ export const AppContent = ({
   waveform,
   settings,
   whisperRuntime,
+  llmRuntime,
+  whisperModelAvailable,
+  llmModelAvailable,
   history,
-  ollamaModels,
+  llmModels,
   whisperModels,
   availableWhisperModels,
+  availableLlmModels,
+  hardwareInfo,
   settingsFocus,
   onOpenSettings,
   onModeChange,
@@ -86,6 +101,8 @@ export const AppContent = ({
   onRefreshModels,
   onDownloadWhisperModel,
   onDeleteWhisperModel,
+  onDownloadLlmModel,
+  onDeleteLlmModel,
   onFocusHandled,
   onShortcutUnavailable,
   onShortcutEditingChange,
@@ -108,6 +125,9 @@ export const AppContent = ({
         waveform={waveform}
         settings={settings}
         whisperRuntime={whisperRuntime}
+        llmRuntime={llmRuntime}
+        whisperModelAvailable={whisperModelAvailable}
+        llmModelAvailable={llmModelAvailable}
         onOpenSettings={onOpenSettings}
         onModeChange={onModeChange}
         onStartRecording={onStartRecording}
@@ -124,14 +144,18 @@ export const AppContent = ({
     {section === 'settings' && (
       <AppSettings
         settings={settings}
-        ollamaModels={ollamaModels}
+        llmModels={llmModels}
         whisperModels={whisperModels}
         availableWhisperModels={availableWhisperModels}
+        availableLlmModels={availableLlmModels}
+        hardwareInfo={hardwareInfo}
         settingsFocus={settingsFocus}
         onSettingsChange={onSettingsChange}
         onRefreshModels={onRefreshModels}
         onDownloadWhisperModel={onDownloadWhisperModel}
         onDeleteWhisperModel={onDeleteWhisperModel}
+        onDownloadLlmModel={onDownloadLlmModel}
+        onDeleteLlmModel={onDeleteLlmModel}
         onFocusHandled={onFocusHandled}
         onShortcutUnavailable={onShortcutUnavailable}
         onShortcutEditingChange={onShortcutEditingChange}

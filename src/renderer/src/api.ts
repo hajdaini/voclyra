@@ -18,7 +18,7 @@ const fallbackApi: AppApi = {
     quit: () => Promise.resolve(),
   },
   models: {
-    listOllama: () => Promise.resolve([defaultSettings.ollamaModel]),
+    listLlm: () => Promise.resolve(defaultSettings.llmModel ? [defaultSettings.llmModel] : []),
     listWhisper: () => Promise.resolve([]),
   },
   dictation: {
@@ -48,8 +48,31 @@ const fallbackApi: AppApi = {
     availableModels: () => Promise.resolve([]),
     downloadModel: () => Promise.resolve([]),
     deleteModel: () => Promise.resolve([]),
-    runtimeInfo: () => Promise.resolve({ backend: 'unknown', gpuAvailable: false, device: 'Auto' }),
+    runtimeInfo: () =>
+      Promise.resolve({
+        backend: 'unknown',
+        runtimeAvailable: false,
+        gpuAvailable: false,
+        device: 'Auto',
+        version: defaultSettings.whisperCudaRuntimeVersion,
+      }),
     onDownloadProgress: () => () => {},
+  },
+  llm: {
+    availableModels: () => Promise.resolve([]),
+    downloadModel: () => Promise.resolve([]),
+    deleteModel: () => Promise.resolve([]),
+    runtimeInfo: () =>
+      Promise.resolve({
+        backend: 'unknown',
+        runtimeAvailable: false,
+        device: 'Unknown',
+        version: defaultSettings.llmCudaRuntimeVersion,
+      }),
+    onDownloadProgress: () => () => {},
+  },
+  hardware: {
+    info: () => Promise.resolve({ gpuName: 'Unknown GPU', gpuVramGb: null }),
   },
   actions: {
     onSpeak: () => () => {},

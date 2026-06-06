@@ -1,28 +1,26 @@
 import { createWriteStream } from 'node:fs';
 import { access, mkdir, rename, rm, stat } from 'node:fs/promises';
 import { get } from 'node:https';
-import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { spawn } from 'node:child_process';
-import { appStorageConfig } from '@shared/GlobalVars';
 import type {
-  WhisperAvailableModel,
-  WhisperDownloadProgress,
-  WhisperModelId,
-  WhisperModelState,
+  LlmAvailableModel,
+  LlmDownloadProgress,
+  LlmModelId,
+  LlmModelState,
 } from '@shared/types';
-import { whisperModelCatalog, whisperModelIds } from '@shared/whisper-models';
+import { llmModelCatalog, llmModelIds } from '@shared/llm-models';
+import { AppStorage } from '@storage/app-storage';
 
-type ProgressCallback = (progress: WhisperDownloadProgress) => void;
+type ProgressCallback = (progress: LlmDownloadProgress) => void;
 
-export class WhisperModelService {
-  private readonly root = join(homedir(), appStorageConfig.directoryName);
-  private readonly modelRoot = join(this.root, 'models', 'whisper');
-  private readonly downloads = new Set<WhisperModelId>();
+export class LlmModelService {
+  private readonly storage = new AppStorage();
+  private readonly modelRoot = this.storage.path('models', 'llm');
+  private readonly downloads = new Set<LlmModelId>();
 
-  async availableModels(): Promise<WhisperAvailableModel[]> {
+  async availableModels(): Promise<LlmAvailableModel[]> {
     await this.ensureModelRoot();
-    return Promise.all(whisperModelIds.map((id) => this.toAvailableModel(id, 0)));
+    return Promise.all(llmModelIds.map((id) => this.toAvailableModel(id, 0)));
   }
 
   async downloadedModelNames(): Promise<string[]> {
@@ -33,12 +31,12 @@ export class WhisperModelService {
       .sort((a, b) => a.localeCompare(b));
   }
 
-  async downloadModel(id: WhisperModelId, onProgress: ProgressCallback): Promise<WhisperAvailableModel[]> {
+  async downloadModel(id: LlmModelId, onProgress: ProgressCallback): Promise<LlmAvailableModel[]> {
     if (this.downloads.has(id)) {
       return this.availableModels();
     }
 
-    const model = whisperModelCatalog[id];
+    const model = llmModelCatalog[id];
     await this.ensureModelRoot();
 
     if (await this.exists(this.modelPath(model.fileName))) {
@@ -62,17 +60,25 @@ export class WhisperModelService {
     }
   }
 
-  async deleteModel(id: WhisperModelId): Promise<WhisperAvailableModel[]> {
+  async deleteModel(id: LlmModelId): Promise<LlmAvailableModel[]> {
     if (this.downloads.has(id)) {
       return this.availableModels();
     }
-    const model = whisperModelCatalog[id];
+
+    const model = llmModelCatalog[id];
     await rm(this.modelPath(model.fileName), { force: true });
     return this.availableModels();
   }
 
-  private async toAvailableModel(id: WhisperModelId, progress: number): Promise<WhisperAvailableModel> {
-    const model = whisperModelCatalog[id];
+  modelPath(fileName: string): string {
+    if (!fileName) {
+      return '';
+    }
+    return join(this.modelRoot, fileName);
+  }
+
+  private async toAvailableModel(id: LlmModelId, progress: number): Promise<LlmAvailableModel> {
+    const model = llmModelCatalog[id];
     const state = await this.modelState(id);
     return {
       id,
@@ -86,35 +92,17 @@ export class WhisperModelService {
     };
   }
 
-  private async modelState(id: WhisperModelId): Promise<WhisperModelState> {
+  private async modelState(id: LlmModelId): Promise<LlmModelState> {
     if (this.downloads.has(id)) {
       return 'downloading';
     }
 
-    const model = whisperModelCatalog[id];
+    const model = llmModelCatalog[id];
     return (await this.exists(this.modelPath(model.fileName))) ? 'ready' : 'missing';
   }
 
   private async ensureModelRoot(): Promise<void> {
-    await mkdir(this.modelRoot, { recursive: true });
-    this.hideRoot();
-  }
-
-  private hideRoot(): void {
-    if (process.platform !== 'win32') {
-      return;
-    }
-
-    const child = spawn('attrib', ['+h', this.root], {
-      windowsHide: true,
-      shell: false,
-      stdio: 'ignore',
-    });
-    child.on('error', () => {});
-  }
-
-  private modelPath(fileName: string): string {
-    return join(this.modelRoot, fileName);
+    await this.storage.ensureDir('models', 'llm');
   }
 
   private async exists(path: string): Promise<boolean> {
@@ -151,7 +139,13 @@ export class WhisperModelService {
     onProgress: (progress: number) => void,
   ): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const request = get(url, (response) => {
+      const parsedUrl = new URL(url);
+      if (!this.isAllowedDownloadHost(parsedUrl.hostname)) {
+        reject(new Error('Model download host is not allowed.'));
+        return;
+      }
+
+      const request = get(parsedUrl, (response) => {
         if ([301, 302, 303, 307, 308].includes(response.statusCode ?? 0)) {
           const location = response.headers.location;
           response.resume();
@@ -159,7 +153,7 @@ export class WhisperModelService {
             reject(new Error('Model download redirected without location.'));
             return;
           }
-          this.downloadToTemporary(new URL(location, url).toString(), temporary, onProgress)
+          this.downloadToTemporary(new URL(location, parsedUrl).toString(), temporary, onProgress)
             .then(resolve)
             .catch(reject);
           return;
@@ -194,5 +188,14 @@ export class WhisperModelService {
         request.destroy(new Error('Model download timed out.'));
       });
     });
+  }
+
+  private isAllowedDownloadHost(hostname: string): boolean {
+    return (
+      hostname === 'huggingface.co' ||
+      hostname.endsWith('.huggingface.co') ||
+      hostname === 'hf.co' ||
+      hostname.endsWith('.hf.co')
+    );
   }
 }

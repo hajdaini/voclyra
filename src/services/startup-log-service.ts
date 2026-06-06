@@ -2,11 +2,18 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { access, writeFile } from 'node:fs/promises';
 import { cpus, homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { app } from 'electron';
+import { dirname, join } from 'node:path';
 import { SettingsService } from '@services/settings-service';
-import { appStorageConfig, packageInfo, whisperRuntimeConfig } from '@shared/GlobalVars';
+import {
+  appStorageConfig,
+  llamaCudaRuntimeVersionConfig,
+  packageInfo,
+  whisperCudaRuntimeVersionConfig,
+  whisperRuntimeConfig,
+} from '@shared/GlobalVars';
 import { AppStorage } from '@storage/app-storage';
+import { LlamaService } from '@services/llama-service';
+import { LlmModelService } from '@services/llm-model-service';
 
 type CheckStatus = 'ok' | 'missing' | 'timeout';
 
@@ -18,18 +25,19 @@ type CheckResult = {
 export class StartupLogService {
   private readonly storage = new AppStorage();
   private readonly settingsService = new SettingsService();
+  private readonly llamaService = new LlamaService();
+  private readonly llmModelService = new LlmModelService();
 
   async write(): Promise<void> {
     const storageRoot = await this.ensurePath(() => this.storage.ensureDir(), this.storage.path());
     const tmpFolder = await this.ensurePath(() => this.storage.ensureDir('tmp'), this.storage.path('tmp'));
     const logsFolder = await this.ensurePath(() => this.storage.ensureDir('logs'), this.storage.path('logs'));
     const settings = await this.settingsService.get();
-    const whisperRuntime = await this.fileCheck(this.whisperExecutablePath());
+    const whisperRuntime = await this.fileCheck(this.whisperExecutablePath(settings.whisperCudaRuntimeVersion));
     const whisperModel = await this.fileCheck(this.whisperModelPath(settings.whisperModel));
     const hardware = await this.hardwareInfo(whisperRuntime.value);
-    const ollama = await this.ollamaPath();
-    const ollamaModels = ollama.status === 'ok' ? await this.ollamaModels() : [];
-    const ollamaModel = this.ollamaModelCheck(settings.ollamaModel, ollamaModels);
+    const llamaRuntime = await this.fileCheck(await this.llamaService.runtimePath());
+    const llmModel = await this.fileCheck(this.llmModelPath(settings.llmModel));
 
     if (logsFolder.status !== 'ok') {
       return;
@@ -57,11 +65,13 @@ export class StartupLogService {
         this.line('tmp folder', tmpFolder),
         this.line('logs folder', logsFolder),
         '',
+        `whisper cuda runtime: ${whisperCudaRuntimeVersionConfig[settings.whisperCudaRuntimeVersion].label}`,
+        `llama cuda runtime: ${llamaCudaRuntimeVersionConfig[settings.llmCudaRuntimeVersion].label}`,
         this.line('whisper runtime', whisperRuntime),
         this.line('whisper model', whisperModel),
         '',
-        this.line('ollama', ollama),
-        this.line('ollama model', ollamaModel),
+        this.line('llama runtime', llamaRuntime),
+        this.line('llm model', llmModel),
       ].join('\n'),
       'utf8',
     );
@@ -88,35 +98,24 @@ export class StartupLogService {
     }
   }
 
-  private whisperExecutablePath(): string {
-    const cudaPath = join(
+  private whisperExecutablePath(version: keyof typeof whisperCudaRuntimeVersionConfig): string {
+    return join(
       homedir(),
       appStorageConfig.directoryName,
-      ...whisperRuntimeConfig.cudaRuntimeParts,
-      whisperRuntimeConfig.executableName,
-    );
-
-    if (process.platform === 'win32' && existsSync(cudaPath)) {
-      return cudaPath;
-    }
-
-    if (app.isPackaged) {
-      return join(
-        process.resourcesPath,
-        ...whisperRuntimeConfig.packagedRuntimeParts,
-        whisperRuntimeConfig.executableName,
-      );
-    }
-
-    return resolve(
-      process.cwd(),
-      ...whisperRuntimeConfig.devRuntimeParts,
+      ...whisperRuntimeConfig.runtimeParts,
+      whisperRuntimeConfig.engineDirectory,
+      whisperCudaRuntimeVersionConfig[version].directory,
+      whisperRuntimeConfig.platformDirectory,
       whisperRuntimeConfig.executableName,
     );
   }
 
   private whisperModelPath(model: string): string {
     return model ? join(this.storage.path('models', 'whisper'), model) : '';
+  }
+
+  private llmModelPath(model: string): string {
+    return model ? this.llmModelService.modelPath(model) : '';
   }
 
   private async hardwareInfo(whisperRuntimePath: string): Promise<{
@@ -244,41 +243,6 @@ Get-CimInstance Win32_VideoController | ForEach-Object {
   }
 } | ConvertTo-Json -Compress
 `.trim();
-  }
-
-  private ollamaPath(): Promise<CheckResult> {
-    const command = process.platform === 'win32' ? 'where.exe' : 'which';
-    return this.commandFirstLine(command, ['ollama'], 'ollama');
-  }
-
-  private async ollamaModels(): Promise<string[]> {
-    const result = await this.commandOutput('ollama', ['list'], 2500);
-    if (result.status !== 'ok') {
-      return [];
-    }
-
-    return result.value
-      .split(/\r?\n/)
-      .slice(1)
-      .map((line) => line.trim().split(/\s+/)[0])
-      .filter((model): model is string => Boolean(model));
-  }
-
-  private ollamaModelCheck(model: string, models: string[]): CheckResult {
-    if (!model) {
-      return { status: 'missing', value: '' };
-    }
-
-    return { status: models.includes(model) ? 'ok' : 'missing', value: model };
-  }
-
-  private async commandFirstLine(command: string, args: string[], fallback: string): Promise<CheckResult> {
-    const result = await this.commandOutput(command, args, 1500);
-    if (result.status !== 'ok') {
-      return { status: result.status, value: fallback };
-    }
-
-    return { status: 'ok', value: result.value.split(/\r?\n/).find(Boolean)?.trim() || fallback };
   }
 
   private powerShellJson(command: string, timeoutMs: number): Promise<CheckResult> {

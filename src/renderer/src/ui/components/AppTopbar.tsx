@@ -7,6 +7,7 @@ import { WindowControls } from './WindowControls';
 type AppTopbarProps = {
   hotkeys: Hotkeys;
   hasRecording: boolean;
+  isImproveProcessing: boolean;
   onOpenLogsFolder: () => void;
   onOpenSettings: () => void;
   onQuit: () => void;
@@ -29,6 +30,7 @@ type OpenMenu = 'file' | 'actions' | 'edit' | null;
 export const AppTopbar = ({
   hotkeys,
   hasRecording,
+  isImproveProcessing,
   onOpenLogsFolder,
   onOpenSettings,
   onQuit,
@@ -114,7 +116,7 @@ export const AppTopbar = ({
                 <span>Speak</span>
                 <kbd>{formatShortcut(hotkeys.speak)}</kbd>
               </button>
-              <button type="button" onClick={() => runAction(onImprove)}>
+              <button type="button" disabled={isImproveProcessing} onClick={() => runAction(onImprove)}>
                 <span>Improve</span>
                 <kbd>{formatShortcut(hotkeys.improveText)}</kbd>
               </button>

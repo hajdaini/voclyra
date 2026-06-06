@@ -36,16 +36,6 @@ export class AppStorage {
     await Promise.all(entries.map((entry) => rm(join(path, entry), { recursive: true, force: true })));
   }
 
-  async removeMatching(part: string, shouldRemove: (name: string) => boolean): Promise<void> {
-    const path = await this.ensureDir(part);
-    const entries = await readdir(path);
-    await Promise.all(
-      entries
-        .filter(shouldRemove)
-        .map((entry) => rm(join(path, entry), { recursive: true, force: true })),
-    );
-  }
-
   path(...parts: string[]): string {
     return join(this.root, ...parts);
   }

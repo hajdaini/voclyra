@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import type { HomeMode, ResultState, Settings, WhisperRuntimeInfo } from '@shared/types';
+import type { HomeMode, LlmRuntimeInfo, ResultState, Settings, WhisperRuntimeInfo } from '@shared/types';
 import { HomeView } from '../views/HomeView';
 
 type AppHomeProps = {
@@ -11,6 +11,9 @@ type AppHomeProps = {
   waveform: number[];
   settings: Settings;
   whisperRuntime: WhisperRuntimeInfo;
+  llmRuntime: LlmRuntimeInfo;
+  whisperModelAvailable: boolean;
+  llmModelAvailable: boolean;
   onOpenSettings: () => void;
   onModeChange: (mode: HomeMode) => void;
   onStartRecording: () => void;
@@ -33,6 +36,9 @@ export const AppHome = ({
   waveform,
   settings,
   whisperRuntime,
+  llmRuntime,
+  whisperModelAvailable,
+  llmModelAvailable,
   onOpenSettings,
   onModeChange,
   onStartRecording,
@@ -53,9 +59,12 @@ export const AppHome = ({
     actionBlockMessage={actionBlockMessage}
     waveform={waveform}
     whisperModel={settings.whisperModel}
-    ollamaModel={settings.ollamaModel}
+    llmModel={settings.llmModel}
     hotkeys={settings.hotkeys}
     whisperRuntime={whisperRuntime}
+    llmRuntime={llmRuntime}
+    whisperModelAvailable={whisperModelAvailable}
+    llmModelAvailable={llmModelAvailable}
     onOpenSettings={onOpenSettings}
     onModeChange={onModeChange}
     onStartRecording={onStartRecording}

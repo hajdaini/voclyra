@@ -60,13 +60,6 @@
       {
         "from": "resources/icon.ico",
         "to": "assets/icon.ico"
-      },
-      {
-        "from": "resources/whisper/win-x64",
-        "to": "whisper/win-x64",
-        "filter": [
-          "**/*"
-        ]
       }
     ],
     "win": {

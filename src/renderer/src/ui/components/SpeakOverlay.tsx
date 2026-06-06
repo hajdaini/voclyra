@@ -84,7 +84,7 @@ export const SpeakOverlay = (): JSX.Element => {
           {overlayState.status === 'done' && <CheckCircle2 size={14} />}
           <strong>{label}</strong>
         </div>
-        {overlayState.status === 'recording' ? (
+        {overlayState.status === 'recording' && overlayState.waveform.length > 0 ? (
           <div className="speak-overlay-wave" aria-hidden="true">
             {Array.from({ length: 8 }, (_, index) => (
               <span

@@ -30,7 +30,7 @@ export const updateTray = (settings: Settings): void => {
   tray?.setContextMenu(
     Menu.buildFromTemplate([
       { label: `Speak (${formatShortcut(settings.hotkeys.speak)})`, click: () => sendAppAction('speak') },
-      { label: `Improve (${formatShortcut(settings.hotkeys.improveText)})`, click: showMainWindow },
+      { label: `Improve (${formatShortcut(settings.hotkeys.improveText)})`, click: () => sendAppAction('improveText') },
       { label: `Transcript (${formatShortcut(settings.hotkeys.transcript)})`, click: () => sendAppAction('transcript') },
       { type: 'separator' },
       { label: `Show ${packageInfo.productName}`, click: showMainWindow },

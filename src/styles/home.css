@@ -60,8 +60,7 @@
 }
 
 .home-heading button,
-.page-heading button,
-.primary-action {
+.page-heading button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -76,8 +75,7 @@
 }
 
 .home-heading button:hover,
-.page-heading button:hover,
-.primary-action:hover {
+.page-heading button:hover {
   border-color: var(--hover-border);
   background: var(--hover-bg);
 }
@@ -91,8 +89,8 @@
 .home-action {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  min-height: 72px;
+  gap: 9px;
+  min-height: 74px;
   min-width: 0;
   padding: 9px;
   border: 1px solid var(--border);
@@ -109,8 +107,8 @@
 }
 
 .home-action.selected {
-  border-color: var(--hover-border);
-  background: var(--hover-bg);
+  border-color: rgba(255, 156, 77, 0.55);
+  background: rgba(255, 156, 77, 0.08);
   color: var(--text);
 }
 
@@ -124,9 +122,14 @@
 }
 
 .home-action.speak-action:hover,
-.home-action.speak-action.selected {
+.home-action.speak-action:hover {
   border-color: var(--hover-border);
   background: var(--hover-bg);
+}
+
+.home-action.speak-action.selected {
+  border-color: rgba(255, 156, 77, 0.55);
+  background: rgba(255, 156, 77, 0.08);
 }
 
 .home-action.recording,
@@ -152,7 +155,8 @@
 
 .home-action-content {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto auto;
+  align-content: start;
   width: 100%;
   min-width: 0;
 }
@@ -184,10 +188,10 @@
   display: inline-flex;
   flex: 0 1 auto;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   max-width: 100%;
-  min-height: 24px;
-  padding: 0 7px;
+  min-height: 20px;
+  padding: 0 6px;
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: 999px;
@@ -196,8 +200,9 @@
 }
 
 .model-badge {
-  max-width: 128px;
-  margin-left: auto;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 5px;
 }
 
 .home-action .action-badge svg {
@@ -210,12 +215,12 @@
   font-weight: 700;
 }
 
-.home-action > div > span:not(.model-line):not(.action-title-row),
+.home-action > div > span:not(.model-line):not(.action-title-row):not(.action-badge),
 .home-action .action-description {
-  margin-top: 7px;
+  margin-top: 4px;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 1.35;
+  font-size: 12px;
+  line-height: 1.25;
 }
 
 .home-action .model-line {
@@ -234,7 +239,7 @@
 .home-action .action-badge span {
   overflow: hidden;
   color: currentColor;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -256,6 +261,11 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
+}
+
+.task-panel {
+  min-width: 0;
+  min-height: 0;
 }
 
 .result-panel {
@@ -284,18 +294,17 @@
 .primary-action {
   --action-accent: var(--primary);
   --action-accent-strong: var(--primary-strong);
-  --action-on-accent: #120c06;
-  border-color: rgba(255, 156, 77, 0.56);
-  background: var(--action-accent);
-  color: var(--action-on-accent);
-  box-shadow: 0 10px 26px rgba(255, 156, 77, 0.18);
-  font-weight: 750;
+  border-color: rgba(255, 156, 77, 0.52);
+  background: rgba(255, 156, 77, 0.12);
+  color: var(--primary-strong);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  font-weight: 600;
 }
 
 .record-button:hover,
 .primary-action:hover {
-  border-color: var(--action-accent-strong);
-  background: #ffad66;
+  border-color: rgba(255, 156, 77, 0.78);
+  background: rgba(255, 156, 77, 0.18);
 }
 
 .record-button:disabled,
@@ -312,7 +321,7 @@
 .record-button:hover span,
 .primary-action:hover svg,
 .primary-action:hover span {
-  color: var(--action-accent-strong);
+  color: var(--primary-strong);
 }
 
 .record-button:disabled svg,
@@ -326,14 +335,20 @@
 .primary-action {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 136px;
-  height: 48px;
+  justify-content: flex-start;
+  gap: 9px;
+  width: 132px;
+  height: 44px;
+  padding: 0 12px;
   border-width: 1px;
   border-style: solid;
-  border-radius: var(--radius);
+  border-radius: 8px;
   cursor: pointer;
+}
+
+.record-button > svg,
+.primary-action > svg {
+  flex: 0 0 auto;
 }
 
 .record-button.recording {
@@ -342,25 +357,27 @@
   color: var(--danger);
 }
 
-.record-button span {
-  font-size: 14px;
-  font-weight: 750;
+.record-button span,
+.primary-action span {
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .record-button .action-button-text,
 .primary-action .action-button-text {
   display: inline-flex;
   flex-direction: column;
-  align-items: center;
-  gap: 3px;
+  align-items: flex-start;
+  gap: 2px;
   line-height: 1.05;
 }
 
 .record-button .action-button-text small,
 .primary-action .action-button-text small {
   display: block;
-  font-size: 9px;
-  font-weight: 650;
+  margin-top: 1px;
+  font-size: 10px;
+  font-weight: 500;
   line-height: 1;
   opacity: 0.72;
 }
@@ -371,7 +388,7 @@
   justify-content: center;
   gap: 6px;
   width: 84px;
-  height: 48px;
+  height: 44px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: transparent;
@@ -414,14 +431,25 @@
   display: grid;
   gap: 10px;
   margin-bottom: 12px;
+  min-height: 0;
   color: var(--muted);
   font-size: 14px;
 }
 
+.improve-task {
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+  flex-direction: column;
+}
+
 .improve-input textarea {
+  box-sizing: border-box;
   width: 100%;
-  min-height: 104px;
-  resize: vertical;
+  height: clamp(120px, 28vh, 240px);
+  min-height: 0;
+  resize: none;
+  overflow: auto;
   padding: 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -437,7 +465,8 @@
 }
 
 .primary-action {
-  justify-self: end;
+  align-self: flex-start;
+  flex: 0 0 auto;
 }
 
 .result-title {
@@ -475,7 +504,7 @@
   border-radius: 999px;
   color: var(--muted);
   background: #2d2d30;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 650;
   white-space: nowrap;
 }
@@ -607,6 +636,12 @@
   margin-top: 10px;
   color: var(--soft);
   font-size: 13px;
+}
+
+.result-actions span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 @media (min-width: 1180px) {

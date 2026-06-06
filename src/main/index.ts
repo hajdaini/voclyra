@@ -63,13 +63,6 @@ app.on('second-instance', () => {
 
 void app.whenReady().then(async () => {
   await appStorage.clearDir('tmp').catch(() => {});
-  await appStorage
-    .removeMatching('logs', (name) =>
-      /^last-.*\.whisper\.(raw|stderr|stdout)\.txt$/i.test(name) ||
-      name === 'ollama.log' ||
-      name === 'whisper.log',
-    )
-    .catch(() => {});
 
   registerIpc();
   createMainWindow();

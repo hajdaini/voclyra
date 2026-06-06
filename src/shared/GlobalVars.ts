@@ -19,12 +19,41 @@ export const appAssetConfig = {
   devAssetDir: 'resources',
 } as const;
 
+export const whisperCudaRuntimeVersionConfig = {
+  'cuda-11': {
+    label: 'CUDA 11.8',
+    directory: 'cuda-11',
+  },
+  'cuda-12': {
+    label: 'CUDA 12.4',
+    directory: 'cuda-12',
+  },
+} as const;
+
+export const llamaCudaRuntimeVersionConfig = {
+  'cuda-12': {
+    label: 'CUDA 12.4',
+    directory: 'cuda-12',
+  },
+  'cuda-13': {
+    label: 'CUDA 13.3',
+    directory: 'cuda-13',
+  },
+} as const;
+
 export const whisperRuntimeConfig = {
-  cudaRuntimeParts: ['runtimes', 'whisper-cuda', 'win-x64'],
-  packagedRuntimeParts: ['whisper', 'win-x64'],
-  devRuntimeParts: ['resources', 'whisper', 'win-x64'],
+  runtimeParts: ['runtimes'],
+  engineDirectory: 'whisper',
+  platformDirectory: 'win-x64',
   executableName: 'whisper-cli.exe',
   cudaDllName: 'ggml-cuda.dll',
+} as const;
+
+export const llamaRuntimeConfig = {
+  runtimeParts: ['runtimes'],
+  engineDirectory: 'llama',
+  platformDirectory: 'win-x64',
+  executableName: 'llama-completion.exe',
 } as const;
 
 export const logConfig = {

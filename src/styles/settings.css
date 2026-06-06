@@ -124,6 +124,32 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+
+.settings-help-hint {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--soft);
+  cursor: help;
+}
+
+.settings-help-hint:hover,
+.settings-help-hint:focus-visible {
+  color: var(--primary);
+  background: var(--hover-bg);
+  outline: 0;
+}
+
+.settings-option-label {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
 }
 
 .settings-checkbox {
@@ -141,7 +167,7 @@
   accent-color: var(--primary);
 }
 
-.settings-checkbox span {
+.settings-checkbox > span {
   color: var(--text);
   font-size: 14px;
   font-weight: 400;
@@ -154,6 +180,61 @@
 
 .compact-number-field input {
   height: 38px;
+}
+
+.microphone-test {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.microphone-test-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.microphone-test-row button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #2d2d30;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.microphone-test-row button:hover {
+  border-color: var(--hover-border);
+  background: var(--hover-bg);
+}
+
+.microphone-test-wave {
+  display: inline-flex;
+  height: 34px;
+  min-width: 128px;
+  align-items: center;
+  gap: 3px;
+  opacity: 0.45;
+}
+
+.microphone-test-wave.active {
+  opacity: 1;
+}
+
+.microphone-test-wave span {
+  width: 4px;
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+.microphone-test-error {
+  color: var(--danger);
+  font-size: 13px;
 }
 
 .shortcut-display-row {

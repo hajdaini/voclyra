@@ -63,7 +63,7 @@ export const AboutView = (): JSX.Element => (
           Local AI
         </h2>
         <p>
-          Whisper handles speech-to-text locally, while Ollama improves text on your machine. Core processing does not require a remote API.
+          Whisper handles speech-to-text locally, while the local AI runtime improves text on your machine. Core processing does not require a remote API.
         </p>
       </article>
 
@@ -98,7 +98,7 @@ export const AboutView = (): JSX.Element => (
           <ShieldCheck size={17} />
           Processing
         </dt>
-        <dd>Local Whisper, Transcript, and Ollama</dd>
+        <dd>Local Whisper, Transcript, and llama.cpp</dd>
       </div>
     </dl>
   </section>
