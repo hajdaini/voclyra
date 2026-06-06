@@ -25,7 +25,28 @@ type LlamaRunDiagnostics = {
 type LlamaPromptFiles = {
   root: string;
   promptPath: string;
-  schemaPath: string;
+};
+
+type LlamaProgress = {
+  phase: 'thinking' | 'generating';
+  tokensGenerated: number;
+  progressLabel: string;
+};
+
+type LlamaImproveOptions = {
+  onProgress?: (progress: LlamaProgress) => void;
+};
+
+type LlamaImproveResult = {
+  text: string;
+  tokensGenerated: number;
+  tokensPerSecond: number;
+};
+
+type LlamaRunResult = {
+  output: string;
+  tokensGenerated: number;
+  durationMs: number;
 };
 
 export class LlamaService {
@@ -48,7 +69,12 @@ export class LlamaService {
     return (await this.runtime()).path;
   }
 
-  async improveText(modelPath: string, correctionPrompt: string, text: string): Promise<string> {
+  async improveText(
+    modelPath: string,
+    correctionPrompt: string,
+    text: string,
+    options: LlamaImproveOptions = {},
+  ): Promise<LlamaImproveResult> {
     if (!(await this.exists(modelPath))) {
       throw new Error('Local AI model file not found.');
     }
@@ -61,12 +87,22 @@ export class LlamaService {
     const settings = await this.settingsService.get();
     const promptFiles = await this.writePromptFiles(correctionPrompt, text);
     try {
-      const output = await this.run(runtime, modelPath, promptFiles, this.inferenceOptions(settings, text));
-      const cleaned = this.cleanOutput(output);
+      const result = await this.run(
+        runtime,
+        modelPath,
+        promptFiles,
+        this.inferenceOptions(settings, text),
+        options.onProgress,
+      );
+      const cleaned = this.cleanOutput(result.output);
       if (!cleaned.trim()) {
         throw new Error('Local AI returned an empty response.');
       }
-      return cleaned;
+      return {
+        text: cleaned,
+        tokensGenerated: result.tokensGenerated,
+        tokensPerSecond: result.durationMs > 0 ? Number((result.tokensGenerated / (result.durationMs / 1000)).toFixed(1)) : 0,
+      };
     } finally {
       await rm(promptFiles.root, { force: true, recursive: true }).catch(() => {});
     }
@@ -96,38 +132,24 @@ export class LlamaService {
   private async writePromptFiles(correctionPrompt: string, text: string): Promise<LlamaPromptFiles> {
     const root = await this.storage.ensureDir('tmp', `llm-${randomUUID()}`);
     const promptPath = join(root, 'prompt.txt');
-    const schemaPath = join(root, 'schema.json');
-    await Promise.all([
-      writeFile(promptPath, this.prompt(correctionPrompt, text), 'utf8'),
-      writeFile(schemaPath, this.jsonSchema(), 'utf8'),
-    ]);
-    return { root, promptPath, schemaPath };
+    await writeFile(promptPath, this.prompt(correctionPrompt, text), 'utf8');
+    return { root, promptPath };
   }
 
   private prompt(correctionPrompt: string, text: string): string {
     return [
-      'You are a text correction engine.',
-      'Return a JSON object only with exactly one property named text.',
-      'The text property must contain only the full corrected text.',
-      'Do not include markdown, analysis, comments, or any extra property.',
-      'Preserve the original language, meaning, tone, paragraphs, and line breaks.',
+      'Return only this format:',
+      '<voclyra_result>',
+      'final corrected text here',
+      '</voclyra_result>',
+      '',
+      'Do not write anything before or after the tags.',
       correctionPrompt.trim(),
+      '',
+      'Text to correct:',
       '',
       text.trim(),
     ].join('\n');
-  }
-
-  private jsonSchema(): string {
-    return JSON.stringify({
-      type: 'object',
-      additionalProperties: false,
-      required: ['text'],
-      properties: {
-        text: {
-          type: 'string',
-        },
-      },
-    });
   }
 
   private run(
@@ -135,7 +157,8 @@ export class LlamaService {
     modelPath: string,
     promptFiles: LlamaPromptFiles,
     options: { maxTokens: number; contextSize: number; temperature: number },
-  ): Promise<string> {
+    onProgress?: (progress: LlamaProgress) => void,
+  ): Promise<LlamaRunResult> {
     return new Promise((resolveRun, rejectRun) => {
       let settled = false;
       const args = [
@@ -143,8 +166,6 @@ export class LlamaService {
         modelPath,
         '-f',
         promptFiles.promptPath,
-        '-jf',
-        promptFiles.schemaPath,
         '-n',
         String(options.maxTokens),
         '-c',
@@ -171,6 +192,7 @@ export class LlamaService {
       const startedAt = Date.now();
       const output: Buffer[] = [];
       const errors: Buffer[] = [];
+      let tokensGenerated = 0;
       const timeout = setTimeout(async () => {
         if (settled) {
           return;
@@ -189,6 +211,12 @@ export class LlamaService {
 
       child.stdout.on('data', (chunk: Buffer) => {
         output.push(chunk);
+        tokensGenerated += estimateTokenCount(chunk.toString('utf8'));
+        onProgress?.({
+          phase: tokensGenerated > 0 ? 'generating' : 'thinking',
+          tokensGenerated,
+          progressLabel: tokensGenerated > 0 ? `${tokensGenerated} tokens` : 'Generating...',
+        });
       });
 
       child.stderr.on('data', (chunk: Buffer) => {
@@ -232,7 +260,11 @@ export class LlamaService {
           rejectRun(new Error(stderr || 'Local AI failed.'));
           return;
         }
-        resolveRun(stdoutRaw);
+        resolveRun({
+          output: stdoutRaw,
+          tokensGenerated,
+          durationMs: Date.now() - startedAt,
+        });
       });
     });
   }
@@ -323,12 +355,12 @@ export class LlamaService {
 
     const jsonText = this.parseJsonOutput(text);
     if (jsonText?.trim()) {
-      return jsonText.trim();
+      return this.cleanCorrectedText(jsonText);
     }
 
     const tagged = text.match(/<voclyra_result>\s*([\s\S]*?)\s*<\/voclyra_result>/i);
     if (tagged?.[1]?.trim()) {
-      return tagged[1].trim();
+      return this.cleanCorrectedText(tagged[1]);
     }
 
     text = text
@@ -360,7 +392,11 @@ export class LlamaService {
       .filter((line) => !/^Do not analyze\./i.test(line))
       .filter((line) => !/^If you start writing analysis/i.test(line))
       .filter((line) => !/^Preserve the original language/i.test(line));
-    return lines.join('\n').trim() || text;
+    return this.cleanCorrectedText(lines.join('\n').trim() || text);
+  }
+
+  private cleanCorrectedText(text: string): string {
+    return text.replace(/[–—]/g, ',').trim();
   }
 
   private parseJsonOutput(output: string): string | null {
@@ -410,3 +446,14 @@ export class LlamaService {
 }
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+
+const estimateTokenCount = (text: string): number => {
+  const cleaned = text
+    .replace(/\x1B\][^\x07]*(?:\x07|\x1B\\)/g, '')
+    .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
+    .trim();
+  if (!cleaned) {
+    return 0;
+  }
+  return Math.max(1, Math.ceil(cleaned.length / 4));
+};

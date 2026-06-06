@@ -3,6 +3,7 @@ import { inactiveOverlayState } from './appState';
 
 type OverlayMode = OverlayState['mode'];
 type OverlayMessageType = NonNullable<OverlayState['messageType']>;
+type OverlayProgress = Pick<OverlayState, 'phase' | 'progress' | 'tokensGenerated' | 'progressLabel'>;
 
 export const overlayDone = (
   mode: OverlayMode,
@@ -42,10 +43,12 @@ export const overlayRecording = (
   waveform: number[],
   message?: string,
   messageType?: OverlayMessageType,
+  phase: OverlayState['phase'] = 'recording',
 ): OverlayState => ({
   active: true,
   mode,
   status: 'recording',
+  phase,
   waveform,
   message,
   messageType,
@@ -56,11 +59,14 @@ export const overlayProcessing = (
   waveform: number[] = [],
   message?: string,
   messageType?: OverlayMessageType,
+  progress?: OverlayProgress,
 ): OverlayState => ({
   active: true,
   mode,
   status: mode === 'improve' ? 'improving' : 'transcribing',
+  phase: progress?.phase ?? (mode === 'improve' ? 'thinking' : 'preparing'),
   waveform,
+  ...progress,
   message,
   messageType,
 });

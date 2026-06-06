@@ -155,6 +155,7 @@ const api: AppApi = {
     stopSpeak: (mode) => ipcRenderer.invoke(channels.overlayStopSpeak, mode) as Promise<void>,
     cancelRecording: (mode) => ipcRenderer.invoke(channels.overlayCancelRecording, mode) as Promise<void>,
     dismiss: (mode) => ipcRenderer.invoke(channels.overlayDismiss, mode) as Promise<void>,
+    setContentSize: (mode, size) => ipcRenderer.invoke(channels.overlayContentSize, { mode, size }) as Promise<void>,
     onState: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, state: OverlayState): void => {
         callback(state);

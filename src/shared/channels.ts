@@ -37,6 +37,7 @@ export const channels = {
   overlaySetState: 'overlay:setState',
   overlayGetState: 'overlay:getState',
   overlayStateChanged: 'overlay:stateChanged',
+  overlayContentSize: 'overlay:contentSize',
   overlayStopSpeak: 'overlay:stopSpeak',
   overlayCancelRecording: 'overlay:cancelRecording',
   appCancelRecording: 'app:cancelRecording',

@@ -7,7 +7,7 @@ import { actionMessages } from '@shared/action-messages';
 import { actionBlockMessage } from '@shared/action-locks';
 import { historyTitleUpdateSchema, idSchema, llmModelIdSchema, overlayStateSchema, settingsSchema, textSchema } from '@shared/schemas';
 import { whisperModelIdSchema } from '@shared/schemas';
-import type { ResultState, Settings } from '@shared/types';
+import type { OverlayState, ResultState, Settings } from '@shared/types';
 import { ActivePasteService } from '@services/active-paste-service';
 import { HistoryService } from '@services/history-service';
 import { HardwareService } from '@services/hardware-service';
@@ -23,6 +23,7 @@ import {
   cancelRecordingFromOverlay,
   dismissSpeakOverlay,
   getSpeakOverlayState,
+  resizeSpeakOverlayToContent,
   sendAppAction,
   sendImproveResult,
   setSpeakOverlayState,
@@ -43,6 +44,7 @@ const whisperService = new WhisperService();
 const transcriptService = new TranscriptService(whisperService, historyService);
 const hotkeyService = new HotkeyService();
 let improveShortcutRunning = false;
+const progressUpdateState = new Map<OverlayState['mode'], { at: number; key: string }>();
 
 const mainActionLockState = () => ({
   speakRecording: false,
@@ -52,11 +54,17 @@ const mainActionLockState = () => ({
   transcriptProcessing: false,
 });
 
-const ready = (text: string, message: string, durationMs?: number): ResultState => ({
+const ready = (
+  text: string,
+  message: string,
+  durationMs?: number,
+  metrics: Pick<ResultState, 'audioDurationMs' | 'tokensGenerated' | 'tokensPerSecond'> = {},
+): ResultState => ({
   text,
   status: 'ready',
   message,
   durationMs,
+  ...metrics,
 });
 
 const showImproveBlocked = (message: string): void => {
@@ -75,14 +83,40 @@ const showImproveProcessing = (): void => {
     active: true,
     mode: 'improve',
     status: 'improving',
+    phase: 'thinking',
     waveform: [],
+  });
+};
+
+const showProcessingProgress = (
+  mode: OverlayState['mode'],
+  progress: Pick<OverlayState, 'phase' | 'progress' | 'tokensGenerated' | 'progressLabel'>,
+): void => {
+  const key = `${progress.progress ?? ''}:${progress.tokensGenerated ?? ''}:${progress.progressLabel ?? ''}`;
+  const previous = progressUpdateState.get(mode);
+  const now = Date.now();
+  const previousPhase = previous?.key.split(':')[3];
+  const phase = progress.phase ?? '';
+  if (
+    previous?.key === key ||
+    (previous && previousPhase === phase && now - previous.at < 250 && progress.progress !== 100)
+  ) {
+    return;
+  }
+  progressUpdateState.set(mode, { at: now, key: `${key}:${phase}` });
+  setSpeakOverlayState({
+    active: true,
+    mode,
+    status: mode === 'improve' ? 'improving' : 'transcribing',
+    phase: progress.phase ?? (mode === 'improve' ? 'generating' : 'transcribing'),
+    waveform: [],
+    ...progress,
   });
 };
 
 export const improveClipboardFromHotkey = async (): Promise<void> => {
   const blockMessage = actionBlockMessage('improve', mainActionLockState());
   if (blockMessage) {
-    showImproveBlocked(blockMessage);
     return;
   }
   improveShortcutRunning = true;
@@ -97,22 +131,31 @@ export const improveClipboardFromHotkey = async (): Promise<void> => {
     }
     showImproveProcessing();
     const startedAt = performance.now();
+    showProcessingProgress('improve', { phase: 'thinking' });
     const improved = await llamaService.improveText(
       llmModelService.modelPath(settings.llmModel),
       settings.correctionPrompt,
       text,
+      {
+        onProgress: (progress) => {
+          showProcessingProgress('improve', progress);
+        },
+      },
     );
     const durationMs = elapsedMs(startedAt);
-    if (!improved.trim()) {
+    if (!improved.text.trim()) {
       sendImproveResult(failed(new Error('Local AI returned an empty response.')));
       return;
     }
-    clipboard.writeText(improved);
+    clipboard.writeText(improved.text);
     if (settings.pasteAfterImprovement) {
       await activePasteService.paste();
     }
-    await historyService.add({ kind: 'improvement', text: improved }, settings.maxHistoryItems);
-    sendImproveResult(ready(improved, appMessages.copiedToClipboard, durationMs));
+    await historyService.add({ kind: 'improvement', text: improved.text }, settings.maxHistoryItems);
+    sendImproveResult(ready(improved.text, appMessages.copiedToClipboard, durationMs, {
+      tokensGenerated: improved.tokensGenerated,
+      tokensPerSecond: improved.tokensPerSecond,
+    }));
   } catch (error) {
     sendImproveResult(failed(error));
   } finally {
@@ -224,17 +267,24 @@ export const registerIpc = (): void => {
     }
     try {
       const startedAt = performance.now();
-      const text = singleLineText(await whisperService.transcribe(audio, whisperModel, { debugName: 'speak' }));
+      const audioDurationMs = wavDurationMs(audio);
+      showProcessingProgress('speak', { phase: 'preparing' });
+      const text = singleLineText(await whisperService.transcribe(audio, whisperModel, {
+        debugName: 'speak',
+        onProgress: (progress) => {
+          showProcessingProgress('speak', { phase: 'transcribing', progress });
+        },
+      }));
       const durationMs = elapsedMs(startedAt);
       if (!text.trim()) {
-        return ready('', 'No speech detected.', durationMs);
+        return ready('', 'No speech detected.', durationMs, { audioDurationMs });
       }
       clipboard.writeText(text);
       if (settings.pasteAfterDictation) {
         await activePasteService.paste();
       }
       await historyService.add({ kind: 'dictation', text }, settings.maxHistoryItems);
-      return ready(text, appMessages.copiedToClipboard, durationMs);
+      return ready(text, appMessages.copiedToClipboard, durationMs, { audioDurationMs });
     } catch (error) {
       return failed(error);
     }
@@ -256,16 +306,21 @@ export const registerIpc = (): void => {
     }
     try {
       const startedAt = performance.now();
+      const audioDurationMs = wavDurationMs(audio);
+      showProcessingProgress('transcript', { phase: 'preparing' });
       const text = await whisperService.transcribe(audio, whisperModel, {
         timeoutMs: null,
         debugName: 'transcript',
+        onProgress: (progress) => {
+          showProcessingProgress('transcript', { phase: 'transcribing', progress });
+        },
       });
       const durationMs = elapsedMs(startedAt);
       if (!text.trim()) {
-        return ready('', 'No speech detected.', durationMs);
+        return ready('', 'No speech detected.', durationMs, { audioDurationMs });
       }
       await historyService.add({ kind: 'transcript', text }, settings.maxHistoryItems);
-      return ready(text, 'Transcript generated.', durationMs);
+      return ready(text, 'Transcript generated.', durationMs, { audioDurationMs });
     } catch (error) {
       return failed(error);
     }
@@ -284,21 +339,30 @@ export const registerIpc = (): void => {
     improveShortcutRunning = true;
     try {
       const startedAt = performance.now();
+      showProcessingProgress('improve', { phase: 'thinking' });
       const improved = await llamaService.improveText(
         llmModelService.modelPath(settings.llmModel),
         settings.correctionPrompt,
         text,
+        {
+          onProgress: (progress) => {
+            showProcessingProgress('improve', progress);
+          },
+        },
       );
       const durationMs = elapsedMs(startedAt);
-      if (!improved.trim()) {
+      if (!improved.text.trim()) {
         return failed(new Error('Local AI returned an empty response.'));
       }
-      clipboard.writeText(improved);
+      clipboard.writeText(improved.text);
       if (settings.pasteAfterImprovement) {
         await activePasteService.paste();
       }
-      await historyService.add({ kind: 'improvement', text: improved }, settings.maxHistoryItems);
-      return ready(improved, appMessages.copiedToClipboard, durationMs);
+      await historyService.add({ kind: 'improvement', text: improved.text }, settings.maxHistoryItems);
+      return ready(improved.text, appMessages.copiedToClipboard, durationMs, {
+        tokensGenerated: improved.tokensGenerated,
+        tokensPerSecond: improved.tokensPerSecond,
+      });
     } catch (error) {
       return failed(error);
     } finally {
@@ -344,6 +408,27 @@ export const registerIpc = (): void => {
   ipcMain.handle(channels.overlayGetState, (_event, value: unknown) => {
     const mode = value === 'improve' || value === 'transcript' ? value : 'speak';
     return getSpeakOverlayState(mode);
+  });
+
+  ipcMain.handle(channels.overlayContentSize, (_event, value: unknown) => {
+    if (
+      value &&
+      typeof value === 'object' &&
+      'mode' in value &&
+      'size' in value &&
+      (value.mode === 'speak' || value.mode === 'improve' || value.mode === 'transcript') &&
+      value.size &&
+      typeof value.size === 'object' &&
+      'width' in value.size &&
+      'height' in value.size &&
+      typeof value.size.width === 'number' &&
+      typeof value.size.height === 'number'
+    ) {
+      resizeSpeakOverlayToContent(value.mode, {
+        width: Math.ceil(value.size.width),
+        height: Math.ceil(value.size.height),
+      });
+    }
   });
 
   ipcMain.handle(channels.overlayStopSpeak, (_event, value: unknown) => {
@@ -393,6 +478,48 @@ const failed = (error: unknown): ResultState => ({
 const singleLineText = (text: string): string => text.replace(/\s*\r?\n+\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
 
 const elapsedMs = (startedAt: number): number => Math.max(0, Math.round(performance.now() - startedAt));
+
+const wavDurationMs = (audio: Uint8Array): number | undefined => {
+  if (audio.byteLength < 44) {
+    return undefined;
+  }
+  const view = new DataView(audio.buffer, audio.byteOffset, audio.byteLength);
+  if (readAscii(view, 0, 4) !== 'RIFF' || readAscii(view, 8, 4) !== 'WAVE') {
+    return undefined;
+  }
+  let offset = 12;
+  let channels = 0;
+  let sampleRate = 0;
+  let bitsPerSample = 0;
+  let dataSize = 0;
+  while (offset + 8 <= audio.byteLength) {
+    const chunkId = readAscii(view, offset, 4);
+    const chunkSize = view.getUint32(offset + 4, true);
+    if (chunkId === 'fmt ' && offset + 24 <= audio.byteLength) {
+      channels = view.getUint16(offset + 10, true);
+      sampleRate = view.getUint32(offset + 12, true);
+      bitsPerSample = view.getUint16(offset + 22, true);
+    }
+    if (chunkId === 'data') {
+      dataSize = chunkSize;
+      break;
+    }
+    offset += 8 + chunkSize + (chunkSize % 2);
+  }
+  if (!channels || !sampleRate || !bitsPerSample || !dataSize) {
+    return undefined;
+  }
+  const bytesPerFrame = channels * (bitsPerSample / 8);
+  return Math.round((dataSize / bytesPerFrame / sampleRate) * 1000);
+};
+
+const readAscii = (view: DataView, offset: number, length: number): string => {
+  let value = '';
+  for (let index = 0; index < length; index += 1) {
+    value += String.fromCharCode(view.getUint8(offset + index));
+  }
+  return value;
+};
 
 const readActiveSelection = async (): Promise<string> => {
   const previousText = clipboard.readText();

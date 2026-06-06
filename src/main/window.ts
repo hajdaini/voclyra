@@ -148,6 +148,7 @@ export const sendImproveResult = (result: ResultState): void => {
 
 export const setSpeakOverlayState = (state: OverlayState): void => {
   const mode = state.mode;
+  const previousState = overlayStates.get(mode);
   if (!state.active) {
     overlayDismissed.set(mode, false);
   }
@@ -155,6 +156,19 @@ export const setSpeakOverlayState = (state: OverlayState): void => {
     overlayDismissed.set(mode, false);
   }
   overlayStates.set(mode, state);
+  mainWindow?.webContents.send(channels.overlayStateChanged, state);
+  const window = overlayWindows.get(mode);
+  if (
+    previousState?.active &&
+    state.active &&
+    window &&
+    !window.isDestroyed() &&
+    window.isVisible() &&
+    previousState.status === state.status
+  ) {
+    window.webContents.send(channels.overlayStateChanged, state);
+    return;
+  }
   updateSpeakOverlayVisibility();
 };
 
@@ -197,9 +211,9 @@ const updateSpeakOverlayVisibility = (): void => {
 
   activeStates.forEach((state, index) => {
     const window = createSpeakOverlayWindow(state.mode);
-    positionSpeakOverlay(window, index, state);
     window.setFocusable(false);
     window.webContents.send(channels.overlayStateChanged, state);
+    positionSpeakOverlay(window, index, state);
     window.showInactive();
   });
 };
@@ -280,7 +294,7 @@ const createSpeakOverlayWindow = (mode: OverlayMode): BrowserWindow => {
 
 const positionSpeakOverlay = (window: BrowserWindow, index: number, state: OverlayState): void => {
   const { workArea } = screen.getPrimaryDisplay();
-  const width = overlayWidth(state);
+  const width = window.getBounds().width;
   const height = state.message ? 72 : 62;
   const gap = 10;
   window.setBounds({
@@ -291,19 +305,26 @@ const positionSpeakOverlay = (window: BrowserWindow, index: number, state: Overl
   });
 };
 
-const overlayWidth = (state: OverlayState): number => {
-  if (state.status === 'recording') {
-    return 310;
+export const resizeSpeakOverlayToContent = (
+  mode: OverlayMode,
+  size: { width: number; height: number },
+): void => {
+  const window = overlayWindows.get(mode);
+  if (!window || window.isDestroyed() || size.width <= 0 || size.height <= 0) {
+    return;
   }
-  const modeLabel = state.mode === 'speak' ? 'Speak' : state.mode === 'improve' ? 'Improve' : 'Transcript';
-  const title =
-    state.status === 'done'
-      ? `${modeLabel} done`
-      : state.status === 'transcribing'
-        ? 'Transcribing'
-        : state.status === 'improving'
-          ? 'Improving'
-          : 'Action unavailable';
-  const longestText = Math.max(title.length, state.message?.length ?? 0);
-  return Math.min(360, Math.max(180, 86 + longestText * 6.5));
+  const activeStates = overlayModes
+    .map((overlayMode) => overlayStates.get(overlayMode) ?? { ...defaultOverlayState, mode: overlayMode })
+    .filter((state) => state.active && !overlayDismissed.get(state.mode));
+  const index = Math.max(0, activeStates.findIndex((state) => state.mode === mode));
+  const { workArea } = screen.getPrimaryDisplay();
+  const gap = 10;
+  const width = Math.ceil(size.width);
+  const height = Math.ceil(size.height);
+  window.setBounds({
+    x: workArea.x + workArea.width - width - 18,
+    y: workArea.y + workArea.height - height - 18 - index * (height + gap),
+    width,
+    height,
+  });
 };

@@ -94,6 +94,7 @@ const fallbackApi: AppApi = {
     stopSpeak: () => Promise.resolve(),
     cancelRecording: () => Promise.resolve(),
     dismiss: () => Promise.resolve(),
+    setContentSize: () => Promise.resolve(),
     onState: () => () => {},
   },
   window: {

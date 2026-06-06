@@ -17,6 +17,7 @@ type WhisperRunResult = {
 type TranscribeOptions = {
   timeoutMs?: number | null;
   debugName?: string;
+  onProgress?: (progress: number) => void;
 };
 
 type WavInfo = {
@@ -125,6 +126,7 @@ export class WhisperService {
       const segments = this.speechSegments(audio, settings.silenceSensitivity);
       if (segments.length > 1) {
         const texts: string[] = [];
+        const progressTracker = segmentProgressTracker(segments);
         for (let index = 0; index < segments.length; index += 1) {
           const segment = segments[index];
           if (!segment) {
@@ -141,10 +143,14 @@ export class WhisperService {
             options.timeoutMs,
             exactTranscriptionPrompt,
             options.debugName ? `${options.debugName}-segment-${index}` : undefined,
+            (segmentPercent) => {
+              options.onProgress?.(progressTracker.current(index, segmentPercent));
+            },
           );
           if (text) {
             texts.push(text);
           }
+          options.onProgress?.(progressTracker.done(index));
         }
         return texts.join('\n').trim();
       }
@@ -156,6 +162,7 @@ export class WhisperService {
         options.timeoutMs,
         exactTranscriptionPrompt,
         options.debugName,
+        options.onProgress,
       );
     } finally {
       await this.cleanupTemporaryFiles(temporaryRoot);
@@ -181,10 +188,12 @@ export class WhisperService {
           options.timeoutMs,
           exactTranscriptionPrompt,
           options.debugName,
+          options.onProgress,
         );
       }
 
       const texts: string[] = [];
+      const progressTracker = segmentProgressTracker(segments);
       for (let index = 0; index < segments.length; index += 1) {
         const segment = segments[index];
         if (!segment) {
@@ -201,10 +210,14 @@ export class WhisperService {
           options.timeoutMs,
           exactTranscriptionPrompt,
           options.debugName ? `${options.debugName}-segment-${index}` : undefined,
+          (segmentPercent) => {
+            options.onProgress?.(progressTracker.current(index, segmentPercent));
+          },
         );
         if (text) {
           texts.push(text);
         }
+        options.onProgress?.(progressTracker.done(index));
       }
       return texts.join('\n').trim();
     } finally {
@@ -218,7 +231,15 @@ export class WhisperService {
     const temporaryRoot = await this.storage.ensureDir('tmp', id);
 
     try {
-      return await this.transcribeMeetingAudio(audio, modelPath, temporaryRoot, id, options.timeoutMs, options.debugName);
+      return await this.transcribeMeetingAudio(
+        audio,
+        modelPath,
+        temporaryRoot,
+        id,
+        options.timeoutMs,
+        options.debugName,
+        options.onProgress,
+      );
     } finally {
       await this.cleanupTemporaryFiles(temporaryRoot);
     }
@@ -231,6 +252,7 @@ export class WhisperService {
     id: string,
     timeoutMs: number | null | undefined,
     debugName?: string,
+    onProgress?: (progress: number) => void,
   ): Promise<string> {
     const audioPath = join(temporaryRoot, 'input.wav');
     await writeFile(audioPath, audio);
@@ -242,6 +264,7 @@ export class WhisperService {
       timeoutMs,
       exactTranscriptionPrompt,
       debugName,
+      onProgress,
     );
   }
 
@@ -253,6 +276,7 @@ export class WhisperService {
     timeoutMs: number | null | undefined,
     prompt?: string,
     debugName?: string,
+    onProgress?: (progress: number) => void,
   ): Promise<string> {
     const attempts: Array<{
       backend: 'gpu' | 'cpu';
@@ -284,6 +308,7 @@ export class WhisperService {
         timeoutMs,
         prompt,
         debugName,
+        onProgress,
       ).catch((error: unknown) => {
         errors.push(error instanceof Error ? error.message : 'Whisper failed.');
         return null;
@@ -292,6 +317,7 @@ export class WhisperService {
         const text = await this.readTranscript(temporaryRoot, outputId, run.stdout, run.stderr);
         if (text) {
           this.lastBackend = run.backend;
+          onProgress?.(100);
           return text;
         }
       }
@@ -345,6 +371,7 @@ export class WhisperService {
     timeoutMs: number | null | undefined = 180000,
     prompt?: string,
     logName?: string,
+    onProgress?: (progress: number) => void,
   ): Promise<WhisperRunResult> {
     const executable = await this.executablePath();
     const settings = await this.settingsService.get();
@@ -406,11 +433,13 @@ export class WhisperService {
       process.stdout.on('data', (chunk: Buffer) => {
         output.push(chunk);
         rawOutput.push(chunk);
+        emitWhisperProgress(chunk, onProgress);
       });
 
       process.stderr.on('data', (chunk: Buffer) => {
         errors.push(chunk);
         rawOutput.push(chunk);
+        emitWhisperProgress(chunk, onProgress);
       });
 
       process.on('error', async (error) => {
@@ -794,6 +823,76 @@ const whisperQualityArgs = (mode: Settings['whisperQualityMode']): string[] => {
     return ['-bs', '5', '-bo', '5'];
   }
   return [];
+};
+
+const segmentProgressTracker = (segments: Uint8Array[]): {
+  current: (index: number, progress: number) => number;
+  done: (index: number) => number;
+} => {
+  const weights = segments.map((segment) => Math.max(1, wavDurationWeight(segment)));
+  const total = weights.reduce((sum, weight) => sum + weight, 0) || 1;
+  const starts = weights.map((_, index) => weights.slice(0, index).reduce((sum, weight) => sum + weight, 0));
+  return {
+    current: (index, progress) => {
+      const start = starts[index] ?? 0;
+      const weight = weights[index] ?? 1;
+      return Math.round(((start + weight * clampProgress(progress) / 100) / total) * 100);
+    },
+    done: (index) => {
+      const start = starts[index] ?? 0;
+      const weight = weights[index] ?? 1;
+      return Math.round(((start + weight) / total) * 100);
+    },
+  };
+};
+
+const wavDurationWeight = (audio: Uint8Array): number => {
+  const view = new DataView(audio.buffer, audio.byteOffset, audio.byteLength);
+  if (audio.byteLength < 44) {
+    return audio.byteLength;
+  }
+  let offset = 12;
+  let channels = 0;
+  let sampleRate = 0;
+  let dataSize = 0;
+  while (offset + 8 <= audio.byteLength) {
+    const chunkId = String.fromCharCode(
+      view.getUint8(offset),
+      view.getUint8(offset + 1),
+      view.getUint8(offset + 2),
+      view.getUint8(offset + 3),
+    );
+    const chunkSize = view.getUint32(offset + 4, true);
+    if (chunkId === 'fmt ' && offset + 24 <= audio.byteLength) {
+      channels = view.getUint16(offset + 10, true);
+      sampleRate = view.getUint32(offset + 12, true);
+    }
+    if (chunkId === 'data') {
+      dataSize = chunkSize;
+      break;
+    }
+    offset += 8 + chunkSize + (chunkSize % 2);
+  }
+  return channels > 0 && sampleRate > 0 && dataSize > 0
+    ? dataSize / channels / sampleRate
+    : audio.byteLength;
+};
+
+const clampProgress = (progress: number): number => Math.max(0, Math.min(100, progress));
+
+const emitWhisperProgress = (chunk: Buffer, onProgress?: (progress: number) => void): void => {
+  if (!onProgress) {
+    return;
+  }
+  const output = chunk.toString('utf8');
+  const match = output.match(/(?:progress|progression)?\s*[=:]?\s*(\d{1,3})\s*%/i);
+  if (!match) {
+    return;
+  }
+  const progress = Number(match[1]);
+  if (Number.isFinite(progress)) {
+    onProgress(clampProgress(progress));
+  }
 };
 
 const silenceSensitivityConfig: Record<

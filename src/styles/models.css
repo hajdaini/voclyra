@@ -213,6 +213,23 @@
   color: var(--primary-strong);
 }
 
+.model-state .progress-ring {
+  display: inline-grid;
+  min-width: 0;
+  width: 24px;
+  height: 24px;
+  justify-content: center;
+  text-align: center;
+}
+
+.model-state .progress-ring span {
+  display: block;
+  min-width: 0;
+  color: var(--primary-strong);
+  font-size: inherit;
+  line-height: 1;
+}
+
 .model-state button {
   display: inline-flex;
   align-items: center;

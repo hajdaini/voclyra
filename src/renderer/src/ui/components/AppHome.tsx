@@ -1,10 +1,11 @@
 import type { JSX } from 'react';
-import type { HomeMode, LlmRuntimeInfo, ResultState, Settings, WhisperRuntimeInfo } from '@shared/types';
+import type { HomeMode, LlmRuntimeInfo, OverlayState, ResultState, Settings, WhisperRuntimeInfo } from '@shared/types';
 import { HomeView } from '../views/HomeView';
 
 type AppHomeProps = {
   mode: HomeMode;
   result: ResultState;
+  overlayState: OverlayState;
   improveInput: string;
   isRecording: boolean;
   actionBlockMessage: string | null;
@@ -30,6 +31,7 @@ type AppHomeProps = {
 export const AppHome = ({
   mode,
   result,
+  overlayState,
   improveInput,
   isRecording,
   actionBlockMessage,
@@ -54,6 +56,7 @@ export const AppHome = ({
   <HomeView
     mode={mode}
     result={result}
+    overlayState={overlayState}
     improveInput={improveInput}
     isRecording={isRecording}
     actionBlockMessage={actionBlockMessage}

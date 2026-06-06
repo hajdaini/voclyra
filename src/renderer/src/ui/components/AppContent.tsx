@@ -6,6 +6,7 @@ import type {
   HomeMode,
   LlmAvailableModel,
   LlmRuntimeInfo,
+  OverlayState,
   ResultState,
   Settings,
   WhisperAvailableModel,
@@ -21,6 +22,7 @@ type AppContentProps = {
   section: AppSection;
   mode: HomeMode;
   result: ResultState;
+  overlayState: OverlayState;
   improveInput: string;
   isRecording: boolean;
   actionBlockMessage: string | null;
@@ -70,6 +72,7 @@ export const AppContent = ({
   section,
   mode,
   result,
+  overlayState,
   improveInput,
   isRecording,
   actionBlockMessage,
@@ -119,6 +122,7 @@ export const AppContent = ({
       <AppHome
         mode={mode}
         result={result}
+        overlayState={overlayState}
         improveInput={improveInput}
         isRecording={isRecording}
         actionBlockMessage={actionBlockMessage}

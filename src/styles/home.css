@@ -576,6 +576,21 @@
   animation: spin 820ms linear infinite;
 }
 
+.inline-status .action-progress.compact {
+  gap: 6px;
+}
+
+.inline-status .action-progress.compact .progress-ring {
+  width: 18px;
+  height: 18px;
+  font-size: 7px;
+}
+
+.inline-status .action-progress.compact .action-progress-label {
+  max-width: 160px;
+  font-size: 12px;
+}
+
 .result-body {
   position: relative;
   display: flex;
@@ -590,8 +605,8 @@
 
 .result-copy-button {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 6px;
+  right: 20px;
   z-index: 1;
   display: inline-grid;
   width: 28px;
@@ -614,7 +629,7 @@
   width: 100%;
   flex: 1 1 auto;
   min-height: 260px;
-  padding: 42px 12px 12px;
+  padding: 10px 44px 12px 12px;
   overflow: auto;
   white-space: pre-wrap;
   border: 1px solid var(--border-strong);
@@ -632,16 +647,31 @@
 .result-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  padding-right: 0;
   margin-top: 10px;
   color: var(--soft);
   font-size: 13px;
 }
 
-.result-actions span {
+.result-metrics {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 5px 10px;
+}
+
+.result-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.result-metric svg {
+  flex: 0 0 auto;
+  margin-right: 0;
 }
 
 @media (min-width: 1180px) {

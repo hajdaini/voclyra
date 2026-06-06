@@ -6,23 +6,26 @@ import {
   Clipboard,
   Cpu,
   FileText,
-  Hash,
   Headphones,
   Home,
   LoaderCircle,
   Mic,
+  Pencil,
   Signal,
   Square,
   TriangleAlert,
   Timer,
+  Type,
   Wand2,
 } from 'lucide-react';
-import type { HomeMode, Hotkeys, LlmRuntimeInfo, ResultState, WhisperRuntimeInfo } from '@shared/types';
+import type { HomeMode, Hotkeys, LlmRuntimeInfo, OverlayState, ResultState, WhisperRuntimeInfo } from '@shared/types';
 import { missingActionMessage } from '@shared/action-messages';
+import { ActionProgressIndicator } from '../components/ActionProgressIndicator';
 
 export type HomeViewProps = {
   mode: HomeMode;
   result: ResultState;
+  overlayState: OverlayState;
   improveInput: string;
   isRecording: boolean;
   actionBlockMessage: string | null;
@@ -50,6 +53,7 @@ export type HomeViewProps = {
 export const HomeView = ({
   mode,
   result,
+  overlayState,
   improveInput,
   isRecording,
   actionBlockMessage,
@@ -74,8 +78,6 @@ export const HomeView = ({
   onCopy,
 }: HomeViewProps): JSX.Element => {
   const isActionBlocked = Boolean(actionBlockMessage) && !isRecording;
-  const showsActionBlockMessage =
-    Boolean(actionBlockMessage) && result.status !== 'listening' && result.status !== 'processing';
   const missingMessage = missingActionMessage({
     mode,
     resultStatus: result.status,
@@ -84,8 +86,8 @@ export const HomeView = ({
     whisperModelAvailable,
     llmModelAvailable,
   });
-  const statusMessage = showsActionBlockMessage ? actionBlockMessage : (missingMessage ?? result.message);
-  const statusClass = missingMessage ? 'error' : showsActionBlockMessage ? 'warning' : result.status;
+  const statusMessage = result.status === 'processing' ? '' : (missingMessage ?? result.message);
+  const statusClass = missingMessage ? 'error' : result.status;
   const StatusIcon = statusIcon[statusClass];
   const whisperBackendLabel =
     whisperRuntime.backend === 'gpu'
@@ -278,11 +280,11 @@ export const HomeView = ({
               <div className={`inline-status ${statusClass}`}>
                 <span className="inline-status-badge">
                   {result.status === 'processing' ? (
-                    <span className="status-spinner" aria-hidden="true" />
+                    <ActionProgressIndicator state={overlayState} compact />
                   ) : (
                     <StatusIcon size={15} />
                   )}
-                  <span>{statusMessage}</span>
+                  {statusMessage && <span>{statusMessage}</span>}
                 </span>
                 {(mode === 'speak' || mode === 'transcript' || mode === 'improve') && (
                   <small className="inline-runtime-badge">
@@ -311,14 +313,34 @@ export const HomeView = ({
           </div>
 
           <div className="result-actions">
-            <span>
-              <Hash size={14} />
-              <span>{result.text.length} characters</span>
+            <span className="result-metrics">
+              <span className="result-metric">
+                <Pencil size={14} />
+                <span>{result.text.length} characters</span>
+              </span>
               {typeof result.durationMs === 'number' && (
-                <>
+                <span className="result-metric">
                   <Timer size={14} />
                   <span>{formatDuration(result.durationMs)}</span>
-                </>
+                </span>
+              )}
+              {typeof result.audioDurationMs === 'number' && (
+                <span className="result-metric">
+                  <Timer size={14} />
+                  <span>{formatDuration(result.audioDurationMs)} audio</span>
+                </span>
+              )}
+              {typeof result.tokensGenerated === 'number' && (
+                <span className="result-metric">
+                  <Type size={14} />
+                  <span>{result.tokensGenerated} tokens</span>
+                </span>
+              )}
+              {typeof result.tokensPerSecond === 'number' && (
+                <span className="result-metric">
+                  <Timer size={14} />
+                  <span>{result.tokensPerSecond} tokens/s</span>
+                </span>
               )}
             </span>
           </div>
@@ -334,7 +356,7 @@ const formatDuration = (durationMs: number): string => {
   if (durationMs < 1000) {
     return `${durationMs} ms`;
   }
-  return `${(durationMs / 1000).toFixed(durationMs < 10000 ? 1 : 0)} s`;
+  return `${(durationMs / 1000).toFixed(durationMs < 10000 ? 1 : 0)}s`;
 };
 
 const statusIcon = {

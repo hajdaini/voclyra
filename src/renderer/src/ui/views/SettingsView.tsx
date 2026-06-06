@@ -9,7 +9,6 @@ import {
   Headphones,
   History as HistoryIcon,
   Keyboard,
-  LoaderCircle,
   MemoryStick,
   Mic,
   Pencil,
@@ -28,6 +27,7 @@ import type {
   WhisperAvailableModel,
   WhisperModelId,
 } from '@shared/types';
+import { ProgressRing } from '../components/ProgressRing';
 
 type AudioInputDevice = {
   deviceId: string;
@@ -432,7 +432,11 @@ export const SettingsView = ({
                   <div className="model-state">
                     <span className={model.state}>
                       {model.state === 'ready' && <CheckCircle2 size={14} />}
-                      {modelStateLabel(model)}
+                      {model.state === 'downloading' ? (
+                        <ProgressRing progress={model.progress} size={30} label={`${model.label} ${model.progress}%`} fontScale={0.27} />
+                      ) : (
+                        modelStateLabel(model)
+                      )}
                     </span>
                     {model.state === 'ready' && (
                       <button
@@ -661,7 +665,11 @@ export const SettingsView = ({
                   <div className="model-state">
                     <span className={model.state}>
                       {model.state === 'ready' && <CheckCircle2 size={14} />}
-                      {modelStateLabel(model)}
+                      {model.state === 'downloading' ? (
+                        <ProgressRing progress={model.progress} size={30} label={`${model.label} ${model.progress}%`} fontScale={0.27} />
+                      ) : (
+                        modelStateLabel(model)
+                      )}
                     </span>
                     {model.state === 'ready' && (
                       <button
@@ -851,7 +859,7 @@ const stopMicrophoneTest = (test: MicrophoneTest | null): void => {
 const modelStateIcon = {
   ready: CheckCircle2,
   missing: CircleDashed,
-  downloading: LoaderCircle,
+  downloading: CircleDashed,
 };
 
 const modelStateLabel = (model: WhisperAvailableModel | LlmAvailableModel): string => {
@@ -859,7 +867,7 @@ const modelStateLabel = (model: WhisperAvailableModel | LlmAvailableModel): stri
     return 'Ready';
   }
   if (model.state === 'downloading') {
-    return `${model.progress}%`;
+    return 'Downloading';
   }
   return 'Available';
 };

@@ -4,6 +4,7 @@ import type { OverlayState } from '@shared/types';
 import { defaultSettings } from '@shared/defaults';
 import { api } from '../../api';
 import { inactiveOverlayState } from '../appState';
+import { ActionProgressIndicator } from './ActionProgressIndicator';
 
 export const SpeakOverlay = (): JSX.Element => {
   const overlayMode =
@@ -66,6 +67,21 @@ export const SpeakOverlay = (): JSX.Element => {
     };
   }, []);
 
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const element = document.querySelector('.speak-overlay');
+      if (!element) {
+        return;
+      }
+      const rect = element.getBoundingClientRect();
+      void api.overlay.setContentSize(overlayMode, {
+        width: Math.ceil(rect.width),
+        height: Math.ceil(rect.height),
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [overlayState, overlayMode]);
+
   return (
     <main className={`speak-overlay ${overlayState.status}`}>
       <div className="speak-overlay-icon">
@@ -94,7 +110,7 @@ export const SpeakOverlay = (): JSX.Element => {
             ))}
           </div>
         ) : overlayState.status === 'transcribing' || overlayState.status === 'improving' ? (
-          <div className="speak-overlay-spinner" aria-hidden="true" />
+          <ActionProgressIndicator state={overlayState} />
         ) : null}
         {overlayState.message && (
           <span className={`speak-overlay-message ${overlayState.messageType ?? 'error'}`}>

@@ -423,11 +423,12 @@
   --overlay-accent-strong: var(--primary-strong);
   --overlay-on-accent: #120c06;
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-columns: 38px max-content;
   align-items: center;
   gap: 10px;
-  width: 100%;
-  height: 100%;
+  width: max-content;
+  height: max-content;
+  box-sizing: border-box;
   padding: 12px;
   border: 1px solid rgba(255, 156, 77, 0.42);
   border-radius: var(--radius);
@@ -438,7 +439,7 @@
 }
 
 .speak-overlay.done {
-  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-columns: 38px max-content;
 }
 
 .speak-overlay.recording {
@@ -449,10 +450,13 @@
   --overlay-accent: #ffd166;
   --overlay-accent-strong: #ffe39a;
   --overlay-on-accent: #161006;
-  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-columns: 38px max-content;
 }
 
 body:has(.speak-overlay) {
+  display: inline-block;
+  width: max-content;
+  height: max-content;
   background: transparent;
 }
 
@@ -483,7 +487,7 @@ body:has(.speak-overlay) {
 .speak-overlay-main {
   display: grid;
   gap: 5px;
-  min-width: 0;
+  min-width: max-content;
 }
 
 .speak-overlay-main strong {
@@ -582,7 +586,7 @@ body:has(.speak-overlay) {
 }
 
 .speak-overlay .speak-overlay-stop small {
-  font-size: 9px;
+  font-size: var(--ring-font-size, 9px);
   font-weight: 650;
   opacity: 0.78;
 }
@@ -607,4 +611,60 @@ body:has(.speak-overlay) {
   border-top-color: var(--overlay-accent);
   border-radius: 999px;
   animation: spin 760ms linear infinite;
+}
+
+.action-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--muted);
+}
+
+.speak-overlay .action-progress {
+  width: max-content;
+  min-width: max-content;
+}
+
+.progress-ring {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  color: var(--overlay-accent-strong, var(--primary-strong));
+  font-size: var(--ring-font-size, 9px);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.progress-ring.indeterminate {
+  border: 1px solid rgba(255, 156, 77, 0.24);
+  border-top-color: var(--overlay-accent, var(--primary));
+  animation: spin 820ms linear infinite;
+}
+
+.progress-ring.determinate {
+  background:
+    radial-gradient(circle closest-side, var(--surface, #161616) 86%, transparent 88%),
+    conic-gradient(var(--overlay-accent, var(--primary)) var(--progress), rgba(255, 156, 77, 0.18) 0);
+}
+
+.progress-ring.indeterminate span {
+  animation: spin 820ms linear infinite reverse;
+}
+
+.action-progress-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.speak-overlay .action-progress-label {
+  overflow: visible;
+  text-overflow: clip;
 }

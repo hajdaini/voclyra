@@ -65,6 +65,9 @@ export type ResultState = {
   status: AppStatus;
   message: string;
   durationMs?: number;
+  audioDurationMs?: number;
+  tokensGenerated?: number;
+  tokensPerSecond?: number;
 };
 
 export type WhisperModelId = 'tiny' | 'base' | 'small' | 'medium' | 'large';
@@ -145,7 +148,11 @@ export type OverlayState = {
   active: boolean;
   mode: 'speak' | 'improve' | 'transcript';
   status: 'recording' | 'transcribing' | 'improving' | 'done' | 'warning';
+  phase?: 'recording' | 'stopping' | 'preparing' | 'loading' | 'transcribing' | 'thinking' | 'generating' | 'finalizing';
   waveform: number[];
+  progress?: number;
+  tokensGenerated?: number;
+  progressLabel?: string;
   message?: string;
   messageType?: 'error' | 'success' | 'warning' | 'info';
 };
@@ -218,6 +225,7 @@ export type AppApi = {
     stopSpeak: (mode?: OverlayState['mode']) => Promise<void>;
     cancelRecording: (mode: 'speak' | 'transcript') => Promise<void>;
     dismiss: (mode?: OverlayState['mode']) => Promise<void>;
+    setContentSize: (mode: OverlayState['mode'], size: { width: number; height: number }) => Promise<void>;
     onState: (callback: (state: OverlayState) => void) => () => void;
   };
   window: {
