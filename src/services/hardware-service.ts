@@ -1,9 +1,25 @@
 import { spawn } from 'node:child_process';
+import { cpus } from 'node:os';
 import type { HardwareInfo } from '@shared/types';
 
 type GpuInfo = {
   name: string;
   vramGb: number;
+};
+
+type CheckStatus = 'ok' | 'missing' | 'timeout';
+
+export type HardwareCheckResult = {
+  status: CheckStatus;
+  value: string;
+};
+
+export type HardwareDiagnostics = {
+  cpu: HardwareCheckResult;
+  cpuCores: HardwareCheckResult;
+  cpuThreads: HardwareCheckResult;
+  gpu: HardwareCheckResult;
+  gpuVram: HardwareCheckResult;
 };
 
 export class HardwareService {
@@ -16,19 +32,79 @@ export class HardwareService {
     };
   }
 
-  private async gpuInfo(): Promise<GpuInfo[]> {
+  async diagnostics(): Promise<HardwareDiagnostics> {
+    const cpuList = cpus();
+    const logicalThreads = cpuList.length;
+    const physicalCores = await this.physicalCpuCores();
+    const gpus = await this.gpuInfoWithStatus();
+
+    return {
+      cpu: {
+        status: cpuList[0]?.model ? 'ok' : 'missing',
+        value: cpuList[0]?.model ?? 'unknown',
+      },
+      cpuCores: {
+        status: physicalCores.status,
+        value:
+          physicalCores.status === 'ok'
+            ? `${physicalCores.value} physical / ${logicalThreads} logical`
+            : `unknown physical / ${logicalThreads} logical`,
+      },
+      cpuThreads: {
+        status: logicalThreads > 0 ? 'ok' : 'missing',
+        value: String(logicalThreads || 'unknown'),
+      },
+      gpu: {
+        status: gpus.status,
+        value: gpus.items.map((gpu) => gpu.name).join(' | ') || 'unknown',
+      },
+      gpuVram: {
+        status: gpus.status,
+        value: gpus.items.map((gpu) => `${gpu.name}: ${this.formatGb(gpu.vramGb)}`).join(' | ') || 'unknown',
+      },
+    };
+  }
+
+  private async physicalCpuCores(): Promise<HardwareCheckResult> {
     if (process.platform !== 'win32') {
-      return [];
+      return { status: 'missing', value: 'unknown' };
     }
 
-    const result = await this.powerShellJson(this.gpuInfoScript(), 4000);
-    if (!result) {
-      return [];
+    const result = await this.powerShellJson(
+      '(Get-CimInstance Win32_Processor | Measure-Object -Property NumberOfCores -Sum).Sum | ConvertTo-Json -Compress',
+      3000,
+    );
+    if (result.status !== 'ok') {
+      return { status: result.status, value: 'unknown' };
     }
 
     try {
-      const value = JSON.parse(result) as unknown;
-      return (Array.isArray(value) ? value : [value])
+      const cores = Number(JSON.parse(result.value));
+      return Number.isFinite(cores) && cores > 0
+        ? { status: 'ok', value: String(cores) }
+        : { status: 'missing', value: 'unknown' };
+    } catch {
+      return { status: 'missing', value: 'unknown' };
+    }
+  }
+
+  private async gpuInfo(): Promise<GpuInfo[]> {
+    return (await this.gpuInfoWithStatus()).items;
+  }
+
+  private async gpuInfoWithStatus(): Promise<{ status: CheckStatus; items: GpuInfo[] }> {
+    if (process.platform !== 'win32') {
+      return { status: 'missing', items: [] };
+    }
+
+    const result = await this.powerShellJson(this.gpuInfoScript(), 4000);
+    if (result.status !== 'ok') {
+      return { status: result.status, items: [] };
+    }
+
+    try {
+      const value = JSON.parse(result.value) as unknown;
+      const items = (Array.isArray(value) ? value : [value])
         .map((item) => {
           const gpu = item as { Name?: unknown; AdapterRAM?: unknown; RegistryRAM?: unknown };
           const name = typeof gpu.Name === 'string' ? gpu.Name : 'Unknown GPU';
@@ -41,8 +117,9 @@ export class HardwareService {
           return { name, vramGb: bytes > 0 ? Math.ceil((bytes / 1024 / 1024 / 1024) * 10) / 10 : 0 };
         })
         .filter((gpu) => gpu.name !== 'Unknown GPU' && gpu.vramGb > 0);
+      return { status: items.length > 0 ? 'ok' : 'missing', items };
     } catch {
-      return [];
+      return { status: 'missing', items: [] };
     }
   }
 
@@ -68,7 +145,7 @@ Get-CimInstance Win32_VideoController | ForEach-Object {
 `.trim();
   }
 
-  private powerShellJson(command: string, timeoutMs: number): Promise<string> {
+  private powerShellJson(command: string, timeoutMs: number): Promise<HardwareCheckResult> {
     return new Promise((resolve) => {
       let settled = false;
       const child = spawn(
@@ -86,7 +163,7 @@ Get-CimInstance Win32_VideoController | ForEach-Object {
         }
         settled = true;
         child.kill();
-        resolve('');
+        resolve({ status: 'timeout', value: command });
       }, timeoutMs);
 
       child.stdout.on('data', (chunk: Buffer) => {
@@ -99,7 +176,7 @@ Get-CimInstance Win32_VideoController | ForEach-Object {
         }
         settled = true;
         clearTimeout(timeout);
-        resolve('');
+        resolve({ status: 'missing', value: command });
       });
 
       child.on('close', (code) => {
@@ -108,8 +185,15 @@ Get-CimInstance Win32_VideoController | ForEach-Object {
         }
         settled = true;
         clearTimeout(timeout);
-        resolve(code === 0 ? Buffer.concat(chunks).toString('utf8') : '');
+        resolve({
+          status: code === 0 ? 'ok' : 'missing',
+          value: Buffer.concat(chunks).toString('utf8'),
+        });
       });
     });
+  }
+
+  private formatGb(value: number): string {
+    return `${Number.isInteger(value) ? value : value.toFixed(1)} GB`;
   }
 }
