@@ -15,6 +15,7 @@ type AppHomeProps = {
   onModeChange: (mode: HomeMode) => void;
   onStartRecording: () => void;
   onStopRecording: () => void;
+  onCancelRecording: () => void;
   onStartTranscript: () => void;
   onStopTranscript: () => void;
   onImprove: () => void;
@@ -36,6 +37,7 @@ export const AppHome = ({
   onModeChange,
   onStartRecording,
   onStopRecording,
+  onCancelRecording,
   onStartTranscript,
   onStopTranscript,
   onImprove,
@@ -52,11 +54,13 @@ export const AppHome = ({
     waveform={waveform}
     whisperModel={settings.whisperModel}
     ollamaModel={settings.ollamaModel}
+    hotkeys={settings.hotkeys}
     whisperRuntime={whisperRuntime}
     onOpenSettings={onOpenSettings}
     onModeChange={onModeChange}
     onStartRecording={onStartRecording}
     onStopRecording={onStopRecording}
+    onCancelRecording={onCancelRecording}
     onStartTranscript={onStartTranscript}
     onStopTranscript={onStopTranscript}
     onImprove={onImprove}

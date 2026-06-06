@@ -1,5 +1,6 @@
 export type WavRecorder = {
   stop: () => Promise<ArrayBuffer>;
+  cancel: () => Promise<void>;
 };
 
 type TranscriptRecorderOptions = {
@@ -28,14 +29,19 @@ export const startWavRecorder = async (onLevel: (level: number) => void): Promis
   source.connect(processor);
   processor.connect(context.destination);
 
+  const close = async (): Promise<void> => {
+    processor.disconnect();
+    source.disconnect();
+    stream.getTracks().forEach((track) => track.stop());
+    await context.close();
+  };
+
   return {
     stop: async () => {
-      processor.disconnect();
-      source.disconnect();
-      stream.getTracks().forEach((track) => track.stop());
-      await context.close();
+      await close();
       return encodeWav(resample(merge(chunks), inputSampleRate, 16000), 16000);
     },
+    cancel: close,
   };
 };
 
@@ -115,18 +121,23 @@ export const startTranscriptRecorder = async (
   source.connect(processor);
   processor.connect(context.destination);
 
+  const close = async (): Promise<void> => {
+    stopped = true;
+    navigator.mediaDevices.removeEventListener('devicechange', reconnectMic);
+    processor.disconnect();
+    source.disconnect();
+    micSource?.disconnect();
+    systemSource?.disconnect();
+    streams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
+    await context.close();
+  };
+
   return {
     stop: async () => {
-      stopped = true;
-      navigator.mediaDevices.removeEventListener('devicechange', reconnectMic);
-      processor.disconnect();
-      source.disconnect();
-      micSource?.disconnect();
-      systemSource?.disconnect();
-      streams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
-      await context.close();
+      await close();
       return encodeWav(resample(merge(chunks), inputSampleRate, 16000), 16000);
     },
+    cancel: close,
   };
 };
 

@@ -1,6 +1,7 @@
 import { useEffect, useState, type JSX } from 'react';
-import { AlertTriangle, CheckCircle2, Headphones, Mic, Pencil, TriangleAlert, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Headphones, Mic, Pencil, TriangleAlert } from 'lucide-react';
 import type { OverlayState } from '@shared/types';
+import { defaultSettings } from '@shared/defaults';
 import { api } from '../../api';
 import { inactiveOverlayState } from '../appState';
 
@@ -12,6 +13,11 @@ export const SpeakOverlay = (): JSX.Element => {
         ? 'transcript'
         : 'speak';
   const [overlayState, setOverlayState] = useState<OverlayState>(inactiveOverlayState);
+  const [shortcut, setShortcut] = useState(
+    overlayMode === 'transcript' ? defaultSettings.hotkeys.transcript : defaultSettings.hotkeys.speak,
+  );
+  const modeLabel =
+    overlayState.mode === 'speak' ? 'Speak' : overlayState.mode === 'improve' ? 'Improve' : 'Transcript';
   const label =
     overlayState.status === 'warning'
       ? 'Action unavailable'
@@ -21,6 +27,8 @@ export const SpeakOverlay = (): JSX.Element => {
         ? 'Transcribing'
         : overlayState.status === 'improving'
           ? 'Improving'
+          : overlayState.status === 'done'
+            ? `${modeLabel} done${overlayState.message ? ` · ${overlayState.message}` : ''}`
           : overlayState.mode === 'speak'
             ? 'Speak done'
             : overlayState.mode === 'improve'
@@ -35,6 +43,11 @@ export const SpeakOverlay = (): JSX.Element => {
 
   useEffect(() => {
     let mounted = true;
+    void api.settings.get().then((settings) => {
+      if (mounted) {
+        setShortcut(overlayMode === 'transcript' ? settings.hotkeys.transcript : settings.hotkeys.speak);
+      }
+    });
     void api.overlay.getState(overlayMode).then((state) => {
       if (mounted) {
         setOverlayState(state);
@@ -52,12 +65,10 @@ export const SpeakOverlay = (): JSX.Element => {
   }, []);
 
   return (
-    <main className={`speak-overlay ${overlayState.status === 'done' ? 'done' : ''} ${overlayState.status === 'warning' ? 'warning' : ''}`}>
+    <main className={`speak-overlay ${overlayState.status}`}>
       <div className={`speak-overlay-icon ${overlayState.status === 'done' ? 'done' : ''} ${overlayState.status === 'warning' ? 'warning' : ''}`}>
         {overlayState.status === 'warning' ? (
           <AlertTriangle size={18} />
-        ) : overlayState.status === 'done' ? (
-          <CheckCircle2 size={20} />
         ) : overlayState.mode === 'speak' ? (
           <Mic size={20} />
         ) : overlayState.mode === 'improve' ? (
@@ -81,26 +92,31 @@ export const SpeakOverlay = (): JSX.Element => {
           <div className="speak-overlay-spinner" aria-hidden="true" />
         ) : null}
       </div>
-      {overlayState.message && (
+      {overlayState.message && overlayState.status !== 'done' && (
         <span className={`speak-overlay-message ${overlayState.messageType ?? 'error'}`}>
           <MessageIcon size={13} />
           <span>{overlayState.message}</span>
         </span>
       )}
       {overlayState.status === 'recording' && (
-        <button type="button" title="Stop recording" onClick={() => void api.overlay.stopSpeak(overlayMode)}>
+        <button
+          className="speak-overlay-stop"
+          type="button"
+          title="Stop recording"
+          onClick={() => void api.overlay.stopSpeak(overlayMode)}
+        >
           <span>Stop</span>
+          <small>{shortcut.replace('CommandOrControl', 'Ctrl')}</small>
         </button>
       )}
-      {overlayState.status !== 'done' && (
+      {overlayState.status === 'recording' && overlayMode !== 'improve' && (
         <button
-          className="speak-overlay-close"
+          className="speak-overlay-cancel"
           type="button"
-          title="Close overlay"
-          aria-label="Close overlay"
-          onClick={() => void api.overlay.dismiss(overlayMode)}
+          title="Cancel recording"
+          onClick={() => void api.overlay.cancelRecording(overlayMode)}
         >
-          <X size={14} />
+          <span>Cancel</span>
         </button>
       )}
     </main>

@@ -30,6 +30,8 @@ export const channels = {
   overlayGetState: 'overlay:getState',
   overlayStateChanged: 'overlay:stateChanged',
   overlayStopSpeak: 'overlay:stopSpeak',
+  overlayCancelRecording: 'overlay:cancelRecording',
+  appCancelRecording: 'app:cancelRecording',
   overlayDismiss: 'overlay:dismiss',
   windowMinimize: 'window:minimize',
   windowToggleMaximize: 'window:toggleMaximize',

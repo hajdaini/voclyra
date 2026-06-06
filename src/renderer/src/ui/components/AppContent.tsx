@@ -37,6 +37,7 @@ type AppContentProps = {
   onModeChange: (mode: HomeMode) => void;
   onStartRecording: () => void;
   onStopRecording: () => void;
+  onCancelRecording: () => void;
   onImprove: () => void;
   onImproveInputChange: (value: string) => void;
   onImproveInputFocusChange: (focused: boolean) => void;
@@ -81,6 +82,7 @@ export const AppContent = ({
   onModeChange,
   onStartRecording,
   onStopRecording,
+  onCancelRecording,
   onImprove,
   onImproveInputChange,
   onImproveInputFocusChange,
@@ -119,6 +121,7 @@ export const AppContent = ({
         onModeChange={onModeChange}
         onStartRecording={onStartRecording}
         onStopRecording={onStopRecording}
+        onCancelRecording={onCancelRecording}
         onStartTranscript={onStartTranscript}
         onStopTranscript={onStopTranscript}
         onImprove={onImprove}

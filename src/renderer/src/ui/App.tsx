@@ -192,6 +192,27 @@ export const App = (): JSX.Element => {
     }
   };
 
+  const cancelRecording = async (recordingMode: 'speak' | 'transcript'): Promise<void> => {
+    const activeRecorder = recordingMode === 'speak' ? recorder : transcriptRecorder;
+    if (!activeRecorder) {
+      return;
+    }
+    if (recordingMode === 'speak') {
+      setRecorder(null);
+      setSpeakResult({ text: '', status: 'ready', message: 'Recording cancelled.' });
+    } else {
+      setTranscriptRecorder(null);
+      setTranscriptResult({ text: '', status: 'ready', message: 'Recording cancelled.' });
+    }
+    delete overlayNoticeRef.current[recordingMode];
+    setWaveform(Array.from({ length: 28 }, () => 0.08));
+    await activeRecorder.cancel();
+    void api.overlay.setState({
+      ...inactiveOverlayState,
+      mode: recordingMode,
+    });
+  };
+
   const refreshHistoryAndModels = async (): Promise<void> => {
     const [nextHistory] = await Promise.all([api.history.list(), loadModels()]);
     setHistory(nextHistory);
@@ -587,6 +608,8 @@ export const App = (): JSX.Element => {
       setImproveResult(nextResult);
       if (nextResult.status === 'error' || !nextResult.text) {
         showOverlayWarning('improve', nextResult.message, nextResult.status === 'error' ? 'error' : 'warning');
+      } else {
+        showCompletionOverlay('improve', nextResult);
       }
       void refreshHistoryAndModels();
     });
@@ -605,11 +628,15 @@ export const App = (): JSX.Element => {
       }
       void startTranscript();
     });
+    const removeCancelRecordingListener = api.actions.onCancelRecording((recordingMode) => {
+      void cancelRecording(recordingMode);
+    });
     return () => {
       removeSpeakListener();
       removeImproveListener();
       removeImproveResultListener();
       removeTranscriptListener();
+      removeCancelRecordingListener();
     };
   }, [
     recorder,
@@ -659,6 +686,7 @@ export const App = (): JSX.Element => {
         onModeChange={changeMode}
         onStartRecording={() => void startRecording()}
         onStopRecording={() => void stopRecording()}
+        onCancelRecording={() => void cancelRecording(mode === 'transcript' ? 'transcript' : 'speak')}
         onImprove={() => void improve()}
         onImproveInputChange={setImproveInput}
         onImproveInputFocusChange={setIsImproveInputFocused}

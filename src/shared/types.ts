@@ -122,6 +122,7 @@ export type AppApi = {
     onSpeak: (callback: () => void) => () => void;
     onImproveText: (callback: () => void) => () => void;
     onTranscript: (callback: () => void) => () => void;
+    onCancelRecording: (callback: (mode: 'speak' | 'transcript') => void) => () => void;
     onImproveResult: (callback: (result: ResultState) => void) => () => void;
     onSection: (callback: (section: AppSection) => void) => () => void;
   };
@@ -129,6 +130,7 @@ export type AppApi = {
     setState: (state: OverlayState) => Promise<void>;
     getState: (mode?: OverlayState['mode']) => Promise<OverlayState>;
     stopSpeak: (mode?: OverlayState['mode']) => Promise<void>;
+    cancelRecording: (mode: 'speak' | 'transcript') => Promise<void>;
     dismiss: (mode?: OverlayState['mode']) => Promise<void>;
     onState: (callback: (state: OverlayState) => void) => () => void;
   };

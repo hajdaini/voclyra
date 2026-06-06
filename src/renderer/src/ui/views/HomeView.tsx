@@ -14,7 +14,7 @@ import {
   TriangleAlert,
   Wand2,
 } from 'lucide-react';
-import type { HomeMode, ResultState, WhisperRuntimeInfo } from '@shared/types';
+import type { HomeMode, Hotkeys, ResultState, WhisperRuntimeInfo } from '@shared/types';
 
 export type HomeViewProps = {
   mode: HomeMode;
@@ -25,11 +25,13 @@ export type HomeViewProps = {
   waveform: number[];
   whisperModel: string;
   ollamaModel: string;
+  hotkeys: Hotkeys;
   whisperRuntime: WhisperRuntimeInfo;
   onOpenSettings: () => void;
   onModeChange: (mode: HomeMode) => void;
   onStartRecording: () => void;
   onStopRecording: () => void;
+  onCancelRecording: () => void;
   onStartTranscript: () => void;
   onStopTranscript: () => void;
   onImprove: () => void;
@@ -47,11 +49,13 @@ export const HomeView = ({
   waveform,
   whisperModel,
   ollamaModel,
+  hotkeys,
   whisperRuntime,
   onOpenSettings,
   onModeChange,
   onStartRecording,
   onStopRecording,
+  onCancelRecording,
   onStartTranscript,
   onStopTranscript,
   onImprove,
@@ -174,8 +178,22 @@ export const HomeView = ({
               ) : (
                 <Mic size={28} />
               )}
-              <span>{isRecording ? 'Stop' : mode === 'transcript' ? 'Transcript' : 'Speak'}</span>
+              <span className="action-button-text">
+                <span>{isRecording ? 'Stop' : mode === 'transcript' ? 'Transcript' : 'Speak'}</span>
+                <small>{formatShortcut(mode === 'transcript' ? hotkeys.transcript : hotkeys.speak)}</small>
+              </span>
             </button>
+
+            {isRecording && (
+              <button
+                className="cancel-record-button"
+                type="button"
+                title="Cancel recording"
+                onClick={onCancelRecording}
+              >
+                <span>Cancel</span>
+              </button>
+            )}
 
             <div className={`waveform ${isRecording ? 'recording' : ''}`} aria-hidden="true">
               {waveform.map((level, index) => (
@@ -206,7 +224,10 @@ export const HomeView = ({
               disabled={isActionBlocked}
             >
               <Wand2 size={17} />
-              <span>Improve</span>
+              <span className="action-button-text">
+                <span>Improve</span>
+                <small>{formatShortcut(hotkeys.improveText)}</small>
+              </span>
             </button>
           </div>
         )}
@@ -265,6 +286,8 @@ export const HomeView = ({
     </div>
   );
 };
+
+const formatShortcut = (shortcut: string): string => shortcut.replace('CommandOrControl', 'Ctrl');
 
 const statusIcon = {
   ready: CheckCircle2,

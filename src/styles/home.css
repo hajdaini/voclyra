@@ -263,6 +263,8 @@
 }
 
 .speak-task.recording {
+  grid-template-columns: 136px 84px minmax(0, 1fr);
+  gap: 8px;
   border-color: rgba(255, 156, 77, 0.72);
   background: rgba(255, 156, 77, 0.08);
 }
@@ -332,12 +334,51 @@
   font-weight: 750;
 }
 
+.record-button .action-button-text,
+.primary-action .action-button-text {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  line-height: 1.05;
+}
+
+.record-button .action-button-text small,
+.primary-action .action-button-text small {
+  display: block;
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1;
+  opacity: 0.72;
+}
+
+.cancel-record-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 84px;
+  height: 48px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.cancel-record-button:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: rgba(255, 107, 122, 0.08);
+}
+
 .waveform {
   display: flex;
   align-items: center;
   gap: 3px;
   height: 38px;
   min-width: 0;
+  overflow: hidden;
   padding: 0 2px;
 }
 

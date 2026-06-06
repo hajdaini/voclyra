@@ -145,6 +145,10 @@ export const stopSpeakFromOverlay = (mode: OverlayMode = 'speak'): void => {
   mainWindow?.webContents.send(channels.appSpeak);
 };
 
+export const cancelRecordingFromOverlay = (mode: 'speak' | 'transcript'): void => {
+  mainWindow?.webContents.send(channels.appCancelRecording, mode);
+};
+
 export const dismissSpeakOverlay = (mode: OverlayMode = 'speak'): void => {
   overlayDismissed.set(mode, true);
   overlayWindows.get(mode)?.hide();
@@ -166,7 +170,7 @@ const updateSpeakOverlayVisibility = (): void => {
 
   activeStates.forEach((state, index) => {
     const window = createSpeakOverlayWindow(state.mode);
-    positionSpeakOverlay(window, index);
+    positionSpeakOverlay(window, index, state);
     window.setFocusable(false);
     window.webContents.send(channels.overlayStateChanged, state);
     window.showInactive();
@@ -180,7 +184,7 @@ const createSpeakOverlayWindow = (mode: OverlayMode): BrowserWindow => {
   }
 
   const window = new BrowserWindow({
-    width: 246,
+    width: 380,
     height: 86,
     resizable: false,
     maximizable: false,
@@ -230,10 +234,17 @@ const createSpeakOverlayWindow = (mode: OverlayMode): BrowserWindow => {
   return window;
 };
 
-const positionSpeakOverlay = (window: BrowserWindow, index: number): void => {
+const positionSpeakOverlay = (window: BrowserWindow, index: number, state: OverlayState): void => {
   const { workArea } = screen.getPrimaryDisplay();
   const size = window.getSize();
-  const width = size[0] ?? 246;
+  const width =
+    state.status === 'recording'
+      ? 310
+      : state.message
+        ? 330
+        : state.status === 'done'
+          ? 250
+          : 230;
   const height = size[1] ?? 86;
   const gap = 10;
   window.setBounds({

@@ -116,7 +116,7 @@ export class WhisperService {
     try {
       const audioPath = join(temporaryRoot, 'input.wav');
       await writeFile(audioPath, audio);
-      return this.transcribeAudioFile(
+      return await this.transcribeAudioFile(
         modelPath,
         audioPath,
         temporaryRoot,
@@ -140,7 +140,7 @@ export class WhisperService {
       const audio = await readFile(audioPath);
       const segments = this.speechSegments(audio);
       if (segments.length <= 1) {
-        return this.transcribeAudioFile(
+        return await this.transcribeAudioFile(
           modelPath,
           audioPath,
           temporaryRoot,
@@ -185,7 +185,7 @@ export class WhisperService {
     const temporaryRoot = await this.storage.ensureDir('tmp', id);
 
     try {
-      return this.transcribeMeetingAudio(audio, modelPath, temporaryRoot, id, options.timeoutMs, options.debugName);
+      return await this.transcribeMeetingAudio(audio, modelPath, temporaryRoot, id, options.timeoutMs, options.debugName);
     } finally {
       await this.cleanupTemporaryFiles(temporaryRoot);
     }

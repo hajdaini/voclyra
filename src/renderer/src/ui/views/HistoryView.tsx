@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, type JSX, type MouseEvent } from 'react';
-import { Calendar, CheckSquare, Clipboard, FileText, Headphones, Mic, Search, Square, Star, Trash2, Wand2 } from 'lucide-react';
+import { Calendar, CheckSquare, Clipboard, FileText, Headphones, Mic, Pencil, Search, Square, Star, Trash2, Wand2 } from 'lucide-react';
 import type { HistoryEntry } from '@shared/types';
 
 export type HistoryViewProps = {
   entries: HistoryEntry[];
   onCopy: (entry: HistoryEntry) => void;
   onFavoriteToggle: (id: string) => void;
+  onTitleUpdate: (id: string, title: string) => void;
   onDelete: (id: string) => void;
   onDeleteSelected: (ids: string[]) => void;
   onClear: () => void;
@@ -15,6 +16,7 @@ export const HistoryView = ({
   entries,
   onCopy,
   onFavoriteToggle,
+  onTitleUpdate,
   onDelete,
   onDeleteSelected,
   onClear,
@@ -29,7 +31,7 @@ export const HistoryView = ({
       const matchesKind = kindFilter === 'all' || entry.kind === kindFilter;
       const matchesQuery =
         !normalizedQuery ||
-        `${entry.kind} ${entry.text} ${entry.createdAt}`.toLowerCase().includes(normalizedQuery);
+        `${entry.kind} ${entry.title} ${entry.text} ${entry.createdAt}`.toLowerCase().includes(normalizedQuery);
       return matchesKind && matchesQuery;
     });
   }, [entries, kindFilter, query]);
@@ -148,7 +150,7 @@ export const HistoryView = ({
               </button>
               <button className="history-open" type="button" title="Select entry" onClick={(event) => toggleSelected(entry, event)}>
                 <div className="history-content">
-                  <p>{compactText(entry.text)}</p>
+                  <p>{entry.title}</p>
                   <div className="history-title-row">
                     <span className={`history-kind-tag ${entry.kind}`}>
                       {entry.kind === 'dictation' ? (
@@ -186,6 +188,19 @@ export const HistoryView = ({
                   <Clipboard size={18} />
                 </button>
                 <button
+                  type="button"
+                  title="Edit title"
+                  aria-label="Edit title"
+                  onClick={() => {
+                    const title = window.prompt('Edit title', entry.title)?.trim();
+                    if (title && title !== entry.title) {
+                      onTitleUpdate(entry.id, title);
+                    }
+                  }}
+                >
+                  <Pencil size={18} />
+                </button>
+                <button
                   className="danger-action"
                   type="button"
                   title="Delete entry"
@@ -201,9 +216,4 @@ export const HistoryView = ({
       </div>
     </section>
   );
-};
-
-const compactText = (text: string): string => {
-  const normalized = text.replace(/\s+/g, ' ').trim();
-  return normalized.length > 75 ? `${normalized.slice(0, 75)}...` : normalized;
 };

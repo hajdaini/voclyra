@@ -16,6 +16,7 @@ import { WhisperService } from '@services/whisper-service';
 import { HotkeyService } from '@services/hotkey-service';
 import { AppStorage } from '@storage/app-storage';
 import {
+  cancelRecordingFromOverlay,
   dismissSpeakOverlay,
   getSpeakOverlayState,
   sendAppAction,
@@ -23,6 +24,7 @@ import {
   setSpeakOverlayState,
   stopSpeakFromOverlay,
 } from './window';
+import { updateTray } from './tray';
 
 let settings: Settings = defaultSettings;
 const activePasteService = new ActivePasteService();
@@ -85,7 +87,6 @@ export const improveClipboardFromHotkey = async (): Promise<void> => {
     }
     await historyService.add({ kind: 'improvement', text: improved }, settings.maxHistoryItems);
     sendImproveResult(ready(improved, 'Copied to clipboard'));
-    showCompletionOverlay('improve');
   } catch (error) {
     sendImproveResult(failed(error));
   } finally {
@@ -114,6 +115,7 @@ export const registerIpc = (): void => {
     }
     const savedSettings = await settingsService.save(nextSettings);
     settings = savedSettings;
+    updateTray(savedSettings);
     return savedSettings;
   });
 
@@ -173,7 +175,6 @@ export const registerIpc = (): void => {
         await activePasteService.paste();
       }
       await historyService.add({ kind: 'dictation', text }, settings.maxHistoryItems);
-      showCompletionOverlay('speak');
       return ready(text, 'Copied to clipboard');
     } catch (error) {
       return failed(error);
@@ -203,7 +204,6 @@ export const registerIpc = (): void => {
         return ready('', 'No speech detected.');
       }
       await historyService.add({ kind: 'transcript', text }, settings.maxHistoryItems);
-      showCompletionOverlay('transcript');
       return ready(text, 'Transcript generated.');
     } catch (error) {
       return failed(error);
@@ -241,7 +241,6 @@ export const registerIpc = (): void => {
         await activePasteService.paste();
       }
       await historyService.add({ kind: 'improvement', text: improved }, settings.maxHistoryItems);
-      showCompletionOverlay('improve');
       return ready(improved, 'Copied to clipboard');
     } catch (error) {
       return failed(error);
@@ -295,6 +294,12 @@ export const registerIpc = (): void => {
     stopSpeakFromOverlay(mode);
   });
 
+  ipcMain.handle(channels.overlayCancelRecording, (_event, value: unknown) => {
+    if (value === 'speak' || value === 'transcript') {
+      cancelRecordingFromOverlay(value);
+    }
+  });
+
   ipcMain.handle(channels.overlayDismiss, (_event, value: unknown) => {
     const mode = value === 'improve' || value === 'transcript' ? value : 'speak';
     dismissSpeakOverlay(mode);
@@ -342,21 +347,4 @@ const readActiveSelection = async (): Promise<string> => {
     return '';
   }
   return selectedText;
-};
-
-const showCompletionOverlay = (mode: 'speak' | 'improve' | 'transcript'): void => {
-  setSpeakOverlayState({
-    active: true,
-    mode,
-    status: 'done',
-    waveform: [],
-  });
-  setTimeout(() => {
-    setSpeakOverlayState({
-      active: false,
-      mode,
-      status: 'done',
-      waveform: [],
-    });
-  }, 1800);
 };

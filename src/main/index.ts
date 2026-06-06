@@ -41,9 +41,8 @@ void app.whenReady().then(async () => {
       improveText: () => void improveClipboardFromHotkey(),
       transcript: () => sendAppAction('transcript'),
     });
+    createTray(settings);
   });
-
-  createTray();
 });
 
 app.on('activate', () => {

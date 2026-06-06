@@ -88,6 +88,17 @@ const api: AppApi = {
         ipcRenderer.removeListener(channels.appTranscript, listener);
       };
     },
+    onCancelRecording: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, mode: unknown): void => {
+        if (mode === 'speak' || mode === 'transcript') {
+          callback(mode);
+        }
+      };
+      ipcRenderer.on(channels.appCancelRecording, listener);
+      return () => {
+        ipcRenderer.removeListener(channels.appCancelRecording, listener);
+      };
+    },
     onImproveResult: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, result: Parameters<typeof callback>[0]): void => {
         callback(result);
@@ -118,6 +129,7 @@ const api: AppApi = {
     setState: (state) => ipcRenderer.invoke(channels.overlaySetState, state) as Promise<void>,
     getState: (mode) => ipcRenderer.invoke(channels.overlayGetState, mode) as Promise<OverlayState>,
     stopSpeak: (mode) => ipcRenderer.invoke(channels.overlayStopSpeak, mode) as Promise<void>,
+    cancelRecording: (mode) => ipcRenderer.invoke(channels.overlayCancelRecording, mode) as Promise<void>,
     dismiss: (mode) => ipcRenderer.invoke(channels.overlayDismiss, mode) as Promise<void>,
     onState: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, state: OverlayState): void => {

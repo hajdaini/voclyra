@@ -298,7 +298,7 @@
   --overlay-accent-strong: var(--primary-strong);
   --overlay-on-accent: #120c06;
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) auto 24px;
+  grid-template-columns: 38px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
@@ -317,11 +317,15 @@
   grid-template-columns: 38px minmax(0, 1fr);
 }
 
+.speak-overlay.recording {
+  grid-template-columns: 38px minmax(72px, 1fr) 66px 64px;
+}
+
 .speak-overlay.warning {
   --overlay-accent: #ffd166;
   --overlay-accent-strong: #ffe39a;
   --overlay-on-accent: #161006;
-  grid-template-columns: 38px minmax(0, 1fr) 24px;
+  grid-template-columns: 38px minmax(0, 1fr);
 }
 
 body:has(.speak-overlay) {
@@ -433,6 +437,32 @@ body:has(.speak-overlay) {
   background: #ffad66;
 }
 
+.speak-overlay .speak-overlay-stop {
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 8px;
+  line-height: 1;
+}
+
+.speak-overlay .speak-overlay-stop small {
+  font-size: 9px;
+  font-weight: 650;
+  opacity: 0.78;
+}
+
+.speak-overlay .speak-overlay-cancel {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--muted);
+  padding: 0 6px;
+}
+
+.speak-overlay .speak-overlay-cancel:hover {
+  border-color: var(--danger);
+  background: rgba(255, 107, 122, 0.08);
+  color: var(--danger);
+}
+
 .speak-overlay-spinner {
   width: 20px;
   height: 20px;
@@ -440,20 +470,4 @@ body:has(.speak-overlay) {
   border-top-color: var(--overlay-accent);
   border-radius: 999px;
   animation: spin 760ms linear infinite;
-}
-
-.speak-overlay .speak-overlay-close {
-  width: 24px;
-  height: 24px;
-  min-height: 24px;
-  padding: 0;
-  border-color: var(--border);
-  color: var(--muted);
-  background: transparent;
-}
-
-.speak-overlay .speak-overlay-close:hover {
-  border-color: var(--hover-border);
-  color: var(--text);
-  background: var(--hover-bg);
 }
