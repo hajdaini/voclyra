@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 import { Bot, Cpu, Headphones, Info, Mic, ShieldCheck, UserRound, Wand2, Zap } from 'lucide-react';
+import { packageInfo } from '@shared/GlobalVars';
 
 export const AboutView = (): JSX.Element => (
   <section className="page about-page">
@@ -10,19 +11,19 @@ export const AboutView = (): JSX.Element => (
           <span>About</span>
         </h1>
         <p className="page-subtitle">
-          Voclyra is built around shortcuts, voice capture, and local AI to make writing workflows faster.
+          {packageInfo.productName} is built around shortcuts, voice capture, and local AI to make writing workflows faster.
         </p>
       </div>
     </div>
 
-    <div className="about-faq" aria-label="About Voclyra">
+    <div className="about-faq" aria-label={`About ${packageInfo.productName}`}>
       <article>
         <h2>
           <Zap size={18} />
-          Why Voclyra exists
+          Why {packageInfo.productName} exists
         </h2>
         <p>
-          Typing is slow compared to speaking. Voclyra helps you capture ideas, notes, and messages faster by turning voice into usable text from quick shortcuts.
+          Typing is slow compared to speaking. {packageInfo.productName} helps you capture ideas, notes, and messages faster by turning voice into usable text from quick shortcuts.
         </p>
       </article>
 
@@ -83,14 +84,14 @@ export const AboutView = (): JSX.Element => (
           <UserRound size={17} />
           Creator
         </dt>
-        <dd>timtim</dd>
+        <dd>{packageInfo.author}</dd>
       </div>
       <div>
         <dt>
           <Cpu size={17} />
           Version
         </dt>
-        <dd>0.1.0</dd>
+        <dd>{packageInfo.version}</dd>
       </div>
       <div>
         <dt>

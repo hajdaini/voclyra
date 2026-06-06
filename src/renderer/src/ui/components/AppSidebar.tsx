@@ -1,7 +1,6 @@
 import type { JSX } from 'react';
 import { Headphones, Keyboard, Mic, Pencil } from 'lucide-react';
 import type { AppSection, Settings } from '@shared/types';
-import logoUrl from '@assets/logo.svg';
 import { navItems } from '../appState';
 
 type AppSidebarProps = {
@@ -18,9 +17,6 @@ export const AppSidebar = ({
   onShortcutSettings,
 }: AppSidebarProps): JSX.Element => (
   <aside className="sidebar">
-    <div className="logo" aria-label="Voclyra">
-      <img src={logoUrl} alt="" />
-    </div>
     <nav className="nav">
       {navItems.map((item) => {
         const Icon = item.icon;

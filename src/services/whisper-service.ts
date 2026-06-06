@@ -6,6 +6,7 @@ import { app } from 'electron';
 import { spawn } from 'node:child_process';
 import { AppStorage } from '@storage/app-storage';
 import { ProcessLogService } from '@services/process-log-service';
+import { appStorageConfig, whisperRuntimeConfig } from '@shared/GlobalVars';
 import type { WhisperRuntimeInfo } from '@shared/types';
 
 type WhisperRunResult = {
@@ -72,7 +73,7 @@ export class WhisperService {
     const home = homedir();
     const localAppData = process.env.LOCALAPPDATA;
     return [
-      join(home, '.voclyra', 'models', 'whisper'),
+      join(home, appStorageConfig.directoryName, 'models', 'whisper'),
       join(process.cwd(), 'models', 'whisper'),
       join(process.cwd(), 'whisper.cpp', 'models'),
       join(home, 'whisper.cpp', 'models'),
@@ -291,11 +292,9 @@ export class WhisperService {
   private executablePath(): string {
     const cudaPath = join(
       homedir(),
-      '.voclyra',
-      'runtimes',
-      'whisper-cuda',
-      'win-x64',
-      'whisper-cli.exe',
+      appStorageConfig.directoryName,
+      ...whisperRuntimeConfig.cudaRuntimeParts,
+      whisperRuntimeConfig.executableName,
     );
 
     if (process.platform === 'win32' && existsSync(cudaPath)) {
@@ -303,10 +302,18 @@ export class WhisperService {
     }
 
     if (app.isPackaged) {
-      return join(process.resourcesPath, 'whisper', 'win-x64', 'whisper-cli.exe');
+      return join(
+        process.resourcesPath,
+        ...whisperRuntimeConfig.packagedRuntimeParts,
+        whisperRuntimeConfig.executableName,
+      );
     }
 
-    return resolve(process.cwd(), 'resources', 'whisper', 'win-x64', 'whisper-cli.exe');
+    return resolve(
+      process.cwd(),
+      ...whisperRuntimeConfig.devRuntimeParts,
+      whisperRuntimeConfig.executableName,
+    );
   }
 
   private runWhisper(
@@ -424,9 +431,9 @@ export class WhisperService {
     const executable = this.executablePath();
     const command = [executable, ...args].map((part) => `"${part}"`).join(' ');
     const fileName = logName === 'transcript'
-      ? 'transcript-whisper.log'
+      ? 'transcript.log'
       : logName === 'speak'
-        ? 'speak-whisper.log'
+        ? 'speak.log'
         : 'whisper.log';
     await this.logger.append(fileName, [`cwd: ${cwd}`, `command: ${command}`, rawOutput, status]);
   }

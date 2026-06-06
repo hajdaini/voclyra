@@ -1,9 +1,10 @@
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { logConfig } from '@shared/GlobalVars';
 import { AppStorage } from '@storage/app-storage';
 
 export class ProcessLogService {
-  private readonly maxBytes = 256 * 1024;
+  private readonly maxBytes = logConfig.processMaxBytes;
   private readonly storage = new AppStorage();
 
   async append(fileName: string, lines: string[]): Promise<void> {

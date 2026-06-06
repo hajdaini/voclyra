@@ -2,6 +2,8 @@ export const channels = {
   settingsGet: 'settings:get',
   settingsSave: 'settings:save',
   appOpenDataFolder: 'app:openDataFolder',
+  appOpenLogsFolder: 'app:openLogsFolder',
+  appQuit: 'app:quit',
   modelsListOllama: 'models:listOllama',
   whisperListModels: 'whisper:listModels',
   dictationStart: 'dictation:start',

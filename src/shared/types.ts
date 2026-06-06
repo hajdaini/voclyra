@@ -88,6 +88,8 @@ export type AppApi = {
   };
   app: {
     openDataFolder: () => Promise<void>;
+    openLogsFolder: () => Promise<void>;
+    quit: () => Promise<void>;
   };
   models: {
     listOllama: () => Promise<string[]>;

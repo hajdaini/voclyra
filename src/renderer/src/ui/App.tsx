@@ -10,12 +10,14 @@ import type {
   WhisperRuntimeInfo,
 } from '@shared/types';
 import { defaultSettings } from '@shared/defaults';
+import { appMessages } from '@shared/GlobalVars';
 import { audioActionBlockMessage, improveRunningMessage } from '@shared/action-locks';
 import { api } from '../api';
 import { startTranscriptRecorder, startWavRecorder, type WavRecorder } from '../audio/wav-recorder';
 import { AppContent } from './components/AppContent';
 import { AppToast, type Toast, type ToastType } from './components/AppToast';
 import { AppSidebar } from './components/AppSidebar';
+import { AppTopbar } from './components/AppTopbar';
 import { SpeakOverlay } from './components/SpeakOverlay';
 import {
   improveFallbackResult,
@@ -52,7 +54,7 @@ export const App = (): JSX.Element => {
   const [isTranscriptProcessing, setIsTranscriptProcessing] = useState(false);
   const [isImproveProcessing, setIsImproveProcessing] = useState(false);
   const [waveform, setWaveform] = useState<number[]>(Array.from({ length: 28 }, () => 0.08));
-  const [settingsFocus, setSettingsFocus] = useState<'models' | 'shortcuts' | null>(null);
+  const [settingsFocus, setSettingsFocus] = useState<'models' | 'microphone' | 'history' | 'shortcuts' | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [isShortcutEditing, setIsShortcutEditing] = useState(false);
   const [isImproveInputFocused, setIsImproveInputFocused] = useState(false);
@@ -375,7 +377,7 @@ export const App = (): JSX.Element => {
 
   const copy = async (): Promise<void> => {
     await api.clipboard.write(result.text);
-    showToast('info', 'Copied to clipboard');
+    showToast('info', appMessages.copiedToClipboard);
   };
 
   const deleteEntry = async (id: string): Promise<void> => {
@@ -399,8 +401,19 @@ export const App = (): JSX.Element => {
   };
 
   const clearHistory = async (): Promise<void> => {
+    if (!window.confirm('Clear all history? This cannot be undone.')) {
+      return;
+    }
     setHistory(await api.history.clear());
     showToast('info', 'History cleared.');
+  };
+
+  const resetSettings = async (): Promise<void> => {
+    if (!window.confirm('Reset all settings to defaults? This cannot be undone.')) {
+      return;
+    }
+    await saveSettings(defaultSettings);
+    showToast('success', 'Settings reset.');
   };
 
   const saveSettings = async (nextSettings: SettingsType): Promise<void> => {
@@ -430,8 +443,8 @@ export const App = (): JSX.Element => {
   };
 
   const showCopyToast = (nextResult: ResultState): void => {
-    if (nextResult.message === 'Copied to clipboard') {
-      showToast('info', 'Copied to clipboard');
+    if (nextResult.message === appMessages.copiedToClipboard) {
+      showToast('info', appMessages.copiedToClipboard);
     }
   };
 
@@ -452,7 +465,7 @@ export const App = (): JSX.Element => {
       status: 'done',
       waveform: [],
       message: nextResult.message,
-      messageType: nextResult.message === 'Copied to clipboard' ? 'info' : 'success',
+      messageType: nextResult.message === appMessages.copiedToClipboard ? 'info' : 'success',
     });
     window.setTimeout(() => {
       void api.overlay.setState({
@@ -583,6 +596,31 @@ export const App = (): JSX.Element => {
     setMode(nextMode);
   };
 
+  const openSettingsFocus = (focus: NonNullable<typeof settingsFocus>): void => {
+    setSettingsFocus(focus);
+    setSection('settings');
+  };
+
+  const stopActiveRecording = (): void => {
+    if (transcriptRecorder) {
+      void stopTranscript();
+      return;
+    }
+    if (recorder) {
+      void stopRecording();
+    }
+  };
+
+  const cancelActiveRecording = (): void => {
+    if (transcriptRecorder) {
+      void cancelRecording('transcript');
+      return;
+    }
+    if (recorder) {
+      void cancelRecording('speak');
+    }
+  };
+
   useEffect(() => {
     if (!toast) {
       return;
@@ -673,6 +711,25 @@ export const App = (): JSX.Element => {
 
   return (
     <main className="app-shell">
+      <AppTopbar
+        hotkeys={settings.hotkeys}
+        hasRecording={Boolean(recorder || transcriptRecorder)}
+        onOpenLogsFolder={() => void api.app.openLogsFolder()}
+        onOpenSettings={() => openSettingsFocus('models')}
+        onQuit={() => void api.app.quit()}
+        onSpeak={() => void (recorder ? stopRecording() : startRecording())}
+        onImprove={() => void improve()}
+        onTranscript={() => void (transcriptRecorder ? stopTranscript() : startTranscript())}
+        onStopRecording={stopActiveRecording}
+        onCancelRecording={cancelActiveRecording}
+        onModelSettings={() => openSettingsFocus('models')}
+        onMicrophoneSettings={() => openSettingsFocus('microphone')}
+        onShortcutSettings={() => openSettingsFocus('shortcuts')}
+        onHistorySettings={() => openSettingsFocus('history')}
+        onMinimize={() => void api.window.minimize()}
+        onMaximize={() => void api.window.toggleMaximize()}
+        onClose={() => void api.window.close()}
+      />
       <AppSidebar
         section={section}
         settings={settings}
@@ -681,8 +738,7 @@ export const App = (): JSX.Element => {
           setSettingsFocus(null);
         }}
         onShortcutSettings={() => {
-          setSettingsFocus('shortcuts');
-          setSection('settings');
+          openSettingsFocus('shortcuts');
         }}
       />
       <AppContent
@@ -700,12 +756,8 @@ export const App = (): JSX.Element => {
         whisperModels={whisperModels}
         availableWhisperModels={availableWhisperModels}
         settingsFocus={settingsFocus}
-        onMinimize={() => void api.window.minimize()}
-        onMaximize={() => void api.window.toggleMaximize()}
-        onClose={() => void api.window.close()}
         onOpenSettings={() => {
-          setSettingsFocus('models');
-          setSection('settings');
+          openSettingsFocus('models');
         }}
         onModeChange={changeMode}
         onStartRecording={() => void startRecording()}
@@ -727,10 +779,10 @@ export const App = (): JSX.Element => {
         onFocusHandled={() => setSettingsFocus(null)}
         onShortcutUnavailable={() => showToast('error', 'This shortcut cannot be used.')}
         onShortcutEditingChange={setIsShortcutEditing}
-        onOpenDataFolder={() => void api.app.openDataFolder()}
+        onResetSettings={() => void resetSettings()}
         onHistoryCopy={(entry) => {
           void api.clipboard.write(entry.text);
-          showToast('info', 'Copied to clipboard');
+          showToast('info', appMessages.copiedToClipboard);
         }}
         onHistoryFavoriteToggle={(id) => void toggleHistoryFavorite(id)}
         onHistoryTitleUpdate={(id, title) => void updateHistoryTitle(id, title)}
@@ -768,7 +820,7 @@ const normalizeCopyResult = (
   mode: 'speak' | 'improve' | 'transcript',
   result: ResultState,
 ): ResultState => {
-  if (result.message !== 'Copied to clipboard') {
+  if (result.message !== appMessages.copiedToClipboard) {
     return result;
   }
   const message =

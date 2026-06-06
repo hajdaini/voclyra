@@ -9,6 +9,8 @@ const api: AppApi = {
   },
   app: {
     openDataFolder: () => ipcRenderer.invoke(channels.appOpenDataFolder) as Promise<void>,
+    openLogsFolder: () => ipcRenderer.invoke(channels.appOpenLogsFolder) as Promise<void>,
+    quit: () => ipcRenderer.invoke(channels.appQuit) as Promise<void>,
   },
   models: {
     listOllama: () => ipcRenderer.invoke(channels.modelsListOllama) as Promise<string[]>,

@@ -1,10 +1,13 @@
 import { join } from 'node:path';
 import { BrowserWindow, app, screen, shell } from 'electron';
 import { channels } from '@shared/channels';
+import { appAssetConfig, packageInfo } from '@shared/GlobalVars';
 import type { OverlayState, ResultState } from '@shared/types';
+import { ErrorLogService } from '@services/error-log-service';
 import { applyWindowSecurity } from './security';
 
 let mainWindow: BrowserWindow | null = null;
+const errorLogService = new ErrorLogService();
 type OverlayMode = OverlayState['mode'];
 
 const overlayModes: OverlayMode[] = ['speak', 'improve', 'transcript'];
@@ -22,8 +25,8 @@ const overlayStates = new Map<OverlayMode, OverlayState>(
 
 const getAppIconPath = (): string =>
   app.isPackaged
-    ? join(process.resourcesPath, 'assets/icon.ico')
-    : join(app.getAppPath(), 'resources/icon.ico');
+    ? join(process.resourcesPath, appAssetConfig.packagedAssetDir, appAssetConfig.iconIco)
+    : join(app.getAppPath(), appAssetConfig.devAssetDir, appAssetConfig.iconIco);
 
 export const createMainWindow = (): BrowserWindow => {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -35,7 +38,7 @@ export const createMainWindow = (): BrowserWindow => {
     height: 740,
     minWidth: 960,
     minHeight: 620,
-    title: 'Voclyra',
+    title: packageInfo.productName,
     icon: getAppIconPath(),
     backgroundColor: '#080d14',
     show: false,
@@ -75,6 +78,30 @@ export const createMainWindow = (): BrowserWindow => {
       app.isQuitting = true;
       setTimeout(() => app.quit(), 0);
     }
+  });
+
+  mainWindow.on('unresponsive', () => {
+    errorLogService.capture({
+      source: 'renderer',
+      type: 'unresponsive',
+      error: new Error('Main window became unresponsive.'),
+    });
+  });
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    if (details.reason === 'clean-exit') {
+      return;
+    }
+
+    errorLogService.capture({
+      source: 'renderer',
+      type: 'render-process-gone',
+      error: new Error(details.reason),
+      context: {
+        reason: details.reason,
+        exitCode: details.exitCode,
+      },
+    });
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -196,7 +223,7 @@ const createSpeakOverlayWindow = (mode: OverlayMode): BrowserWindow => {
     focusable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    title: `Voclyra ${mode}`,
+    title: `${packageInfo.productName} ${mode}`,
     icon: getAppIconPath(),
     backgroundColor: '#00000000',
     webPreferences: {
@@ -216,6 +243,23 @@ const createSpeakOverlayWindow = (mode: OverlayMode): BrowserWindow => {
 
   window.on('closed', () => {
     overlayWindows.delete(mode);
+  });
+
+  window.webContents.on('render-process-gone', (_event, details) => {
+    if (details.reason === 'clean-exit') {
+      return;
+    }
+
+    errorLogService.capture({
+      source: 'overlay',
+      type: 'render-process-gone',
+      error: new Error(details.reason),
+      context: {
+        mode,
+        reason: details.reason,
+        exitCode: details.exitCode,
+      },
+    });
   });
 
   window.webContents.once('did-finish-load', () => {

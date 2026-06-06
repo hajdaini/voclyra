@@ -14,6 +14,8 @@ const fallbackApi: AppApi = {
   },
   app: {
     openDataFolder: () => Promise.resolve(),
+    openLogsFolder: () => Promise.resolve(),
+    quit: () => Promise.resolve(),
   },
   models: {
     listOllama: () => Promise.resolve([defaultSettings.ollamaModel]),

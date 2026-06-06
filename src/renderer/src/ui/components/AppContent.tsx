@@ -13,7 +13,6 @@ import { AppAbout } from './AppAbout';
 import { AppHistory } from './AppHistory';
 import { AppHome } from './AppHome';
 import { AppSettings } from './AppSettings';
-import { WindowControls } from './WindowControls';
 
 type AppContentProps = {
   section: AppSection;
@@ -29,10 +28,7 @@ type AppContentProps = {
   ollamaModels: string[];
   whisperModels: string[];
   availableWhisperModels: WhisperAvailableModel[];
-  settingsFocus: 'models' | 'shortcuts' | null;
-  onMinimize: () => void;
-  onMaximize: () => void;
-  onClose: () => void;
+  settingsFocus: 'models' | 'microphone' | 'history' | 'shortcuts' | null;
   onOpenSettings: () => void;
   onModeChange: (mode: HomeMode) => void;
   onStartRecording: () => void;
@@ -51,7 +47,7 @@ type AppContentProps = {
   onFocusHandled: () => void;
   onShortcutUnavailable: () => void;
   onShortcutEditingChange: (editing: boolean) => void;
-  onOpenDataFolder: () => void;
+  onResetSettings: () => void;
   onHistoryCopy: (entry: HistoryEntry) => void;
   onHistoryFavoriteToggle: (id: string) => void;
   onHistoryTitleUpdate: (id: string, title: string) => void;
@@ -75,9 +71,6 @@ export const AppContent = ({
   whisperModels,
   availableWhisperModels,
   settingsFocus,
-  onMinimize,
-  onMaximize,
-  onClose,
   onOpenSettings,
   onModeChange,
   onStartRecording,
@@ -96,7 +89,7 @@ export const AppContent = ({
   onFocusHandled,
   onShortcutUnavailable,
   onShortcutEditingChange,
-  onOpenDataFolder,
+  onResetSettings,
   onHistoryCopy,
   onHistoryFavoriteToggle,
   onHistoryTitleUpdate,
@@ -105,8 +98,6 @@ export const AppContent = ({
   onHistoryClear,
 }: AppContentProps): JSX.Element => (
   <section className="content">
-    <div className="titlebar" />
-    <WindowControls onMinimize={onMinimize} onMaximize={onMaximize} onClose={onClose} />
     {section === 'home' && (
       <AppHome
         mode={mode}
@@ -144,7 +135,7 @@ export const AppContent = ({
         onFocusHandled={onFocusHandled}
         onShortcutUnavailable={onShortcutUnavailable}
         onShortcutEditingChange={onShortcutEditingChange}
-        onOpenDataFolder={onOpenDataFolder}
+        onResetSettings={onResetSettings}
       />
     )}
     {section === 'history' && (

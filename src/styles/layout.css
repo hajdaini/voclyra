@@ -2,7 +2,7 @@
   position: relative;
   display: grid;
   grid-template-columns: 184px minmax(0, 1fr);
-  grid-template-rows: 1fr;
+  grid-template-rows: 34px minmax(0, 1fr);
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -10,27 +10,156 @@
   background: var(--shell);
 }
 
+.app-topbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 0 0 12px;
+  border-bottom: 1px solid #2b2b2b;
+  background: #1e1e1e;
+  -webkit-app-region: drag;
+}
+
+.topbar-logo {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  place-items: center;
+}
+
+.topbar-logo img {
+  display: block;
+  width: 22px;
+  height: 22px;
+}
+
+.topbar-menu {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  -webkit-app-region: no-drag;
+}
+
+.topbar-dropdown {
+  position: relative;
+}
+
+.topbar-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.topbar-dropdown.open .topbar-menu-trigger,
+.topbar-menu-trigger:hover {
+  color: var(--text);
+  background: var(--hover-bg);
+}
+
+.topbar-dropdown-menu {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  z-index: 220;
+  display: grid;
+  gap: 2px;
+  width: max-content;
+  min-width: 142px;
+  max-width: 280px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #252526;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.34);
+}
+
+.topbar-dropdown-menu button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.topbar-dropdown-menu button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-dropdown-menu kbd {
+  color: var(--soft);
+  font-size: 11px;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.topbar-dropdown-menu button:hover {
+  background: var(--hover-bg);
+}
+
+.topbar-dropdown-menu hr {
+  width: 100%;
+  height: 1px;
+  margin: 4px 0;
+  border: 0;
+  background: var(--border);
+}
+
+.topbar-menu > button {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.topbar-menu > button:hover {
+  color: var(--text);
+  background: var(--hover-bg);
+}
+
+.topbar-spacer {
+  flex: 1;
+  min-width: 0;
+}
+
+.topbar-spacer.menu-open {
+  align-self: stretch;
+  -webkit-app-region: no-drag;
+}
+
 .sidebar {
+  grid-row: 2;
   display: flex;
   flex-direction: column;
   gap: 14px;
   padding: 12px 10px;
   border-right: 1px solid #2b2b2b;
   background: var(--sidebar);
-}
-
-.logo {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  color: var(--primary);
-}
-
-.logo img {
-  width: 28px;
-  height: 28px;
-  display: block;
 }
 
 .nav {
@@ -111,46 +240,42 @@
 }
 
 .content {
+  grid-row: 2;
   position: relative;
   min-width: 0;
-  padding: 48px 18px 18px;
+  padding: 18px;
   overflow: auto;
-  scroll-padding-top: 50px;
-}
-
-.titlebar {
-  position: fixed;
-  top: 1px;
-  right: 1px;
-  left: 185px;
-  z-index: 80;
-  height: 34px;
-  border-bottom: 1px solid #2b2b2b;
-  background: #1e1e1e;
-  -webkit-app-region: drag;
+  scroll-padding-top: 18px;
 }
 
 .window-controls {
-  position: fixed;
-  top: 9px;
-  right: 12px;
-  z-index: 100;
   display: flex;
-  gap: 14px;
+  align-self: stretch;
+  gap: 0;
   color: var(--muted);
   -webkit-app-region: no-drag;
 }
 
 .window-controls button {
   display: grid;
-  width: 18px;
-  height: 18px;
+  width: 46px;
+  height: 100%;
   padding: 0;
   place-items: center;
   border: 0;
   background: transparent;
   color: inherit;
   cursor: pointer;
+}
+
+.window-controls button:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.window-controls button:nth-child(3):hover {
+  color: #ffffff;
+  background: #e81123;
 }
 
 .window-controls button span {

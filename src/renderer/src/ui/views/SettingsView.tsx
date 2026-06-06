@@ -5,8 +5,8 @@ import {
   CheckCircle2,
   CircleDashed,
   Download,
-  FolderOpen,
   Headphones,
+  History as HistoryIcon,
   HardDrive,
   Keyboard,
   LoaderCircle,
@@ -38,11 +38,11 @@ export type SettingsViewProps = {
   onRefreshModels: () => void;
   onDownloadWhisperModel: (id: WhisperModelId) => void;
   onDeleteWhisperModel: (id: WhisperModelId) => void;
-  focusSection: 'models' | 'shortcuts' | null;
+  focusSection: 'models' | 'microphone' | 'history' | 'shortcuts' | null;
   onFocusHandled: () => void;
   onShortcutUnavailable: () => void;
   onShortcutEditingChange: (editing: boolean) => void;
-  onOpenDataFolder: () => void;
+  onResetSettings: () => void;
 };
 
 export const SettingsView = ({
@@ -58,10 +58,12 @@ export const SettingsView = ({
   onFocusHandled,
   onShortcutUnavailable,
   onShortcutEditingChange,
-  onOpenDataFolder,
+  onResetSettings,
 }: SettingsViewProps): JSX.Element => {
   const shortcutsRef = useRef<HTMLDivElement>(null);
   const modelsRef = useRef<HTMLElement>(null);
+  const microphoneRef = useRef<HTMLElement>(null);
+  const historyRef = useRef<HTMLElement>(null);
   const speakShortcutRef = useRef<HTMLButtonElement>(null);
   const [audioInputs, setAudioInputs] = useState<AudioInputDevice[]>([]);
 
@@ -71,6 +73,10 @@ export const SettingsView = ({
     }
     if (focusSection === 'models') {
       modelsRef.current?.scrollIntoView({ block: 'center' });
+    } else if (focusSection === 'microphone') {
+      microphoneRef.current?.scrollIntoView({ block: 'center' });
+    } else if (focusSection === 'history') {
+      historyRef.current?.scrollIntoView({ block: 'center' });
     } else {
       shortcutsRef.current?.scrollIntoView({ block: 'center' });
       speakShortcutRef.current?.focus();
@@ -117,13 +123,13 @@ export const SettingsView = ({
             <span>Settings</span>
           </h1>
         </div>
-        <button type="button" title="Open .voclyra folder" onClick={onOpenDataFolder}>
-          <FolderOpen size={17} />
-          <span>Open .voclyra folder</span>
+        <button className="danger-action" type="button" title="Reset settings" onClick={onResetSettings}>
+          <RefreshCw size={17} />
+          <span>Reset settings</span>
         </button>
       </div>
 
-      <section className="settings-section focused-target" ref={modelsRef}>
+      <section className="settings-section">
         <SectionTitle icon={Settings2} title="General" />
         <label className="settings-checkbox">
           <input
@@ -147,8 +153,12 @@ export const SettingsView = ({
             checked={settings.improveSelectedText}
             onChange={(event) => onChange({ ...settings, improveSelectedText: event.target.checked })}
           />
-          <span>Use active selection for Improve</span>
+          <span>Copy automatically selected text for Improve</span>
         </label>
+      </section>
+
+      <section className="settings-section focused-target" ref={microphoneRef}>
+        <SectionTitle icon={Mic} title="Microphone settings" />
         <label>
           Microphone input
           <select
@@ -194,6 +204,10 @@ export const SettingsView = ({
           />
           <span>Auto gain control</span>
         </label>
+      </section>
+
+      <section className="settings-section focused-target" ref={historyRef}>
+        <SectionTitle icon={HistoryIcon} title="History settings" />
         <label className="compact-number-field">
           Max history items
           <input
@@ -223,7 +237,7 @@ export const SettingsView = ({
         </label>
       </section>
 
-      <section className="settings-section">
+      <section className="settings-section focused-target" ref={modelsRef}>
         <div className="settings-title-row">
           <SectionTitle icon={Bot} title="Models" />
           <button type="button" title="Refresh models" onClick={onRefreshModels}>

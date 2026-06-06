@@ -2,9 +2,10 @@ import { readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
+import { appStorageConfig } from '@shared/GlobalVars';
 
 export class AppStorage {
-  readonly root = join(homedir(), '.voclyra');
+  readonly root = join(homedir(), appStorageConfig.directoryName);
 
   async readJson<T>(name: string, fallback: T): Promise<T> {
     try {

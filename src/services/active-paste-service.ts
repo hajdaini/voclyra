@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process';
 
 export class ActivePasteService {
-  paste(): Promise<void> {
-    return this.sendKeys('^v');
+  async paste(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await this.sendKeys('^v');
   }
 
   copySelection(): Promise<void> {

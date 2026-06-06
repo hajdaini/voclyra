@@ -7,7 +7,7 @@ type AppSettingsProps = {
   ollamaModels: string[];
   whisperModels: string[];
   availableWhisperModels: WhisperAvailableModel[];
-  settingsFocus: 'models' | 'shortcuts' | null;
+  settingsFocus: 'models' | 'microphone' | 'history' | 'shortcuts' | null;
   onSettingsChange: (settings: Settings) => void;
   onRefreshModels: () => void;
   onDownloadWhisperModel: (id: WhisperModelId) => void;
@@ -15,7 +15,7 @@ type AppSettingsProps = {
   onFocusHandled: () => void;
   onShortcutUnavailable: () => void;
   onShortcutEditingChange: (editing: boolean) => void;
-  onOpenDataFolder: () => void;
+  onResetSettings: () => void;
 };
 
 export const AppSettings = ({
@@ -31,7 +31,7 @@ export const AppSettings = ({
   onFocusHandled,
   onShortcutUnavailable,
   onShortcutEditingChange,
-  onOpenDataFolder,
+  onResetSettings,
 }: AppSettingsProps): JSX.Element => (
   <SettingsView
     settings={settings}
@@ -46,6 +46,6 @@ export const AppSettings = ({
     onFocusHandled={onFocusHandled}
     onShortcutUnavailable={onShortcutUnavailable}
     onShortcutEditingChange={onShortcutEditingChange}
-    onOpenDataFolder={onOpenDataFolder}
+    onResetSettings={onResetSettings}
   />
 );

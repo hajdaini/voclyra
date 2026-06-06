@@ -1,7 +1,8 @@
-import { BrowserWindow, clipboard, ipcMain, shell } from 'electron';
+import { BrowserWindow, app, clipboard, ipcMain, shell } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { channels } from '@shared/channels';
 import { defaultSettings } from '@shared/defaults';
+import { appMessages } from '@shared/GlobalVars';
 import { improveRunningMessage } from '@shared/action-locks';
 import { historyTitleUpdateSchema, idSchema, overlayStateSchema, settingsSchema, textSchema } from '@shared/schemas';
 import { whisperModelIdSchema } from '@shared/schemas';
@@ -86,7 +87,7 @@ export const improveClipboardFromHotkey = async (): Promise<void> => {
       await activePasteService.paste();
     }
     await historyService.add({ kind: 'improvement', text: improved }, settings.maxHistoryItems);
-    sendImproveResult(ready(improved, 'Copied to clipboard'));
+    sendImproveResult(ready(improved, appMessages.copiedToClipboard));
   } catch (error) {
     sendImproveResult(failed(error));
   } finally {
@@ -125,6 +126,19 @@ export const registerIpc = (): void => {
     if (error) {
       throw new Error(error);
     }
+  });
+
+  ipcMain.handle(channels.appOpenLogsFolder, async () => {
+    const path = await appStorage.ensureDir('logs');
+    const error = await shell.openPath(path);
+    if (error) {
+      throw new Error(error);
+    }
+  });
+
+  ipcMain.handle(channels.appQuit, () => {
+    app.isQuitting = true;
+    app.quit();
   });
 
   ipcMain.handle(channels.modelsListOllama, () => ollamaService.listModels());
@@ -175,7 +189,7 @@ export const registerIpc = (): void => {
         await activePasteService.paste();
       }
       await historyService.add({ kind: 'dictation', text }, settings.maxHistoryItems);
-      return ready(text, 'Copied to clipboard');
+      return ready(text, appMessages.copiedToClipboard);
     } catch (error) {
       return failed(error);
     }
@@ -241,7 +255,7 @@ export const registerIpc = (): void => {
         await activePasteService.paste();
       }
       await historyService.add({ kind: 'improvement', text: improved }, settings.maxHistoryItems);
-      return ready(improved, 'Copied to clipboard');
+      return ready(improved, appMessages.copiedToClipboard);
     } catch (error) {
       return failed(error);
     } finally {

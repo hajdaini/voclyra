@@ -4,6 +4,7 @@ import { get } from 'node:https';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
+import { appStorageConfig } from '@shared/GlobalVars';
 import type {
   WhisperAvailableModel,
   WhisperDownloadProgress,
@@ -15,7 +16,7 @@ import { whisperModelCatalog, whisperModelIds } from '@shared/whisper-models';
 type ProgressCallback = (progress: WhisperDownloadProgress) => void;
 
 export class WhisperModelService {
-  private readonly root = join(homedir(), '.voclyra');
+  private readonly root = join(homedir(), appStorageConfig.directoryName);
   private readonly modelRoot = join(this.root, 'models', 'whisper');
   private readonly downloads = new Set<WhisperModelId>();
 
