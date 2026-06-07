@@ -20,15 +20,7 @@ Voclyra is an open-source Windows desktop app for fast dictation, transcription,
 
 No cloud transcription. No hosted correction API. Your data stays on your machine.
 
-<p align="center">
-  <a href="assets/voclyra_presentation.mp4">
-    <img src="assets/screenshot.png" alt="Voclyra app screenshot" width="820">
-  </a>
-</p>
-
-<p align="center">
-  <a href="assets/voclyra_presentation.mp4">▶ Watch the demo</a>
-</p>
+https://github.com/user-attachments/assets/c29cba30-747c-47c4-8a58-f04f971fd74a
 
 ## 📦 Download
 
