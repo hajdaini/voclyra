@@ -109,14 +109,13 @@ export class LlamaService {
   }
 
   private async runtime(): Promise<LlamaRuntime> {
-    const version = (await this.settingsService.get()).llmCudaRuntimeVersion;
-    const runtimePath = this.runtimePaths.path(
+    const runtime = await this.runtimePaths.selectCudaRuntime(
       llamaRuntimeConfig.engineDirectory,
-      llamaCudaRuntimeVersionConfig[version].directory,
+      llamaCudaRuntimeVersionConfig,
       llamaRuntimeConfig.platformDirectory,
       llamaRuntimeConfig.executableName,
     );
-    return { path: runtimePath };
+    return { path: runtime.path };
   }
 
   private async writePromptFiles(correctionPrompt: string, text: string): Promise<LlamaPromptFiles> {

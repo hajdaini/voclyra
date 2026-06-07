@@ -334,13 +334,13 @@ export class WhisperService {
   }
 
   private async executablePath(): Promise<string> {
-    const version = (await this.settingsService.get()).whisperCudaRuntimeVersion;
-    return this.runtimePaths.path(
+    const runtime = await this.runtimePaths.selectCudaRuntime(
       whisperRuntimeConfig.engineDirectory,
-      whisperCudaRuntimeVersionConfig[version].directory,
+      whisperCudaRuntimeVersionConfig,
       whisperRuntimeConfig.platformDirectory,
       whisperRuntimeConfig.executableName,
     );
+    return runtime.path;
   }
 
   private async runWhisper(

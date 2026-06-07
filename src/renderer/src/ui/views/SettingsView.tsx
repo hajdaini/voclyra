@@ -19,7 +19,6 @@ import {
   Wand2,
   type LucideIcon,
 } from 'lucide-react';
-import { llamaCudaRuntimeVersionConfig, whisperCudaRuntimeVersionConfig } from '@shared/GlobalVars';
 import type {
   LlmAvailableModel,
   HardwareInfo,
@@ -386,27 +385,6 @@ export const SettingsView = ({
                 ))}
               </select>
             </label>
-            <label>
-              <span className="field-label">
-                Runtime
-                <HelpHint text="Select which local llama.cpp CUDA runtime Improve uses. Pick the runtime that exists and works on this machine." />
-              </span>
-              <select
-                value={settings.llmCudaRuntimeVersion}
-                onChange={(event) =>
-                  onChange({
-                    ...settings,
-                    llmCudaRuntimeVersion: event.target.value as SettingsType['llmCudaRuntimeVersion'],
-                  })
-                }
-              >
-                {Object.entries(llamaCudaRuntimeVersionConfig).map(([value, config]) => (
-                  <option key={value} value={value}>
-                    {config.label}
-                  </option>
-                ))}
-              </select>
-            </label>
           </div>
           <div className="inline-download-heading">
             <Download size={16} />
@@ -576,27 +554,6 @@ export const SettingsView = ({
                 {whisperModels.map((model) => (
                   <option key={model} value={model}>
                     {model}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span className="field-label">
-                Runtime
-                <HelpHint text="Select which local Whisper CUDA runtime Speak and Transcript use. If missing, both actions cannot transcribe." />
-              </span>
-              <select
-                value={settings.whisperCudaRuntimeVersion}
-                onChange={(event) =>
-                  onChange({
-                    ...settings,
-                    whisperCudaRuntimeVersion: event.target.value as SettingsType['whisperCudaRuntimeVersion'],
-                  })
-                }
-              >
-                {Object.entries(whisperCudaRuntimeVersionConfig).map(([value, config]) => (
-                  <option key={value} value={value}>
-                    {config.label}
                   </option>
                 ))}
               </select>

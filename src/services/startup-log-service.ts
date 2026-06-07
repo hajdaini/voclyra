@@ -3,12 +3,12 @@ import { join } from 'node:path';
 import { SettingsService } from '@services/settings-service';
 import {
   llamaCudaRuntimeVersionConfig,
+  llamaRuntimeConfig,
   packageInfo,
   whisperCudaRuntimeVersionConfig,
   whisperRuntimeConfig,
 } from '@shared/GlobalVars';
 import { AppStorage } from '@storage/app-storage';
-import { LlamaService } from '@services/llama-service';
 import { LlmModelService } from '@services/llm-model-service';
 import { HardwareService, type HardwareCheckResult } from '@services/hardware-service';
 import { RuntimePathService } from '@services/runtime-path-service';
@@ -18,7 +18,6 @@ type CheckResult = HardwareCheckResult;
 export class StartupLogService {
   private readonly storage = new AppStorage();
   private readonly settingsService = new SettingsService();
-  private readonly llamaService = new LlamaService();
   private readonly llmModelService = new LlmModelService();
   private readonly hardwareService = new HardwareService();
   private readonly runtimePaths = new RuntimePathService();
@@ -29,10 +28,12 @@ export class StartupLogService {
     const logsFolder = await this.ensurePath(() => this.storage.ensureDir('logs'), this.storage.path('logs'));
     const modelsFolder = await this.ensurePath(() => this.storage.ensureDir('models'), this.storage.path('models'));
     const settings = await this.settingsService.get();
-    const whisperRuntime = await this.fileCheck(this.whisperExecutablePath(settings.whisperCudaRuntimeVersion));
+    const whisperRuntimeSelection = await this.whisperRuntime();
+    const whisperRuntime = await this.fileCheck(whisperRuntimeSelection.path);
     const whisperModel = await this.fileCheck(this.whisperModelPath(settings.whisperModel));
     const hardware = await this.hardwareService.diagnostics();
-    const llamaRuntime = await this.fileCheck(await this.llamaService.runtimePath());
+    const llamaRuntimeSelection = await this.llamaRuntime();
+    const llamaRuntime = await this.fileCheck(llamaRuntimeSelection.path);
     const llmModel = await this.fileCheck(this.llmModelPath(settings.llmModel));
 
     if (logsFolder.status !== 'ok') {
@@ -73,12 +74,12 @@ export class StartupLogService {
         '[WHISPER INFO]',
         this.line('whisper path', whisperRuntime),
         this.line('whisper model', whisperModel),
-        `whisper cuda version: ${this.value(whisperCudaRuntimeVersionConfig[settings.whisperCudaRuntimeVersion].label)}`,
+        `whisper cuda version: ${this.value(whisperRuntimeSelection.label)}`,
         '',
         '[LLAMA INFO]',
         this.line('llama path', llamaRuntime),
         this.line('llm model', llmModel),
-        `llama cuda version: ${this.value(llamaCudaRuntimeVersionConfig[settings.llmCudaRuntimeVersion].label)}`,
+        `llama cuda version: ${this.value(llamaRuntimeSelection.label)}`,
       ].join('\n'),
       'utf8',
     );
@@ -105,12 +106,21 @@ export class StartupLogService {
     }
   }
 
-  private whisperExecutablePath(version: keyof typeof whisperCudaRuntimeVersionConfig): string {
-    return this.runtimePaths.path(
+  private whisperRuntime(): Promise<{ path: string; label: string }> {
+    return this.runtimePaths.selectCudaRuntime(
       whisperRuntimeConfig.engineDirectory,
-      whisperCudaRuntimeVersionConfig[version].directory,
+      whisperCudaRuntimeVersionConfig,
       whisperRuntimeConfig.platformDirectory,
       whisperRuntimeConfig.executableName,
+    );
+  }
+
+  private llamaRuntime(): Promise<{ path: string; label: string }> {
+    return this.runtimePaths.selectCudaRuntime(
+      llamaRuntimeConfig.engineDirectory,
+      llamaCudaRuntimeVersionConfig,
+      llamaRuntimeConfig.platformDirectory,
+      llamaRuntimeConfig.executableName,
     );
   }
 

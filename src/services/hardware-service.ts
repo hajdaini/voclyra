@@ -99,6 +99,16 @@ export class HardwareService {
     };
   }
 
+  async cudaMajorVersion(): Promise<number | null> {
+    const result = await this.nvidiaSmi();
+    if (result.status !== 'ok') {
+      return null;
+    }
+
+    const major = Number(this.cudaVersion(result.value).split('.')[0]);
+    return Number.isFinite(major) && major > 0 ? major : null;
+  }
+
   private async physicalCpuCores(): Promise<HardwareCheckResult> {
     if (process.platform !== 'win32') {
       return { status: 'missing', value: 'unknown' };

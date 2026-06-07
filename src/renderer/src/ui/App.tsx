@@ -539,12 +539,6 @@ export const App = (): JSX.Element => {
       showToast('success', 'Transcript shortcut updated.');
       return;
     }
-    if (
-      nextSettings.whisperCudaRuntimeVersion !== previousSettings.whisperCudaRuntimeVersion ||
-      nextSettings.llmCudaRuntimeVersion !== previousSettings.llmCudaRuntimeVersion
-    ) {
-      await loadModels();
-    }
   };
 
   const showToast = (type: ToastType, message: string): void => {
