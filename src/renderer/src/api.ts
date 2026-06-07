@@ -50,11 +50,7 @@ const fallbackApi: AppApi = {
     deleteModel: () => Promise.resolve([]),
     runtimeInfo: () =>
       Promise.resolve({
-        backend: 'unknown',
         runtimeAvailable: false,
-        gpuAvailable: false,
-        device: 'Auto',
-        version: defaultSettings.whisperCudaRuntimeVersion,
       }),
     onDownloadProgress: () => () => {},
   },
@@ -64,15 +60,21 @@ const fallbackApi: AppApi = {
     deleteModel: () => Promise.resolve([]),
     runtimeInfo: () =>
       Promise.resolve({
-        backend: 'unknown',
         runtimeAvailable: false,
-        device: 'Unknown',
-        version: defaultSettings.llmCudaRuntimeVersion,
       }),
     onDownloadProgress: () => () => {},
   },
   hardware: {
-    info: () => Promise.resolve({ gpuName: 'Unknown GPU', gpuVramGb: null }),
+    info: () =>
+      Promise.resolve({
+        gpuName: 'Unknown GPU',
+        gpuVramGb: null,
+        gpuAvailable: false,
+        gpuDriverVersion: 'unknown',
+        gpuCudaVersion: 'unknown',
+        gpuMemoryUsedGb: null,
+        gpuMemoryFreeGb: null,
+      }),
   },
   actions: {
     onSpeak: () => () => {},

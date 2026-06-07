@@ -130,6 +130,7 @@ export const AppContent = ({
         settings={settings}
         whisperRuntime={whisperRuntime}
         llmRuntime={llmRuntime}
+        hardwareInfo={hardwareInfo}
         whisperModelAvailable={whisperModelAvailable}
         llmModelAvailable={llmModelAvailable}
         onOpenSettings={onOpenSettings}

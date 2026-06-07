@@ -5,6 +5,10 @@ import type { HardwareInfo } from '@shared/types';
 type GpuInfo = {
   name: string;
   vramGb: number;
+  driverVersion: string;
+  cudaVersion: string;
+  memoryUsedGb: number | null;
+  memoryFreeGb: number | null;
 };
 
 type CheckStatus = 'ok' | 'missing' | 'timeout';
@@ -20,15 +24,30 @@ export type HardwareDiagnostics = {
   cpuThreads: HardwareCheckResult;
   gpu: HardwareCheckResult;
   gpuVram: HardwareCheckResult;
+  gpuDriver: HardwareCheckResult;
+  gpuCuda: HardwareCheckResult;
 };
 
 export class HardwareService {
+  nvidiaSmi(): Promise<HardwareCheckResult> {
+    if (process.platform !== 'win32') {
+      return Promise.resolve({ status: 'missing', value: 'unknown' });
+    }
+
+    return this.commandText('nvidia-smi', [], 3000);
+  }
+
   async info(): Promise<HardwareInfo> {
     const gpus = await this.gpuInfo();
     const bestGpu = gpus.sort((left, right) => right.vramGb - left.vramGb)[0];
     return {
       gpuName: bestGpu?.name ?? 'Unknown GPU',
       gpuVramGb: bestGpu?.vramGb ?? null,
+      gpuAvailable: Boolean(bestGpu),
+      gpuDriverVersion: bestGpu?.driverVersion ?? 'unknown',
+      gpuCudaVersion: bestGpu?.cudaVersion ?? 'unknown',
+      gpuMemoryUsedGb: bestGpu?.memoryUsedGb ?? null,
+      gpuMemoryFreeGb: bestGpu?.memoryFreeGb ?? null,
     };
   }
 
@@ -60,7 +79,22 @@ export class HardwareService {
       },
       gpuVram: {
         status: gpus.status,
-        value: gpus.items.map((gpu) => `${gpu.name}: ${this.formatGb(gpu.vramGb)}`).join(' | ') || 'unknown',
+        value:
+          gpus.items
+            .map((gpu) =>
+              gpu.memoryUsedGb === null || gpu.memoryFreeGb === null
+                ? `${gpu.name}: ${this.formatGb(gpu.vramGb)}`
+                : `${gpu.name}: ${this.formatGb(gpu.memoryUsedGb)} used / ${this.formatGb(gpu.vramGb)} total`,
+            )
+            .join(' | ') || 'unknown',
+      },
+      gpuDriver: {
+        status: gpus.status,
+        value: gpus.items.map((gpu) => gpu.driverVersion).join(' | ') || 'unknown',
+      },
+      gpuCuda: {
+        status: gpus.status,
+        value: gpus.items.map((gpu) => gpu.cudaVersion).join(' | ') || 'unknown',
       },
     };
   }
@@ -97,52 +131,55 @@ export class HardwareService {
       return { status: 'missing', items: [] };
     }
 
-    const result = await this.powerShellJson(this.gpuInfoScript(), 4000);
-    if (result.status !== 'ok') {
-      return { status: result.status, items: [] };
+    const [query, summary] = await Promise.all([
+      this.commandText(
+        'nvidia-smi',
+        ['--query-gpu=name,driver_version,memory.total,memory.used,memory.free', '--format=csv,noheader,nounits'],
+        3000,
+      ),
+      this.nvidiaSmi(),
+    ]);
+    if (query.status !== 'ok') {
+      return { status: query.status, items: [] };
     }
 
-    try {
-      const value = JSON.parse(result.value) as unknown;
-      const items = (Array.isArray(value) ? value : [value])
-        .map((item) => {
-          const gpu = item as { Name?: unknown; AdapterRAM?: unknown; RegistryRAM?: unknown };
-          const name = typeof gpu.Name === 'string' ? gpu.Name : 'Unknown GPU';
-          const bytes =
-            typeof gpu.RegistryRAM === 'number'
-              ? gpu.RegistryRAM
-              : typeof gpu.AdapterRAM === 'number'
-                ? gpu.AdapterRAM
-                : 0;
-          return { name, vramGb: bytes > 0 ? Math.ceil((bytes / 1024 / 1024 / 1024) * 10) / 10 : 0 };
-        })
-        .filter((gpu) => gpu.name !== 'Unknown GPU' && gpu.vramGb > 0);
-      return { status: items.length > 0 ? 'ok' : 'missing', items };
-    } catch {
-      return { status: 'missing', items: [] };
-    }
+    const cudaVersion = this.cudaVersion(summary.value);
+    const items = query.value
+      .split(/\r?\n/)
+      .map((line) => this.parseNvidiaGpu(line, cudaVersion))
+      .filter((gpu): gpu is GpuInfo => Boolean(gpu));
+
+    return { status: items.length > 0 ? 'ok' : 'missing', items };
   }
 
-  private gpuInfoScript(): string {
-    return `
-$registry = @{}
-Get-ChildItem 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Video' -ErrorAction SilentlyContinue | ForEach-Object {
-  Get-ChildItem $_.PsPath -ErrorAction SilentlyContinue
-} | ForEach-Object {
-  $item = Get-ItemProperty $_.PsPath -ErrorAction SilentlyContinue
-  $name = $item.DriverDesc -as [string]
-  if (-not $name) { $name = $item.'HardwareInformation.AdapterString' -as [string] }
-  $memory = $item.'HardwareInformation.qwMemorySize'
-  if ($name -and $memory) { $registry[$name] = [uint64]$memory }
-}
-Get-CimInstance Win32_VideoController | ForEach-Object {
-  [PSCustomObject]@{
-    Name = $_.Name
-    AdapterRAM = $_.AdapterRAM
-    RegistryRAM = $registry[$_.Name]
+  private parseNvidiaGpu(line: string, cudaVersion: string): GpuInfo | null {
+    const [name, driverVersion, totalMiB, usedMiB, freeMiB] = line.split(',').map((part) => part.trim());
+    const total = Number(totalMiB);
+    if (!name || !Number.isFinite(total) || total <= 0) {
+      return null;
+    }
+
+    return {
+      name,
+      driverVersion: driverVersion || 'unknown',
+      cudaVersion,
+      vramGb: this.mibToGb(total),
+      memoryUsedGb: this.optionalMibToGb(usedMiB),
+      memoryFreeGb: this.optionalMibToGb(freeMiB),
+    };
   }
-} | ConvertTo-Json -Compress
-`.trim();
+
+  private cudaVersion(output: string): string {
+    return /CUDA Version:\s*([^\s|]+)/i.exec(output)?.[1] ?? 'unknown';
+  }
+
+  private optionalMibToGb(value: string | undefined): number | null {
+    const mib = Number(value);
+    return Number.isFinite(mib) && mib >= 0 ? this.mibToGb(mib) : null;
+  }
+
+  private mibToGb(value: number): number {
+    return Math.ceil((value / 1024) * 10) / 10;
   }
 
   private powerShellJson(command: string, timeoutMs: number): Promise<HardwareCheckResult> {
@@ -189,6 +226,48 @@ Get-CimInstance Win32_VideoController | ForEach-Object {
           status: code === 0 ? 'ok' : 'missing',
           value: Buffer.concat(chunks).toString('utf8'),
         });
+      });
+    });
+  }
+
+  private commandText(command: string, args: string[], timeoutMs: number): Promise<HardwareCheckResult> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const child = spawn(command, args, {
+        windowsHide: true,
+        shell: false,
+      });
+      const chunks: Buffer[] = [];
+      const timeout = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        child.kill();
+        resolve({ status: 'timeout', value: 'unknown' });
+      }, timeoutMs);
+
+      child.stdout.on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+
+      child.on('error', () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeout);
+        resolve({ status: 'missing', value: 'unknown' });
+      });
+
+      child.on('close', (code) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeout);
+        const value = Buffer.concat(chunks).toString('utf8').trim();
+        resolve(code === 0 && value ? { status: 'ok', value } : { status: 'missing', value: 'unknown' });
       });
     });
   }

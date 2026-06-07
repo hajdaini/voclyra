@@ -1,18 +1,20 @@
 import { access, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { basename, join } from 'node:path';
 import { cpus, homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { AppStorage } from '@storage/app-storage';
 import { ProcessLogService } from '@services/process-log-service';
 import { appStorageConfig, whisperCudaRuntimeVersionConfig, whisperRuntimeConfig } from '@shared/GlobalVars';
+import { RuntimePathService } from '@services/runtime-path-service';
 import { SettingsService } from '@services/settings-service';
 import type { LanguageMode, Settings, SilenceSensitivity, WhisperRuntimeInfo } from '@shared/types';
 
 type WhisperRunResult = {
   stdout: string;
   stderr: string;
-  backend: 'gpu' | 'cpu';
 };
+
+type WhisperRunMode = 'auto' | 'cpu';
 
 type TranscribeOptions = {
   timeoutMs?: number | null;
@@ -43,8 +45,8 @@ const exactTranscriptionPrompt = [
 export class WhisperService {
   private readonly storage = new AppStorage();
   private readonly logger = new ProcessLogService();
+  private readonly runtimePaths = new RuntimePathService();
   private readonly settingsService = new SettingsService();
-  private lastBackend: 'gpu' | 'cpu' | 'unknown' = 'unknown';
 
   async listModels(): Promise<string[]> {
     const roots = this.modelRoots();
@@ -56,21 +58,12 @@ export class WhisperService {
 
   async runtimeInfo(): Promise<WhisperRuntimeInfo> {
     const executablePath = await this.executablePath();
-    const version = (await this.settingsService.get()).whisperCudaRuntimeVersion;
     const executableExists = await this.exists(executablePath);
     const help = executableExists ? await this.helpText() : '';
     const runtimeStarts = help.trim().length > 0;
-    const canSelectDevice = /(?:^|\s)(?:-dev|--device)\b/i.test(help);
-    const canDisableGpu = /(?:^|\s)(?:-ng|--no-gpu)\b/i.test(help);
-    const cudaRuntimeExists =
-      process.platform === 'win32' && (await this.exists(join(dirname(executablePath), 'ggml-cuda.dll')));
 
     return {
-      backend: this.lastBackend,
       runtimeAvailable: executableExists && runtimeStarts,
-      gpuAvailable: executableExists && canSelectDevice && canDisableGpu && cudaRuntimeExists,
-      device: this.lastBackend === 'cpu' ? 'CPU' : this.lastBackend === 'gpu' ? 'CUDA0' : 'Auto',
-      version,
     };
   }
 
@@ -279,30 +272,30 @@ export class WhisperService {
     onProgress?: (progress: number) => void,
   ): Promise<string> {
     const attempts: Array<{
-      backend: 'gpu' | 'cpu';
+      mode: WhisperRunMode;
       inputMode: 'positional' | 'flag';
       outputMode: 'file' | 'stdout';
     }> = [
-      { backend: 'gpu', inputMode: 'positional', outputMode: 'file' },
-      { backend: 'cpu', inputMode: 'positional', outputMode: 'file' },
-      { backend: 'gpu', inputMode: 'flag', outputMode: 'file' },
-      { backend: 'cpu', inputMode: 'flag', outputMode: 'file' },
-      { backend: 'gpu', inputMode: 'positional', outputMode: 'stdout' },
-      { backend: 'cpu', inputMode: 'positional', outputMode: 'stdout' },
-      { backend: 'gpu', inputMode: 'flag', outputMode: 'stdout' },
-      { backend: 'cpu', inputMode: 'flag', outputMode: 'stdout' },
+      { mode: 'auto', inputMode: 'positional', outputMode: 'file' },
+      { mode: 'cpu', inputMode: 'positional', outputMode: 'file' },
+      { mode: 'auto', inputMode: 'flag', outputMode: 'file' },
+      { mode: 'cpu', inputMode: 'flag', outputMode: 'file' },
+      { mode: 'auto', inputMode: 'positional', outputMode: 'stdout' },
+      { mode: 'cpu', inputMode: 'positional', outputMode: 'stdout' },
+      { mode: 'auto', inputMode: 'flag', outputMode: 'stdout' },
+      { mode: 'cpu', inputMode: 'flag', outputMode: 'stdout' },
     ];
     const errors: string[] = [];
 
     for (const attempt of attempts) {
-      const outputBase = join(temporaryRoot, `${id}-${attempt.backend}-${attempt.inputMode}-${attempt.outputMode}`);
+      const outputBase = join(temporaryRoot, `${id}-${attempt.mode}-${attempt.inputMode}-${attempt.outputMode}`);
       const outputId = basename(outputBase);
       const run = await this.runWhisper(
         modelPath,
         audioPath,
         outputBase,
         temporaryRoot,
-        attempt.backend,
+        attempt.mode,
         attempt.inputMode,
         attempt.outputMode,
         timeoutMs,
@@ -316,17 +309,10 @@ export class WhisperService {
       if (run) {
         const text = await this.readTranscript(temporaryRoot, outputId, run.stdout, run.stderr);
         if (text) {
-          this.lastBackend = run.backend;
           onProgress?.(100);
           return text;
         }
       }
-    }
-
-    if (errors.length > 0) {
-      this.lastBackend = errors.some((error) => /using CUDA|CUDA0 total size|found GPU device/i.test(error))
-        ? 'gpu'
-        : this.lastBackend;
     }
     return '';
   }
@@ -349,10 +335,7 @@ export class WhisperService {
 
   private async executablePath(): Promise<string> {
     const version = (await this.settingsService.get()).whisperCudaRuntimeVersion;
-    return join(
-      homedir(),
-      appStorageConfig.directoryName,
-      ...whisperRuntimeConfig.runtimeParts,
+    return this.runtimePaths.path(
       whisperRuntimeConfig.engineDirectory,
       whisperCudaRuntimeVersionConfig[version].directory,
       whisperRuntimeConfig.platformDirectory,
@@ -365,7 +348,7 @@ export class WhisperService {
     audioPath: string,
     outputBase: string,
     cwd: string,
-    backend: 'gpu' | 'cpu',
+    mode: WhisperRunMode,
     inputMode: 'positional' | 'flag',
     outputMode: 'file' | 'stdout',
     timeoutMs: number | null | undefined = 180000,
@@ -395,10 +378,8 @@ export class WhisperService {
         args.push('-mc', '0', '--prompt', prompt);
       }
 
-      if (backend === 'cpu') {
+      if (mode === 'cpu') {
         args.push('-ng');
-      } else {
-        args.push('-dev', '0');
       }
 
       if (inputMode === 'flag') {
@@ -465,7 +446,6 @@ export class WhisperService {
         resolvePromise({
           stdout,
           stderr,
-          backend: /using CUDA|CUDA0 total size|found GPU device/i.test(stderr) ? 'gpu' : 'cpu',
         });
       });
     });

@@ -18,7 +18,7 @@ import {
   Type,
   Wand2,
 } from 'lucide-react';
-import type { HomeMode, Hotkeys, LlmRuntimeInfo, OverlayState, ResultState, WhisperRuntimeInfo } from '@shared/types';
+import type { HardwareInfo, HomeMode, Hotkeys, LlmRuntimeInfo, OverlayState, ResultState, WhisperRuntimeInfo } from '@shared/types';
 import { missingActionMessage } from '@shared/action-messages';
 import { ActionProgressIndicator } from '../components/ActionProgressIndicator';
 
@@ -35,6 +35,7 @@ export type HomeViewProps = {
   hotkeys: Hotkeys;
   whisperRuntime: WhisperRuntimeInfo;
   llmRuntime: LlmRuntimeInfo;
+  hardwareInfo: HardwareInfo;
   whisperModelAvailable: boolean;
   llmModelAvailable: boolean;
   onOpenSettings: () => void;
@@ -63,6 +64,7 @@ export const HomeView = ({
   hotkeys,
   whisperRuntime,
   llmRuntime,
+  hardwareInfo,
   whisperModelAvailable,
   llmModelAvailable,
   onOpenSettings,
@@ -89,23 +91,12 @@ export const HomeView = ({
   const statusMessage = result.status === 'processing' ? '' : (missingMessage ?? result.message);
   const statusClass = missingMessage ? 'error' : result.status;
   const StatusIcon = statusIcon[statusClass];
-  const whisperBackendLabel =
-    whisperRuntime.backend === 'gpu'
+  const activeRuntimeAvailable = mode === 'improve' ? llmRuntime.runtimeAvailable : whisperRuntime.runtimeAvailable;
+  const runtimeLabel = activeRuntimeAvailable
+    ? hardwareInfo.gpuAvailable
       ? 'GPU ready'
-      : whisperRuntime.backend === 'cpu'
-        ? 'CPU used — slower'
-        : whisperRuntime.gpuAvailable
-          ? 'GPU ready'
-          : 'CPU only — slower';
-  const llmBackendLabel =
-    llmRuntime.backend === 'gpu'
-      ? 'GPU ready'
-      : llmRuntime.backend === 'cpu'
-        ? 'CPU used — slower'
-        : llmRuntime.runtimeAvailable
-          ? 'CPU only — slower'
-          : 'Runtime missing';
-  const runtimeLabel = mode === 'improve' ? llmBackendLabel : whisperBackendLabel;
+      : 'CPU auto'
+    : 'Runtime missing';
 
   return (
     <div className="home-grid">

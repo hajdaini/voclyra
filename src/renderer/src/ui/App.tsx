@@ -51,19 +51,20 @@ export const App = (): JSX.Element => {
   const [whisperModels, setWhisperModels] = useState<string[]>([]);
   const [availableWhisperModels, setAvailableWhisperModels] = useState<WhisperAvailableModel[]>([]);
   const [availableLlmModels, setAvailableLlmModels] = useState<LlmAvailableModel[]>([]);
-  const [hardwareInfo, setHardwareInfo] = useState<HardwareInfo>({ gpuName: 'Unknown GPU', gpuVramGb: null });
-  const [whisperRuntime, setWhisperRuntime] = useState<WhisperRuntimeInfo>({
-    backend: 'unknown',
-    runtimeAvailable: false,
+  const [hardwareInfo, setHardwareInfo] = useState<HardwareInfo>({
+    gpuName: 'Unknown GPU',
+    gpuVramGb: null,
     gpuAvailable: false,
-    device: 'Auto',
-    version: defaultSettings.whisperCudaRuntimeVersion,
+    gpuDriverVersion: 'unknown',
+    gpuCudaVersion: 'unknown',
+    gpuMemoryUsedGb: null,
+    gpuMemoryFreeGb: null,
+  });
+  const [whisperRuntime, setWhisperRuntime] = useState<WhisperRuntimeInfo>({
+    runtimeAvailable: false,
   });
   const [llmRuntime, setLlmRuntime] = useState<LlmRuntimeInfo>({
-    backend: 'unknown',
     runtimeAvailable: false,
-    device: 'Unknown',
-    version: defaultSettings.llmCudaRuntimeVersion,
   });
   const [mode, setMode] = useState<HomeMode>('speak');
   const [improveInput, setImproveInput] = useState('');

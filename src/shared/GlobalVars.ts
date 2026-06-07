@@ -42,7 +42,6 @@ export const llamaCudaRuntimeVersionConfig = {
 } as const;
 
 export const whisperRuntimeConfig = {
-  runtimeParts: ['runtimes'],
   engineDirectory: 'whisper',
   platformDirectory: 'win-x64',
   executableName: 'whisper-cli.exe',
@@ -50,7 +49,6 @@ export const whisperRuntimeConfig = {
 } as const;
 
 export const llamaRuntimeConfig = {
-  runtimeParts: ['runtimes'],
   engineDirectory: 'llama',
   platformDirectory: 'win-x64',
   executableName: 'llama-completion.exe',

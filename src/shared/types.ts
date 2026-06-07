@@ -92,16 +92,17 @@ export type WhisperDownloadProgress = {
 };
 
 export type WhisperRuntimeInfo = {
-  backend: 'gpu' | 'cpu' | 'unknown';
   runtimeAvailable: boolean;
-  gpuAvailable: boolean;
-  device: string;
-  version: WhisperCudaRuntimeVersion;
 };
 
 export type HardwareInfo = {
   gpuName: string;
   gpuVramGb: number | null;
+  gpuAvailable: boolean;
+  gpuDriverVersion: string;
+  gpuCudaVersion: string;
+  gpuMemoryUsedGb: number | null;
+  gpuMemoryFreeGb: number | null;
 };
 
 export type LlmModelId =
@@ -138,10 +139,7 @@ export type LlmDownloadProgress = {
 };
 
 export type LlmRuntimeInfo = {
-  backend: 'gpu' | 'cpu' | 'unknown';
   runtimeAvailable: boolean;
-  device: string;
-  version: LlmCudaRuntimeVersion;
 };
 
 export type OverlayState = {

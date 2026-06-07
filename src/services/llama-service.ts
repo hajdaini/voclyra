@@ -2,17 +2,19 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { access, rm, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { llamaCudaRuntimeVersionConfig, llamaRuntimeConfig } from '@shared/GlobalVars';
 import type { LlmRuntimeInfo, Settings } from '@shared/types';
 import { AppStorage } from '@storage/app-storage';
 import { ProcessLogService } from '@services/process-log-service';
+import { RuntimePathService } from '@services/runtime-path-service';
 import { SettingsService } from '@services/settings-service';
 
 type LlamaRuntime = {
   path: string;
-  backend: 'gpu' | 'cpu' | 'unknown';
 };
+
+type LlamaRunMode = 'auto' | 'cpu';
 
 type LlamaRunDiagnostics = {
   status: string;
@@ -52,16 +54,14 @@ type LlamaRunResult = {
 export class LlamaService {
   private readonly storage = new AppStorage();
   private readonly logger = new ProcessLogService();
+  private readonly runtimePaths = new RuntimePathService();
   private readonly settingsService = new SettingsService();
 
   async runtimeInfo(): Promise<LlmRuntimeInfo> {
     const runtime = await this.runtime();
-    const version = (await this.settingsService.get()).llmCudaRuntimeVersion;
+    const runtimeAvailable = await this.exists(runtime.path);
     return {
-      backend: runtime.backend,
-      runtimeAvailable: runtime.backend !== 'unknown' && (await this.exists(runtime.path)),
-      device: runtime.backend === 'gpu' ? 'CUDA' : runtime.backend === 'cpu' ? 'CPU' : 'Unknown',
-      version,
+      runtimeAvailable,
     };
   }
 
@@ -80,7 +80,7 @@ export class LlamaService {
     }
 
     const runtime = await this.runtime();
-    if (runtime.backend === 'unknown' || !(await this.exists(runtime.path))) {
+    if (!(await this.exists(runtime.path))) {
       throw new Error('Local AI runtime not found.');
     }
 
@@ -110,23 +110,13 @@ export class LlamaService {
 
   private async runtime(): Promise<LlamaRuntime> {
     const version = (await this.settingsService.get()).llmCudaRuntimeVersion;
-    const userCudaPath = join(
-      this.storage.path(),
-      ...llamaRuntimeConfig.runtimeParts,
+    const runtimePath = this.runtimePaths.path(
       llamaRuntimeConfig.engineDirectory,
       llamaCudaRuntimeVersionConfig[version].directory,
       llamaRuntimeConfig.platformDirectory,
       llamaRuntimeConfig.executableName,
     );
-    if (!existsSync(userCudaPath)) {
-      return { path: userCudaPath, backend: 'unknown' };
-    }
-    return { path: userCudaPath, backend: this.hasCudaFiles(userCudaPath) ? 'gpu' : 'cpu' };
-  }
-
-  private hasCudaFiles(executablePath: string): boolean {
-    const root = dirname(executablePath);
-    return existsSync(join(root, 'ggml-cuda.dll')) || existsSync(join(root, 'cudart64_12.dll'));
+    return { path: runtimePath };
   }
 
   private async writePromptFiles(correctionPrompt: string, text: string): Promise<LlamaPromptFiles> {
@@ -159,6 +149,21 @@ export class LlamaService {
     options: { maxTokens: number; contextSize: number; temperature: number },
     onProgress?: (progress: LlamaProgress) => void,
   ): Promise<LlamaRunResult> {
+    return this.runWithRuntime(runtime, 'auto', modelPath, promptFiles, options, onProgress).catch((gpuError: unknown) => {
+      return this.runWithRuntime(runtime, 'cpu', modelPath, promptFiles, options, onProgress).catch((cpuError: unknown) => {
+        throw cpuError instanceof Error ? cpuError : gpuError;
+      });
+    });
+  }
+
+  private runWithRuntime(
+    runtime: LlamaRuntime,
+    mode: LlamaRunMode,
+    modelPath: string,
+    promptFiles: LlamaPromptFiles,
+    options: { maxTokens: number; contextSize: number; temperature: number },
+    onProgress?: (progress: LlamaProgress) => void,
+  ): Promise<LlamaRunResult> {
     return new Promise((resolveRun, rejectRun) => {
       let settled = false;
       const args = [
@@ -181,8 +186,10 @@ export class LlamaService {
         '--reasoning-budget',
         '0',
       ];
-      if (runtime.backend === 'gpu') {
-        args.push('-ngl', '99');
+      if (mode === 'auto') {
+        args.push('-ngl', 'auto');
+      } else {
+        args.push('-ngl', '0');
       }
 
       const child = spawn(runtime.path, args, {
@@ -198,7 +205,7 @@ export class LlamaService {
           return;
         }
         settled = true;
-        await this.appendLog(runtime, modelPath, options, {
+        await this.appendLog(runtime, mode, modelPath, options, {
           status: 'timeout',
           durationMs: Date.now() - startedAt,
           stdout: Buffer.concat(output).toString('utf8'),
@@ -229,7 +236,7 @@ export class LlamaService {
         }
         settled = true;
         clearTimeout(timeout);
-        await this.appendLog(runtime, modelPath, options, {
+        await this.appendLog(runtime, mode, modelPath, options, {
           status: error.message,
           durationMs: Date.now() - startedAt,
           stdout: Buffer.concat(output).toString('utf8'),
@@ -249,7 +256,7 @@ export class LlamaService {
         const stderrRaw = Buffer.concat(errors).toString('utf8');
         const stderr = this.cleanError(stderrRaw);
         const status = signal ? `signal: ${signal}` : `exit code: ${code ?? 'unknown'}`;
-        await this.appendLog(runtime, modelPath, options, {
+        await this.appendLog(runtime, mode, modelPath, options, {
           status,
           durationMs: Date.now() - startedAt,
           stdout: stdoutRaw,
@@ -271,13 +278,14 @@ export class LlamaService {
 
   private appendLog(
     runtime: LlamaRuntime,
+    mode: LlamaRunMode,
     modelPath: string,
     options: { maxTokens: number; contextSize: number; temperature: number },
     diagnostics: LlamaRunDiagnostics,
   ): Promise<void> {
     return this.logger.append('improve.log', [
       `runtime: ${runtime.path}`,
-      `backend: ${runtime.backend}`,
+      `mode: ${mode}`,
       `model: ${modelPath}`,
       `command: ${diagnostics.command}`,
       `max tokens: ${options.maxTokens}`,

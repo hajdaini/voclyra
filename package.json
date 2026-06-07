@@ -60,6 +60,10 @@
       {
         "from": "resources/icon.ico",
         "to": "assets/icon.ico"
+      },
+      {
+        "from": "resources/runtimes",
+        "to": "runtimes"
       }
     ],
     "win": {

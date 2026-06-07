@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import type { HomeMode, LlmRuntimeInfo, OverlayState, ResultState, Settings, WhisperRuntimeInfo } from '@shared/types';
+import type { HardwareInfo, HomeMode, LlmRuntimeInfo, OverlayState, ResultState, Settings, WhisperRuntimeInfo } from '@shared/types';
 import { HomeView } from '../views/HomeView';
 
 type AppHomeProps = {
@@ -13,6 +13,7 @@ type AppHomeProps = {
   settings: Settings;
   whisperRuntime: WhisperRuntimeInfo;
   llmRuntime: LlmRuntimeInfo;
+  hardwareInfo: HardwareInfo;
   whisperModelAvailable: boolean;
   llmModelAvailable: boolean;
   onOpenSettings: () => void;
@@ -39,6 +40,7 @@ export const AppHome = ({
   settings,
   whisperRuntime,
   llmRuntime,
+  hardwareInfo,
   whisperModelAvailable,
   llmModelAvailable,
   onOpenSettings,
@@ -66,6 +68,7 @@ export const AppHome = ({
     hotkeys={settings.hotkeys}
     whisperRuntime={whisperRuntime}
     llmRuntime={llmRuntime}
+    hardwareInfo={hardwareInfo}
     whisperModelAvailable={whisperModelAvailable}
     llmModelAvailable={llmModelAvailable}
     onOpenSettings={onOpenSettings}
