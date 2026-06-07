@@ -1020,6 +1020,7 @@ export const App = (): JSX.Element => {
         onImprove={() => void improve()}
         onTranscript={() => void (transcriptRecorder ? stopTranscript() : startTranscript())}
         onImportAudio={() => void importAudio()}
+        onOpenHelp={() => void api.app.openHelp()}
         onStopRecording={stopActiveRecording}
         onCancelRecording={cancelActiveRecording}
         onImproveModelSettings={() => openSettingsFocus('improveAi')}

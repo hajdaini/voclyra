@@ -49,6 +49,7 @@ const hotkeyService = new HotkeyService();
 const startupService = new StartupService();
 let improveShortcutRunning = false;
 const progressUpdateState = new Map<OverlayState['mode'], { at: number; key: string }>();
+const helpUrl = 'https://github.com/hajdaini/voclyra#readme';
 
 const mainActionLockState = () => ({
   speakRecording: false,
@@ -199,6 +200,10 @@ export const registerIpc = (): void => {
     if (error) {
       throw new Error(error);
     }
+  });
+
+  ipcMain.handle(channels.appOpenHelp, async () => {
+    await shell.openExternal(helpUrl);
   });
 
   ipcMain.handle(channels.appImportAudio, async (event) => {

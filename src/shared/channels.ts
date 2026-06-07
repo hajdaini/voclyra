@@ -3,6 +3,7 @@ export const channels = {
   settingsSave: 'settings:save',
   appOpenDataFolder: 'app:openDataFolder',
   appOpenLogsFolder: 'app:openLogsFolder',
+  appOpenHelp: 'app:openHelp',
   appImportAudio: 'app:importAudio',
   appQuit: 'app:quit',
   modelsListLlm: 'models:listLlm',

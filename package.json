@@ -19,7 +19,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run test:runtime && npm run build && electron-builder"
   },
   "dependencies": {
     "lucide-react": "1.17.0",

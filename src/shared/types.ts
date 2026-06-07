@@ -161,6 +161,7 @@ export type AppApi = {
   app: {
     openDataFolder: () => Promise<void>;
     openLogsFolder: () => Promise<void>;
+    openHelp: () => Promise<void>;
     importAudio: () => Promise<ArrayBuffer | null>;
     quit: () => Promise<void>;
   };

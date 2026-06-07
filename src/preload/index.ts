@@ -10,6 +10,7 @@ const api: AppApi = {
   app: {
     openDataFolder: () => ipcRenderer.invoke(channels.appOpenDataFolder) as Promise<void>,
     openLogsFolder: () => ipcRenderer.invoke(channels.appOpenLogsFolder) as Promise<void>,
+    openHelp: () => ipcRenderer.invoke(channels.appOpenHelp) as Promise<void>,
     importAudio: () => ipcRenderer.invoke(channels.appImportAudio) as ReturnType<AppApi['app']['importAudio']>,
     quit: () => ipcRenderer.invoke(channels.appQuit) as Promise<void>,
   },

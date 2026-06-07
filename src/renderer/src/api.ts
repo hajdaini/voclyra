@@ -15,6 +15,7 @@ const fallbackApi: AppApi = {
   app: {
     openDataFolder: () => Promise.resolve(),
     openLogsFolder: () => Promise.resolve(),
+    openHelp: () => Promise.resolve(),
     importAudio: () => Promise.resolve(null),
     quit: () => Promise.resolve(),
   },

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from 'react';
-import { FileUp } from 'lucide-react';
+import { CircleHelp, FileUp } from 'lucide-react';
 import type { GpuUsage, Hotkeys } from '@shared/types';
 import { packageInfo } from '@shared/GlobalVars';
 import logoUrl from '@assets/logo.svg';
@@ -17,6 +17,7 @@ type AppTopbarProps = {
   onImprove: () => void;
   onTranscript: () => void;
   onImportAudio: () => void;
+  onOpenHelp: () => void;
   onStopRecording: () => void;
   onCancelRecording: () => void;
   onImproveModelSettings: () => void;
@@ -43,6 +44,7 @@ export const AppTopbar = ({
   onImprove,
   onTranscript,
   onImportAudio,
+  onOpenHelp,
   onStopRecording,
   onCancelRecording,
   onImproveModelSettings,
@@ -178,6 +180,10 @@ export const AppTopbar = ({
         <button type="button" className="topbar-import-action" onClick={() => runAction(onImportAudio)}>
           <FileUp size={14} />
           <span>Import audio</span>
+        </button>
+        <button type="button" className="topbar-import-action" onClick={() => runAction(onOpenHelp)}>
+          <CircleHelp size={14} />
+          <span>Help</span>
         </button>
       </nav>
       <div className={`topbar-spacer ${openMenu ? 'menu-open' : ''}`} onMouseDown={() => setOpenMenu(null)} />

@@ -1,13 +1,17 @@
+[![Release](https://img.shields.io/github/v/release/hajdaini/voclyra?label=release)](https://github.com/hajdaini/voclyra/releases)
+![Local AI](https://img.shields.io/badge/AI-local-2ea44f)
+![Platform](https://img.shields.io/badge/platform-Windows-0078D6)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
+[![CI](https://github.com/hajdaini/voclyra/actions/workflows/ci.yml/badge.svg)](https://github.com/hajdaini/voclyra/actions/workflows/ci.yml)
+
 # Voclyra
+
+<p>
+  <img src="src/assets/logo.svg" alt="Voclyra logo" width="72">
+</p>
 
 **Dictate, correct, transcribe, and reuse text locally.**
 
-[![CI](https://github.com/timtim/voclyra/actions/workflows/ci.yml/badge.svg)](https://github.com/hajdaini/voclyra/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/timtim/voclyra?label=release)](https://github.com/hajdaini/voclyra/releases)
-![Platform](https://img.shields.io/badge/platform-Windows-0078D6)
-![Local AI](https://img.shields.io/badge/AI-local-2ea44f)
-![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
-![Pipeline](https://img.shields.io/badge/pipeline-typecheck%20%2B%20coverage-6f42c1)
 
 Voclyra is an open-source Windows desktop app for people who write a lot and want fewer interruptions:
 
@@ -19,7 +23,7 @@ Voclyra is an open-source Windows desktop app for people who write a lot and wan
 
 No cloud transcription. No hosted correction API. Your data stays on your machine.
 
-<img src="assets/screenshot.png" alt="Voclyra app screenshot" width="820">
+<video src="assets/voclyra_presentation.mp4" controls width="820"></video>
 
 ## 📚 Table Of Contents
 

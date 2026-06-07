@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { shell } from 'electron';
 import { channels } from '@shared/channels';
 import { actionBlockMessage, type ActionLockState } from '@shared/action-locks';
 
@@ -97,6 +98,7 @@ vi.mock('electron', () => ({
     }),
   },
   shell: {
+    openExternal: vi.fn(async () => undefined),
     openPath: vi.fn(async () => ''),
   },
 }));
@@ -415,6 +417,12 @@ describe('App actions', () => {
       memoryTotalGb: 15.9,
       utilizationPercent: 47,
     });
+  });
+
+  it('opens the GitHub README from Help', async () => {
+    await expect(handlers.get(channels.appOpenHelp)?.({})).resolves.toBeUndefined();
+
+    expect(shell.openExternal).toHaveBeenCalledWith('https://github.com/hajdaini/voclyra#readme');
   });
 
   it('cancels audio import', async () => {
