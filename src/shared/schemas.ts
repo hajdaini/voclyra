@@ -39,18 +39,11 @@ export const historyTitleUpdateSchema = z.object({
 export const whisperModelIdSchema = z.enum(['tiny', 'base', 'small', 'medium', 'large']);
 
 export const llmModelIdSchema = z.enum([
-  'qwen3-0_6b-q8',
-  'qwen3-1_7b-q8',
-  'llama3_2-3b-q4',
-  'smollm3-3b-q4',
-  'phi4-mini-q4',
-  'qwen3-4b-q4',
-  'gemma-e4b-q4',
-  'qwen3-8b-q4',
-  'qwen3-14b-q4',
-  'mistral-small-3_2-24b-iq4',
-  'qwen3-30b-a3b-q4',
-  'mistral-small-3_2-24b-q4',
+  'gemma4:e2b-it-qat',
+  'gemma4:e4b-it-qat',
+  'gemma4:12b-it-qat',
+  'gemma4:26b-a4b-it-qat',
+  'gemma4:31b-it-qat',
 ]);
 
 export const overlayStateSchema = z.object({

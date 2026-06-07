@@ -10,6 +10,10 @@
   "scripts": {
     "dev": "electron-vite dev",
     "start": "electron-vite preview",
+    "test": "vitest run --reporter verbose --exclude \"tests/runtime/**\"",
+    "test:watch": "vitest --reporter verbose --exclude \"tests/runtime/**\"",
+    "test:coverage": "vitest run --coverage --reporter verbose --exclude \"tests/runtime/**\"",
+    "test:runtime": "vitest run --reporter verbose tests/runtime",
     "build": "npm run typecheck && electron-vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -29,14 +33,16 @@
     "@types/node": "25.9.1",
     "@types/react": "19.2.16",
     "@types/react-dom": "19.2.3",
+    "@vitest/coverage-v8": "^4.1.8",
     "electron": "42.3.3",
-    "electron-builder": "26.8.1",
+    "electron-builder": "^26.15.0",
     "electron-vite": "5.0.0",
     "eslint": "10.4.1",
     "prettier": "3.8.3",
     "typescript": "6.0.3",
     "typescript-eslint": "8.60.1",
-    "vite": "7.3.5"
+    "vite": "7.3.5",
+    "vitest": "^4.1.8"
   },
   "build": {
     "appId": "app.voclyra.desktop",

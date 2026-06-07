@@ -4,6 +4,7 @@ dist
 release
 .vite
 .cache
+coverage/
 .codex
 *.log
 *.txt

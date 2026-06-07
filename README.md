@@ -2,11 +2,18 @@
 
 **Dictate, correct, transcribe, and reuse text locally.**
 
+[![CI](https://github.com/timtim/voclyra/actions/workflows/ci.yml/badge.svg)](https://github.com/timtim/voclyra/actions/workflows/ci.yml)
+![Platform](https://img.shields.io/badge/platform-Windows-0078D6)
+![Local AI](https://img.shields.io/badge/AI-local-2ea44f)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
+![Pipeline](https://img.shields.io/badge/pipeline-typecheck%20%2B%20coverage-6f42c1)
+
 Voclyra is an open-source Windows desktop app for people who write a lot and want fewer interruptions:
 
 - speak instead of typing;
 - correct and rewrite text from a shortcut;
 - transcribe long audio locally;
+- work across all languages;
 - keep history, audio, and exports under control.
 
 No cloud transcription. No hosted correction API. Your data stays on your machine.
@@ -59,6 +66,7 @@ Pick an audio file from the toolbar or File menu and transcribe it with the same
 | Fix rough text | Improve text locally from a shortcut |
 | Clean dictated output | Correct grammar, punctuation, and phrasing |
 | Capture long audio | Local transcript + saved audio |
+| Work in many languages | Speak, Improve, Transcript, and Import audio across languages |
 | Reuse old work | Searchable history |
 | Share text | Copy or export to a file |
 | Stay private | Local models, local audio, local history |
@@ -78,6 +86,7 @@ Useful settings include:
 
 - automatic paste after dictation or improvement;
 - selected-text improvement;
+- multilingual transcription and correction;
 - microphone and noise options;
 - custom shortcuts;
 - Whisper and LLM model selection;
