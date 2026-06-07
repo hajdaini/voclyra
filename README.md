@@ -1,29 +1,34 @@
-[![Release](https://img.shields.io/github/v/release/hajdaini/voclyra?label=release)](https://github.com/hajdaini/voclyra/releases)
-![Local AI](https://img.shields.io/badge/AI-local-2ea44f)
-![Platform](https://img.shields.io/badge/platform-Windows-0078D6)
-![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
-[![CI](https://github.com/hajdaini/voclyra/actions/workflows/ci.yml/badge.svg)](https://github.com/hajdaini/voclyra/actions/workflows/ci.yml)
-
-# Voclyra
-
-<p>
+<p align="center">
   <img src="src/assets/logo.svg" alt="Voclyra logo" width="72">
 </p>
 
-**Dictate, correct, transcribe, and reuse text locally.**
+<h1 align="center">Voclyra</h1>
 
+<p align="center">
+  <strong>Write faster with local AI.</strong>
+</p>
 
-Voclyra is an open-source Windows desktop app for people who write a lot and want fewer interruptions:
+<p align="center">
+  <a href="https://github.com/hajdaini/voclyra/releases"><img src="https://img.shields.io/github/v/release/hajdaini/voclyra?label=release" alt="Release"></a>
+  <img src="https://img.shields.io/badge/AI-local-2ea44f" alt="Local AI">
+  <img src="https://img.shields.io/badge/platform-Windows-0078D6" alt="Windows">
+  <img src="https://img.shields.io/badge/TypeScript-strict-3178c6" alt="TypeScript">
+  <a href="https://github.com/hajdaini/voclyra/actions/workflows/ci.yml"><img src="https://github.com/hajdaini/voclyra/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+</p>
 
-- speak instead of typing;
-- correct and rewrite text from a shortcut;
-- transcribe long audio locally;
-- work across all languages;
-- keep history, audio, and exports under control.
+Voclyra is an open-source Windows desktop app for fast dictation, transcription, and text improvement. Speak instead of typing, clean up rough text in seconds, summarize transcripts, and keep everything private with Whisper and llama.cpp.
 
 No cloud transcription. No hosted correction API. Your data stays on your machine.
 
-<video src="assets/voclyra_presentation.mp4" controls width="820"></video>
+<p align="center">
+  <a href="assets/voclyra_presentation.mp4">
+    <img src="assets/screenshot.png" alt="Voclyra app screenshot" width="820">
+  </a>
+</p>
+
+<p align="center">
+  <a href="assets/voclyra_presentation.mp4">▶ Watch the demo</a>
+</p>
 
 ## 📦 Download
 
