@@ -4,15 +4,9 @@ export type HomeMode = 'speak' | 'improve' | 'transcript';
 
 export type LanguageMode = 'auto' | 'fr' | 'en' | 'es' | 'de' | 'it' | 'pt';
 
-export type WhisperCudaRuntimeVersion = 'cuda-11' | 'cuda-12';
-
 export type WhisperQualityMode = 'fast' | 'balanced' | 'accurate';
 
 export type SilenceSensitivity = 'low' | 'normal' | 'high';
-
-export type LlmCudaRuntimeVersion = 'cuda-12' | 'cuda-13';
-
-export type LlmMaxTokensMode = 'auto' | 'fixed';
 
 export type LlmContextSize = 2048 | 3072 | 4096;
 
@@ -25,12 +19,8 @@ export type Hotkeys = {
 export type Settings = {
   llmModel: string;
   whisperModel: string;
-  whisperCudaRuntimeVersion: WhisperCudaRuntimeVersion;
   whisperLanguage: LanguageMode;
   whisperQualityMode: WhisperQualityMode;
-  llmCudaRuntimeVersion: LlmCudaRuntimeVersion;
-  llmMaxTokensMode: LlmMaxTokensMode;
-  llmMaxTokens: number;
   llmContextSize: LlmContextSize;
   llmTemperature: number;
   correctionPrompt: string;
@@ -59,10 +49,12 @@ export type HistoryEntry = {
 };
 
 export type AppStatus = 'ready' | 'listening' | 'processing' | 'error';
+export type StatusTone = 'default' | 'info' | 'success' | 'warning' | 'error';
 
 export type ResultState = {
   text: string;
   status: AppStatus;
+  tone?: StatusTone;
   message: string;
   durationMs?: number;
   audioDurationMs?: number;
@@ -197,6 +189,7 @@ export type AppApi = {
     downloadModel: (id: WhisperModelId) => Promise<WhisperAvailableModel[]>;
     deleteModel: (id: WhisperModelId) => Promise<WhisperAvailableModel[]>;
     runtimeInfo: () => Promise<WhisperRuntimeInfo>;
+    warmup: (model: string) => Promise<void>;
     onDownloadProgress: (callback: (progress: WhisperDownloadProgress) => void) => () => void;
   };
   llm: {
@@ -204,6 +197,7 @@ export type AppApi = {
     downloadModel: (id: LlmModelId) => Promise<LlmAvailableModel[]>;
     deleteModel: (id: LlmModelId) => Promise<LlmAvailableModel[]>;
     runtimeInfo: () => Promise<LlmRuntimeInfo>;
+    warmup: (model: string) => Promise<void>;
     onDownloadProgress: (callback: (progress: LlmDownloadProgress) => void) => () => void;
   };
   hardware: {

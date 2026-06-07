@@ -8,7 +8,7 @@ import {
   FileText,
   Headphones,
   Home,
-  LoaderCircle,
+  Info,
   Mic,
   Pencil,
   Signal,
@@ -89,14 +89,19 @@ export const HomeView = ({
     llmModelAvailable,
   });
   const statusMessage = result.status === 'processing' ? '' : (missingMessage ?? result.message);
-  const statusClass = missingMessage ? 'error' : result.status;
-  const StatusIcon = statusIcon[statusClass];
+  const statusTone = missingMessage ? 'error' : statusToneFor(result);
+  const StatusIcon = statusIcon[statusTone];
   const activeRuntimeAvailable = mode === 'improve' ? llmRuntime.runtimeAvailable : whisperRuntime.runtimeAvailable;
   const runtimeLabel = activeRuntimeAvailable
     ? hardwareInfo.gpuAvailable
       ? 'GPU ready'
       : 'CPU auto'
     : 'Runtime missing';
+  const runtimeTone = activeRuntimeAvailable
+    ? hardwareInfo.gpuAvailable
+      ? 'success'
+      : 'error'
+    : 'warning';
 
   return (
     <div className="home-grid">
@@ -268,7 +273,7 @@ export const HomeView = ({
                       : 'Transcript result'}
                 </span>
               </h2>
-              <div className={`inline-status ${statusClass}`}>
+              <div className={`inline-status ${statusTone}`}>
                 <span className="inline-status-badge">
                   {result.status === 'processing' ? (
                     <ActionProgressIndicator state={overlayState} compact />
@@ -278,7 +283,7 @@ export const HomeView = ({
                   {statusMessage && <span>{statusMessage}</span>}
                 </span>
                 {(mode === 'speak' || mode === 'transcript' || mode === 'improve') && (
-                  <small className="inline-runtime-badge">
+                  <small className={`inline-runtime-badge ${runtimeTone}`}>
                     <Cpu size={14} />
                     <span>{runtimeLabel}</span>
                   </small>
@@ -351,9 +356,22 @@ const formatDuration = (durationMs: number): string => {
 };
 
 const statusIcon = {
-  ready: CheckCircle2,
-  listening: Signal,
-  processing: LoaderCircle,
-  error: AlertCircle,
+  default: Signal,
+  info: Info,
+  success: CheckCircle2,
   warning: TriangleAlert,
+  error: AlertCircle,
+};
+
+const statusToneFor = (result: ResultState): 'default' | 'info' | 'success' | 'warning' | 'error' => {
+  if (result.tone) {
+    return result.tone;
+  }
+  if (result.status === 'error') {
+    return 'error';
+  }
+  if (result.status === 'listening' || result.status === 'processing') {
+    return 'info';
+  }
+  return result.text ? 'success' : 'default';
 };

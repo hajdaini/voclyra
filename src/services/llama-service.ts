@@ -1,32 +1,14 @@
-import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { access, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { access } from 'node:fs/promises';
 import { llamaCudaRuntimeVersionConfig, llamaRuntimeConfig } from '@shared/GlobalVars';
 import type { LlmRuntimeInfo, Settings } from '@shared/types';
-import { AppStorage } from '@storage/app-storage';
+import { errorDiagnostics } from '@services/debug-log-buffer';
+import { llamaServerDiagnosticsFromError, llamaServerService, type LlamaServerDiagnostics } from '@services/llama-server-service';
 import { ProcessLogService } from '@services/process-log-service';
 import { RuntimePathService } from '@services/runtime-path-service';
 import { SettingsService } from '@services/settings-service';
 
 type LlamaRuntime = {
   path: string;
-};
-
-type LlamaRunMode = 'auto' | 'cpu';
-
-type LlamaRunDiagnostics = {
-  status: string;
-  durationMs: number;
-  stdout: string;
-  stderr: string;
-  command: string;
-};
-
-type LlamaPromptFiles = {
-  root: string;
-  promptPath: string;
 };
 
 type LlamaProgress = {
@@ -45,16 +27,10 @@ type LlamaImproveResult = {
   tokensPerSecond: number;
 };
 
-type LlamaRunResult = {
-  output: string;
-  tokensGenerated: number;
-  durationMs: number;
-};
-
 export class LlamaService {
-  private readonly storage = new AppStorage();
-  private readonly logger = new ProcessLogService();
   private readonly runtimePaths = new RuntimePathService();
+  private readonly server = llamaServerService;
+  private readonly logger = new ProcessLogService();
   private readonly settingsService = new SettingsService();
 
   async runtimeInfo(): Promise<LlmRuntimeInfo> {
@@ -69,42 +45,109 @@ export class LlamaService {
     return (await this.runtime()).path;
   }
 
+  async warmup(modelPath: string): Promise<void> {
+    if (!(await this.exists(modelPath))) {
+      throw new Error('Local AI model file not found.');
+    }
+    const runtime = await this.runtime();
+    if (!(await this.exists(runtime.path))) {
+      throw new Error('Local AI runtime not found.');
+    }
+    const settings = await this.settingsService.get();
+    await this.server.warmup(runtime.path, modelPath, {
+      mode: 'auto',
+      contextSize: settings.llmContextSize,
+    });
+  }
+
   async improveText(
     modelPath: string,
     correctionPrompt: string,
     text: string,
     options: LlamaImproveOptions = {},
   ): Promise<LlamaImproveResult> {
-    if (!(await this.exists(modelPath))) {
-      throw new Error('Local AI model file not found.');
-    }
+    const startedAt = Date.now();
+    let runtime: LlamaRuntime | null = null;
+    let settings: Settings | null = null;
+    let inference: { maxTokens: number; contextSize: number; temperature: number } | null = null;
+    let diagnostics: LlamaServerDiagnostics | null = null;
 
-    const runtime = await this.runtime();
-    if (!(await this.exists(runtime.path))) {
-      throw new Error('Local AI runtime not found.');
-    }
-
-    const settings = await this.settingsService.get();
-    const promptFiles = await this.writePromptFiles(correctionPrompt, text);
     try {
-      const result = await this.run(
-        runtime,
-        modelPath,
-        promptFiles,
-        this.inferenceOptions(settings, text),
-        options.onProgress,
-      );
+      if (!(await this.exists(modelPath))) {
+        throw new Error('Local AI model file not found.');
+      }
+
+      runtime = await this.runtime();
+      if (!(await this.exists(runtime.path))) {
+        throw new Error('Local AI runtime not found.');
+      }
+
+      settings = await this.settingsService.get();
+      inference = this.inferenceOptions(settings, text);
+      options.onProgress?.({
+        phase: 'thinking',
+        tokensGenerated: 0,
+        progressLabel: 'Generating...',
+      });
+      const result = await this.server.complete(runtime.path, modelPath, this.prompt(correctionPrompt, text), {
+        mode: 'auto',
+        ...inference,
+        onProgress: (tokensGenerated) => {
+          options.onProgress?.({
+            phase: tokensGenerated > 0 ? 'generating' : 'thinking',
+            tokensGenerated,
+            progressLabel: tokensGenerated > 0 ? `${tokensGenerated} tokens` : 'Generating...',
+          });
+        },
+      });
+      diagnostics = result.diagnostics;
       const cleaned = this.cleanOutput(result.output);
       if (!cleaned.trim()) {
         throw new Error('Local AI returned an empty response.');
       }
-      return {
+      options.onProgress?.({
+        phase: 'generating',
+        tokensGenerated: result.tokensGenerated,
+        progressLabel: `${result.tokensGenerated} tokens`,
+      });
+      const durationMs = Math.max(1, Date.now() - startedAt);
+      const response = {
         text: cleaned,
         tokensGenerated: result.tokensGenerated,
-        tokensPerSecond: result.durationMs > 0 ? Number((result.tokensGenerated / (result.durationMs / 1000)).toFixed(1)) : 0,
+        tokensPerSecond: Number((result.tokensGenerated / (durationMs / 1000)).toFixed(1)),
       };
-    } finally {
-      await rm(promptFiles.root, { force: true, recursive: true }).catch(() => {});
+      this.writeImproveLog({
+        status: 'success',
+        startedAt,
+        durationMs,
+        runtime,
+        modelPath,
+        settings,
+        inference,
+        inputChars: text.length,
+        inputLines: lineCount(text),
+        correctionPromptChars: correctionPrompt.length,
+        diagnostics,
+        result: response,
+      });
+      return response;
+    } catch (error) {
+      diagnostics = diagnostics ?? llamaServerDiagnosticsFromError(error);
+      this.writeImproveLog({
+        status: 'error',
+        startedAt,
+        durationMs: Math.max(1, Date.now() - startedAt),
+        runtime,
+        modelPath,
+        settings,
+        inference,
+        inputChars: text.length,
+        inputLines: lineCount(text),
+        correctionPromptChars: correctionPrompt.length,
+        diagnostics,
+        error,
+      });
+      throw error;
     }
   }
 
@@ -116,13 +159,6 @@ export class LlamaService {
       llamaRuntimeConfig.executableName,
     );
     return { path: runtime.path };
-  }
-
-  private async writePromptFiles(correctionPrompt: string, text: string): Promise<LlamaPromptFiles> {
-    const root = await this.storage.ensureDir('tmp', `llm-${randomUUID()}`);
-    const promptPath = join(root, 'prompt.txt');
-    await writeFile(promptPath, this.prompt(correctionPrompt, text), 'utf8');
-    return { root, promptPath };
   }
 
   private prompt(correctionPrompt: string, text: string): string {
@@ -141,211 +177,13 @@ export class LlamaService {
     ].join('\n');
   }
 
-  private run(
-    runtime: LlamaRuntime,
-    modelPath: string,
-    promptFiles: LlamaPromptFiles,
-    options: { maxTokens: number; contextSize: number; temperature: number },
-    onProgress?: (progress: LlamaProgress) => void,
-  ): Promise<LlamaRunResult> {
-    return this.runWithRuntime(runtime, 'auto', modelPath, promptFiles, options, onProgress).catch((gpuError: unknown) => {
-      return this.runWithRuntime(runtime, 'cpu', modelPath, promptFiles, options, onProgress).catch((cpuError: unknown) => {
-        throw cpuError instanceof Error ? cpuError : gpuError;
-      });
-    });
-  }
-
-  private runWithRuntime(
-    runtime: LlamaRuntime,
-    mode: LlamaRunMode,
-    modelPath: string,
-    promptFiles: LlamaPromptFiles,
-    options: { maxTokens: number; contextSize: number; temperature: number },
-    onProgress?: (progress: LlamaProgress) => void,
-  ): Promise<LlamaRunResult> {
-    return new Promise((resolveRun, rejectRun) => {
-      let settled = false;
-      const args = [
-        '-m',
-        modelPath,
-        '-f',
-        promptFiles.promptPath,
-        '-n',
-        String(options.maxTokens),
-        '-c',
-        String(options.contextSize),
-        '--temp',
-        String(options.temperature),
-        '--no-display-prompt',
-        '--no-perf',
-        '--simple-io',
-        '-no-cnv',
-        '-rea',
-        'off',
-        '--reasoning-budget',
-        '0',
-      ];
-      if (mode === 'auto') {
-        args.push('-ngl', 'auto');
-      } else {
-        args.push('-ngl', '0');
-      }
-
-      const child = spawn(runtime.path, args, {
-        windowsHide: true,
-        shell: false,
-      });
-      const startedAt = Date.now();
-      const output: Buffer[] = [];
-      const errors: Buffer[] = [];
-      let tokensGenerated = 0;
-      const timeout = setTimeout(async () => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        await this.appendLog(runtime, mode, modelPath, options, {
-          status: 'timeout',
-          durationMs: Date.now() - startedAt,
-          stdout: Buffer.concat(output).toString('utf8'),
-          stderr: Buffer.concat(errors).toString('utf8'),
-          command: this.commandForLog(runtime.path, args),
-        });
-        child.kill();
-        rejectRun(new Error('Local AI request timed out.'));
-      }, 45000);
-
-      child.stdout.on('data', (chunk: Buffer) => {
-        output.push(chunk);
-        tokensGenerated += estimateTokenCount(chunk.toString('utf8'));
-        onProgress?.({
-          phase: tokensGenerated > 0 ? 'generating' : 'thinking',
-          tokensGenerated,
-          progressLabel: tokensGenerated > 0 ? `${tokensGenerated} tokens` : 'Generating...',
-        });
-      });
-
-      child.stderr.on('data', (chunk: Buffer) => {
-        errors.push(chunk);
-      });
-
-      child.on('error', async (error) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearTimeout(timeout);
-        await this.appendLog(runtime, mode, modelPath, options, {
-          status: error.message,
-          durationMs: Date.now() - startedAt,
-          stdout: Buffer.concat(output).toString('utf8'),
-          stderr: Buffer.concat(errors).toString('utf8'),
-          command: this.commandForLog(runtime.path, args),
-        });
-        rejectRun(error);
-      });
-
-      child.on('close', async (code, signal) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearTimeout(timeout);
-        const stdoutRaw = Buffer.concat(output).toString('utf8');
-        const stderrRaw = Buffer.concat(errors).toString('utf8');
-        const stderr = this.cleanError(stderrRaw);
-        const status = signal ? `signal: ${signal}` : `exit code: ${code ?? 'unknown'}`;
-        await this.appendLog(runtime, mode, modelPath, options, {
-          status,
-          durationMs: Date.now() - startedAt,
-          stdout: stdoutRaw,
-          stderr: stderrRaw,
-          command: this.commandForLog(runtime.path, args),
-        });
-        if (code !== 0) {
-          rejectRun(new Error(stderr || 'Local AI failed.'));
-          return;
-        }
-        resolveRun({
-          output: stdoutRaw,
-          tokensGenerated,
-          durationMs: Date.now() - startedAt,
-        });
-      });
-    });
-  }
-
-  private appendLog(
-    runtime: LlamaRuntime,
-    mode: LlamaRunMode,
-    modelPath: string,
-    options: { maxTokens: number; contextSize: number; temperature: number },
-    diagnostics: LlamaRunDiagnostics,
-  ): Promise<void> {
-    return this.logger.append('improve.log', [
-      `runtime: ${runtime.path}`,
-      `mode: ${mode}`,
-      `model: ${modelPath}`,
-      `command: ${diagnostics.command}`,
-      `max tokens: ${options.maxTokens}`,
-      `context size: ${options.contextSize}`,
-      `temperature: ${options.temperature}`,
-      `duration ms: ${diagnostics.durationMs}`,
-      `stdout bytes: ${Buffer.byteLength(diagnostics.stdout, 'utf8')}`,
-      `stderr bytes: ${Buffer.byteLength(diagnostics.stderr, 'utf8')}`,
-      `stdout lines: ${this.lineCount(diagnostics.stdout)}`,
-      `stderr lines: ${this.lineCount(diagnostics.stderr)}`,
-      `stdout diagnostics: ${this.outputDiagnostics(diagnostics.stdout)}`,
-      `stderr diagnostics: ${this.outputDiagnostics(diagnostics.stderr)}`,
-      `stderr tail: ${this.cleanLogOutput(diagnostics.stderr).slice(-2500) || 'empty'}`,
-      diagnostics.status,
-    ]);
-  }
-
-  private commandForLog(executable: string, args: string[]): string {
-    return [executable, ...args].map((part) => `"${part}"`).join(' ');
-  }
-
-  private lineCount(output: string): number {
-    return output ? output.split(/\r?\n/).length : 0;
-  }
-
-  private outputDiagnostics(output: string): string {
-    const checks = [
-      /▄▄|██|▀▀/.test(output) ? 'banner' : '',
-      /available commands:/i.test(output) ? 'commands' : '',
-      />\s+/.test(output) ? 'prompt_echo' : '',
-      /\[Start thinking\]/i.test(output) ? 'thinking_start' : '',
-      /\[End thinking\]/i.test(output) ? 'thinking_end' : '',
-      /Exiting\.\.\./i.test(output) ? 'exiting' : '',
-      /Objective:/i.test(output) ? 'objective_echo' : '',
-      /Output:/i.test(output) ? 'output_echo' : '',
-    ].filter(Boolean);
-    return checks.length > 0 ? checks.join(', ') : 'none';
-  }
-
-  private cleanLogOutput(output: string): string {
-    return output
-      .replace(/\x1B\][^\x07]*(?:\x07|\x1B\\)/g, '')
-      .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
-      .replace(/[\b\r]/g, '')
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .filter((line) => !/^>/.test(line))
-      .join('\n');
-  }
-
   private inferenceOptions(settings: Settings, text: string): {
     maxTokens: number;
     contextSize: number;
     temperature: number;
   } {
     return {
-      maxTokens:
-        settings.llmMaxTokensMode === 'fixed'
-          ? settings.llmMaxTokens
-          : clamp(160 + Math.ceil(text.length / 4), 160, 900),
+      maxTokens: clamp(160 + Math.ceil(text.length / 4), 160, 900),
       contextSize: settings.llmContextSize,
       temperature: settings.llmTemperature,
     };
@@ -425,23 +263,6 @@ export class LlamaService {
     }
   }
 
-  private cleanError(output: string): string {
-    return output
-      .replace(/\x1B\][^\x07]*(?:\x07|\x1B\\)/g, '')
-      .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .filter((line) => !/^build:/i.test(line))
-      .filter((line) => !/^main:/i.test(line))
-      .filter((line) => !/^llama_/i.test(line))
-      .filter((line) => !/^ggml_/i.test(line))
-      .slice(-4)
-      .join(' ')
-      .slice(0, 220)
-      .trim();
-  }
-
   private async exists(path: string): Promise<boolean> {
     try {
       await access(path);
@@ -450,17 +271,98 @@ export class LlamaService {
       return false;
     }
   }
+
+  private writeImproveLog(input: {
+    status: 'success' | 'error';
+    startedAt: number;
+    durationMs: number;
+    runtime: LlamaRuntime | null;
+    modelPath: string;
+    settings: Settings | null;
+    inference: { maxTokens: number; contextSize: number; temperature: number } | null;
+    inputChars: number;
+    inputLines: number;
+    correctionPromptChars: number;
+    diagnostics: LlamaServerDiagnostics | null;
+    result?: Pick<LlamaImproveResult, 'tokensGenerated' | 'tokensPerSecond'>;
+    error?: unknown;
+  }): void {
+    void this.logger.writeSnapshot('improve.log', [
+      '',
+      '[ACTION]',
+      'type: improve',
+      `status: ${input.status}`,
+      `duration ms: ${input.durationMs}`,
+      'trigger/debug name: improve',
+      '',
+      '[SERVER PROCESS]',
+      `engine: llama`,
+      `executable: ${input.diagnostics?.executable ?? input.runtime?.path ?? 'unknown'}`,
+      `args: ${input.diagnostics ? quoteArgs(input.diagnostics.args) : 'unknown'}`,
+      `pid: ${input.diagnostics?.pid ?? 'unknown'}`,
+      `host: ${input.diagnostics?.host ?? 'unknown'}`,
+      `port: ${input.diagnostics?.port ?? 'unknown'}`,
+      `url: ${input.diagnostics?.url ?? 'unknown'}`,
+      `server reused: ${yesNo(input.diagnostics?.serverReused)}`,
+      `server started during action: ${yesNo(input.diagnostics?.serverStartedDuringAction)}`,
+      `startup duration ms: ${input.diagnostics?.startupDurationMs ?? 'unknown'}`,
+      `alive before request: ${yesNo(input.diagnostics?.aliveBeforeRequest)}`,
+      `alive after request: ${yesNo(input.diagnostics?.aliveAfterRequest)}`,
+      '',
+      '[SERVER STDOUT RAW TAIL]',
+      input.diagnostics?.stdoutTail || 'empty',
+      '',
+      '[SERVER STDERR RAW TAIL]',
+      input.diagnostics?.stderrTail || 'empty',
+      '',
+      '[CLIENT REQUEST]',
+      `method: ${input.diagnostics?.method ?? 'unknown'}`,
+      `endpoint: ${input.diagnostics?.endpoint ?? 'unknown'}`,
+      `timeout ms: ${input.diagnostics?.timeoutMs ?? 'unknown'}`,
+      `request started at: ${input.diagnostics?.requestStartedAt ?? new Date(input.startedAt).toISOString()}`,
+      `request finished at: ${input.diagnostics?.requestFinishedAt ?? 'unknown'}`,
+      `request duration ms: ${input.diagnostics?.requestDurationMs ?? 'unknown'}`,
+      `http status: ${input.diagnostics?.httpStatus ?? 'unknown'}`,
+      `http status text: ${input.diagnostics?.httpStatusText ?? 'unknown'}`,
+      `content type: ${input.diagnostics?.contentType ?? 'unknown'}`,
+      `request bytes: ${input.diagnostics?.requestBytes ?? 'unknown'}`,
+      `response bytes: ${input.diagnostics?.responseBytes ?? 'unknown'}`,
+      '',
+      '[LLAMA]',
+      `model: ${input.modelPath}`,
+      `context size: ${input.inference?.contextSize ?? input.settings?.llmContextSize ?? 'unknown'}`,
+      `max tokens: ${input.inference?.maxTokens ?? 'unknown'}`,
+      'max tokens mode: auto',
+      `temperature: ${input.inference?.temperature ?? input.settings?.llmTemperature ?? 'unknown'}`,
+      'stream: true',
+      `input chars: ${input.inputChars}`,
+      `input lines: ${input.inputLines}`,
+      `correction prompt chars: ${input.correctionPromptChars}`,
+      `chunks received: ${input.diagnostics?.chunksReceived ?? 'unknown'}`,
+      `first chunk after ms: ${input.diagnostics?.firstChunkAfterMs ?? 'unknown'}`,
+      `last chunk after ms: ${input.diagnostics?.lastChunkAfterMs ?? 'unknown'}`,
+      `tokens generated: ${input.result?.tokensGenerated ?? 'unknown'}`,
+      `tokens per second: ${input.result?.tokensPerSecond ?? 'unknown'}`,
+      '',
+      '[HTTP RAW RESPONSE TAIL]',
+      input.diagnostics?.rawResponseTail || 'empty',
+      '',
+      '[STREAM RAW CHUNKS TAIL]',
+      input.diagnostics?.streamRawChunksTail || 'empty',
+      '',
+      '[ERROR]',
+      ...(input.error ? errorDiagnostics(input.error) : ['name: none', 'message: none', 'stack: none']),
+      `http error body tail: ${input.diagnostics?.httpErrorBodyTail || 'empty'}`,
+      `server stdout tail: ${input.diagnostics?.stdoutTail || 'empty'}`,
+      `server stderr tail: ${input.diagnostics?.stderrTail || 'empty'}`,
+    ]).catch(() => {});
+  }
 }
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
-const estimateTokenCount = (text: string): number => {
-  const cleaned = text
-    .replace(/\x1B\][^\x07]*(?:\x07|\x1B\\)/g, '')
-    .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
-    .trim();
-  if (!cleaned) {
-    return 0;
-  }
-  return Math.max(1, Math.ceil(cleaned.length / 4));
-};
+const lineCount = (text: string): number => text ? text.split(/\r?\n/).length : 0;
+
+const quoteArgs = (args: string[]): string => args.map((part) => `"${part}"`).join(' ');
+
+const yesNo = (value: boolean | undefined): string => value === undefined ? 'unknown' : value ? 'yes' : 'no';

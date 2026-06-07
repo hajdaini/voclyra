@@ -73,6 +73,8 @@ export const App = (): JSX.Element => {
   const [isSpeakProcessing, setIsSpeakProcessing] = useState(false);
   const [isTranscriptProcessing, setIsTranscriptProcessing] = useState(false);
   const [isImproveProcessing, setIsImproveProcessing] = useState(false);
+  const [isWhisperLoading, setIsWhisperLoading] = useState(false);
+  const [isLlmLoading, setIsLlmLoading] = useState(false);
   const [waveform, setWaveform] = useState<number[]>(defaultWaveform);
   const [settingsFocus, setSettingsFocus] = useState<'improveAi' | 'speechAi' | 'microphone' | 'history' | 'shortcuts' | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
@@ -84,6 +86,10 @@ export const App = (): JSX.Element => {
     transcript: { ...inactiveOverlayState, mode: 'transcript' },
   });
   const settingsRef = useRef(defaultSettings);
+  const whisperWarmupModelRef = useRef<string | null>(null);
+  const whisperWarmupRunRef = useRef(0);
+  const llmWarmupModelRef = useRef<string | null>(null);
+  const llmWarmupRunRef = useRef(0);
   const overlayNoticeRef = useRef<
     Partial<Record<'speak' | 'improve' | 'transcript', { message: string; messageType: 'error' | 'success' | 'warning' | 'info' }>>
   >({});
@@ -94,8 +100,10 @@ export const App = (): JSX.Element => {
     speakRecording: Boolean(recorder),
     speakProcessing: isSpeakProcessing,
     improveProcessing: isImproveProcessing,
+    improveLoading: isLlmLoading,
     transcriptRecording: Boolean(transcriptRecorder),
     transcriptProcessing: isTranscriptProcessing,
+    whisperLoading: isWhisperLoading,
   };
   const currentActionBlockMessage = actionBlockMessage(mode, audioLockState);
   const whisperModelAvailable = Boolean(settings.whisperModel && whisperModels.includes(settings.whisperModel));
@@ -173,6 +181,103 @@ export const App = (): JSX.Element => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!whisperRuntime.runtimeAvailable || !whisperModelAvailable || !settings.whisperModel) {
+      whisperWarmupModelRef.current = null;
+      whisperWarmupRunRef.current += 1;
+      setIsWhisperLoading(false);
+      return;
+    }
+    if (whisperWarmupModelRef.current === settings.whisperModel) {
+      return;
+    }
+
+    const model = settings.whisperModel;
+    const runId = whisperWarmupRunRef.current + 1;
+    whisperWarmupRunRef.current = runId;
+    whisperWarmupModelRef.current = model;
+    setIsWhisperLoading(true);
+    void api.whisper.warmup(model)
+      .catch(() => {
+        if (whisperWarmupModelRef.current === model) {
+          whisperWarmupModelRef.current = null;
+        }
+      })
+      .finally(() => {
+        if (whisperWarmupRunRef.current === runId) {
+          setIsWhisperLoading(false);
+        }
+      });
+  }, [settings.whisperModel, whisperModelAvailable, whisperRuntime.runtimeAvailable]);
+
+  useEffect(() => {
+    if (!llmRuntime.runtimeAvailable || !llmModelAvailable || !settings.llmModel) {
+      llmWarmupModelRef.current = null;
+      llmWarmupRunRef.current += 1;
+      setIsLlmLoading(false);
+      return;
+    }
+    if (llmWarmupModelRef.current === settings.llmModel) {
+      return;
+    }
+
+    const model = settings.llmModel;
+    const runId = llmWarmupRunRef.current + 1;
+    llmWarmupRunRef.current = runId;
+    llmWarmupModelRef.current = model;
+    setIsLlmLoading(true);
+    void api.llm.warmup(model)
+      .catch(() => {
+        if (llmWarmupModelRef.current === model) {
+          llmWarmupModelRef.current = null;
+        }
+      })
+      .finally(() => {
+        if (llmWarmupRunRef.current === runId) {
+          setIsLlmLoading(false);
+        }
+      });
+  }, [settings.llmModel, llmModelAvailable, llmRuntime.runtimeAvailable]);
+
+  useEffect(() => {
+    if (!isWhisperLoading) {
+      setSpeakResult((current) =>
+        current.status === 'ready' && current.message === 'Speak is loading...'
+          ? speakFallbackResult
+          : current,
+      );
+      setTranscriptResult((current) =>
+        current.status === 'ready' && current.message === 'Transcript is loading...'
+          ? transcriptFallbackResult
+          : current,
+      );
+      return;
+    }
+
+    if (mode === 'speak') {
+      setSpeakResult((current) => current.status === 'ready' ? { ...current, tone: 'info', message: 'Speak is loading...' } : current);
+    }
+    if (mode === 'transcript') {
+      setTranscriptResult((current) => current.status === 'ready' ? { ...current, tone: 'info', message: 'Transcript is loading...' } : current);
+    }
+  }, [isWhisperLoading, mode]);
+
+  useEffect(() => {
+    if (!isLlmLoading) {
+      setImproveResult((current) =>
+        current.status === 'ready' && current.message === 'Improve is loading...'
+          ? improveFallbackResult
+          : current,
+      );
+      return;
+    }
+
+    if (mode === 'improve') {
+      setImproveResult((current) => current.status === 'ready' ? { ...current, tone: 'info', message: 'Improve is loading...' } : current);
+    }
+  }, [isLlmLoading, mode]);
+
+
   const downloadWhisperModel = async (id: WhisperAvailableModel['id']): Promise<void> => {
     const nextAvailableWhisperModels = await api.whisper.downloadModel(id);
     setAvailableWhisperModels(nextAvailableWhisperModels);
@@ -219,7 +324,7 @@ export const App = (): JSX.Element => {
       return;
     }
     setMode('speak');
-    setSpeakResult({ text: '', status: 'listening', message: 'Listening...' });
+    setSpeakResult({ text: '', status: 'listening', tone: 'info', message: 'Listening...' });
     try {
       setRecorder(
         await startWavRecorder(
@@ -261,10 +366,10 @@ export const App = (): JSX.Element => {
     setRecorder(null);
     setWaveform(defaultWaveform());
     setIsSpeakProcessing(true);
-    setSpeakResult({ text: '', status: 'processing', message: 'Transcribing...' });
+    setSpeakResult({ text: '', status: 'processing', tone: 'info', message: 'Transcribing...' });
     clearOverlayWarningTimer('speak');
     void api.overlay.setState(overlayProcessing('speak', defaultWaveform().slice(-8), undefined, undefined, {
-      phase: 'stopping',
+      phase: 'transcribing',
     }));
     try {
       const audio = await recorder.stop();
@@ -294,10 +399,10 @@ export const App = (): JSX.Element => {
     }
     if (recordingMode === 'speak') {
       setRecorder(null);
-      setSpeakResult({ text: '', status: 'ready', message: actionMessages.recordingCancelled });
+      setSpeakResult({ text: '', status: 'ready', tone: 'warning', message: actionMessages.recordingCancelled });
     } else {
       setTranscriptRecorder(null);
-      setTranscriptResult({ text: '', status: 'ready', message: actionMessages.recordingCancelled });
+      setTranscriptResult({ text: '', status: 'ready', tone: 'warning', message: actionMessages.recordingCancelled });
     }
     delete overlayNoticeRef.current[recordingMode];
     setWaveform(defaultWaveform());
@@ -320,6 +425,11 @@ export const App = (): JSX.Element => {
       return;
     }
     setMode('improve');
+    const blockMessage = actionBlockMessage('improve', audioLockState);
+    if (blockMessage) {
+      showOverlayWarning('improve', blockMessage);
+      return;
+    }
     if (!llmRuntime.runtimeAvailable) {
       setImproveResult({ text: '', status: 'error', message: actionMessages.llamaMissing });
       showOverlayWarning('improve', actionMessages.llamaMissing, 'error');
@@ -345,7 +455,7 @@ export const App = (): JSX.Element => {
       return;
     }
     setIsImproveProcessing(true);
-    setImproveResult({ text: '', status: 'processing', message: 'Improving text...' });
+    setImproveResult({ text: '', status: 'processing', tone: 'info', message: 'Improving text...' });
     clearOverlayWarningTimer('improve');
     void api.overlay.setState(overlayProcessing('improve', [], undefined, undefined, {
       phase: 'thinking',
@@ -394,7 +504,7 @@ export const App = (): JSX.Element => {
     }
     setSection('home');
     setMode('transcript');
-    setTranscriptResult({ text: '', status: 'listening', message: 'Recording transcript...' });
+    setTranscriptResult({ text: '', status: 'listening', tone: 'info', message: 'Recording...' });
     try {
       setTranscriptRecorder(
         await startTranscriptRecorder(
@@ -424,8 +534,8 @@ export const App = (): JSX.Element => {
               setTranscriptResult((current) => ({
                 ...current,
                 message: active
-                  ? 'Recording transcript...'
-                  : 'Recording transcript. Computer audio is not captured.',
+                  ? 'Recording...'
+                  : 'Recording... Computer audio is not captured.',
               }));
             },
           },
@@ -446,10 +556,10 @@ export const App = (): JSX.Element => {
     setTranscriptRecorder(null);
     setWaveform(defaultWaveform());
     setIsTranscriptProcessing(true);
-    setTranscriptResult({ text: '', status: 'processing', message: 'Transcribing transcript...' });
+    setTranscriptResult({ text: '', status: 'processing', tone: 'info', message: 'Transcribing transcript...' });
     clearOverlayWarningTimer('transcript');
     void api.overlay.setState(overlayProcessing('transcript', defaultWaveform().slice(-8), undefined, undefined, {
-      phase: 'stopping',
+      phase: 'transcribing',
     }));
     try {
       const audio = await transcriptRecorder.stop();
@@ -745,6 +855,8 @@ export const App = (): JSX.Element => {
     isSpeakProcessing,
     isTranscriptProcessing,
     isImproveProcessing,
+    isWhisperLoading,
+    isLlmLoading,
     waveform,
   ]);
 
@@ -850,12 +962,8 @@ export const App = (): JSX.Element => {
 const settingsAreEqual = (left: SettingsType, right: SettingsType): boolean =>
   left.llmModel === right.llmModel &&
   left.whisperModel === right.whisperModel &&
-  left.whisperCudaRuntimeVersion === right.whisperCudaRuntimeVersion &&
   left.whisperLanguage === right.whisperLanguage &&
   left.whisperQualityMode === right.whisperQualityMode &&
-  left.llmCudaRuntimeVersion === right.llmCudaRuntimeVersion &&
-  left.llmMaxTokensMode === right.llmMaxTokensMode &&
-  left.llmMaxTokens === right.llmMaxTokens &&
   left.llmContextSize === right.llmContextSize &&
   left.llmTemperature === right.llmTemperature &&
   left.correctionPrompt === right.correctionPrompt &&

@@ -4,8 +4,10 @@ export type ActionLockState = {
   speakRecording: boolean;
   speakProcessing: boolean;
   improveProcessing: boolean;
+  improveLoading: boolean;
   transcriptRecording: boolean;
   transcriptProcessing: boolean;
+  whisperLoading: boolean;
 };
 
 export const improveRunningMessage = 'Improve is already running.';
@@ -15,10 +17,16 @@ export const actionBlockMessage = (
   state: ActionLockState,
 ): string | null => {
   if (action === 'improve') {
+    if (state.improveLoading) {
+      return 'Improve is loading...';
+    }
     return state.improveProcessing ? improveRunningMessage : null;
   }
 
   if (action === 'speak') {
+    if (state.whisperLoading) {
+      return 'Speak is loading...';
+    }
     if (state.speakRecording) {
       return 'Speak is already running.';
     }
@@ -31,6 +39,9 @@ export const actionBlockMessage = (
     return null;
   }
 
+  if (state.whisperLoading) {
+    return 'Transcript is loading...';
+  }
   if (state.transcriptRecording) {
     return 'Transcript is already running.';
   }

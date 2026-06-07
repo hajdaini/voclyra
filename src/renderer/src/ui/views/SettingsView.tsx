@@ -446,41 +446,6 @@ export const SettingsView = ({
           <div className="settings-grid models-select-grid">
             <label>
               <span className="field-label">
-                Max output tokens
-                <HelpHint text="Controls how much text Improve may generate. Auto adapts to input length; Fixed uses your exact limit." />
-              </span>
-              <select
-                value={settings.llmMaxTokensMode}
-                onChange={(event) =>
-                  onChange({ ...settings, llmMaxTokensMode: event.target.value as SettingsType['llmMaxTokensMode'] })
-                }
-              >
-                <option value="auto">Auto</option>
-                <option value="fixed">Fixed</option>
-              </select>
-            </label>
-            <label>
-              <span className="field-label">
-                Fixed max tokens
-                <HelpHint text="Used only in Fixed mode. A lower value is faster but can cut long corrections." />
-              </span>
-              <input
-                type="number"
-                min={64}
-                max={1200}
-                step={16}
-                value={settings.llmMaxTokens}
-                disabled={settings.llmMaxTokensMode === 'auto'}
-                onChange={(event) =>
-                  onChange({
-                    ...settings,
-                    llmMaxTokens: Math.max(64, Math.min(1200, Math.round(Number(event.target.value) || 160))),
-                  })
-                }
-              />
-            </label>
-            <label>
-              <span className="field-label">
                 Context size
                 <HelpHint text="Controls how much text the model can consider. Smaller is faster; larger handles longer inputs better." />
               </span>

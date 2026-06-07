@@ -44,14 +44,14 @@ export const llamaCudaRuntimeVersionConfig = {
 export const whisperRuntimeConfig = {
   engineDirectory: 'whisper',
   platformDirectory: 'win-x64',
-  executableName: 'whisper-cli.exe',
+  executableName: 'whisper-server.exe',
   cudaDllName: 'ggml-cuda.dll',
 } as const;
 
 export const llamaRuntimeConfig = {
   engineDirectory: 'llama',
   platformDirectory: 'win-x64',
-  executableName: 'llama-completion.exe',
+  executableName: 'llama-server.exe',
 } as const;
 
 export const logConfig = {

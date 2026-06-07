@@ -5,16 +5,16 @@ import { spawn } from 'node:child_process';
 import { AppStorage } from '@storage/app-storage';
 import { ProcessLogService } from '@services/process-log-service';
 import { appStorageConfig, whisperCudaRuntimeVersionConfig, whisperRuntimeConfig } from '@shared/GlobalVars';
+import { errorDiagnostics } from '@services/debug-log-buffer';
 import { RuntimePathService } from '@services/runtime-path-service';
 import { SettingsService } from '@services/settings-service';
+import {
+  whisperServerDiagnosticsFromError,
+  whisperServerService,
+  type WhisperServerDiagnostics,
+  type WhisperServerResult,
+} from '@services/whisper-server-service';
 import type { LanguageMode, Settings, SilenceSensitivity, WhisperRuntimeInfo } from '@shared/types';
-
-type WhisperRunResult = {
-  stdout: string;
-  stderr: string;
-};
-
-type WhisperRunMode = 'auto' | 'cpu';
 
 type TranscribeOptions = {
   timeoutMs?: number | null;
@@ -46,6 +46,7 @@ export class WhisperService {
   private readonly storage = new AppStorage();
   private readonly logger = new ProcessLogService();
   private readonly runtimePaths = new RuntimePathService();
+  private readonly server = whisperServerService;
   private readonly settingsService = new SettingsService();
 
   async listModels(): Promise<string[]> {
@@ -65,6 +66,18 @@ export class WhisperService {
     return {
       runtimeAvailable: executableExists && runtimeStarts,
     };
+  }
+
+  async warmup(modelFileName: string): Promise<void> {
+    const modelPath = await this.modelPath(modelFileName);
+    const executable = await this.executablePath();
+    const settings = await this.settingsService.get();
+    await this.server.warmup(executable, modelPath, {
+      language: whisperLanguage(settings.whisperLanguage),
+      threads: whisperThreadCount(),
+      qualityArgs: whisperQualityArgs(settings.whisperQualityMode),
+      prompt: exactTranscriptionPrompt,
+    });
   }
 
   private modelRoots(): string[] {
@@ -108,15 +121,35 @@ export class WhisperService {
   }
 
   async transcribe(audio: Uint8Array, modelFileName: string, options: TranscribeOptions = {}): Promise<string> {
+    const startedAt = Date.now();
     const modelPath = await this.modelPath(modelFileName);
     const id = crypto.randomUUID();
     const temporaryRoot = await this.storage.ensureDir('tmp', id);
+    const serverDiagnostics: WhisperServerDiagnostics[] = [];
+    let settings: Settings | null = null;
+    let segments: Uint8Array[] = [];
+    const wavInfo = this.wavInfo(audio);
 
     try {
-      const audioPath = join(temporaryRoot, 'input.wav');
-      await writeFile(audioPath, audio);
-      const settings = await this.settingsService.get();
-      const segments = this.speechSegments(audio, settings.silenceSensitivity);
+      settings = await this.settingsService.get();
+      segments = this.speechSegments(audio, settings.silenceSensitivity);
+      if (segments.length === 0) {
+        this.writeWhisperLog({
+          fileName: this.logFileName(options.debugName),
+          actionType: this.actionType(options.debugName),
+          status: 'no speech',
+          startedAt,
+          durationMs: Math.max(1, Date.now() - startedAt),
+          modelPath,
+          audio,
+          wavInfo,
+          settings,
+          segments,
+          serverDiagnostics,
+          serverCalled: false,
+        });
+        return '';
+      }
       if (segments.length > 1) {
         const texts: string[] = [];
         const progressTracker = segmentProgressTracker(segments);
@@ -128,35 +161,81 @@ export class WhisperService {
           const segmentId = `${id}-segment-${index}`;
           const segmentPath = join(temporaryRoot, `${segmentId}.wav`);
           await writeFile(segmentPath, segment);
-          const text = await this.transcribeAudioFile(
+          const result = await this.transcribeWithServer(
             modelPath,
-            segmentPath,
-            temporaryRoot,
-            segmentId,
+            segment,
             options.timeoutMs,
             exactTranscriptionPrompt,
-            options.debugName ? `${options.debugName}-segment-${index}` : undefined,
-            (segmentPercent) => {
-              options.onProgress?.(progressTracker.current(index, segmentPercent));
-            },
           );
+          serverDiagnostics.push(result.diagnostics);
+          const text = result.text;
           if (text) {
             texts.push(text);
           }
           options.onProgress?.(progressTracker.done(index));
         }
-        return texts.join('\n').trim();
+        const text = texts.join('\n').trim();
+        this.writeWhisperLog({
+          fileName: this.logFileName(options.debugName),
+          actionType: this.actionType(options.debugName),
+          status: 'success',
+          startedAt,
+          durationMs: Math.max(1, Date.now() - startedAt),
+          modelPath,
+          audio,
+          wavInfo,
+          settings,
+          segments,
+          serverDiagnostics,
+          serverCalled: true,
+          outputText: text,
+        });
+        return text;
       }
-      return await this.transcribeAudioFile(
+      const result = await this.transcribeWithServer(
         modelPath,
-        audioPath,
-        temporaryRoot,
-        id,
+        audio,
         options.timeoutMs,
         exactTranscriptionPrompt,
-        options.debugName,
-        options.onProgress,
       );
+      serverDiagnostics.push(result.diagnostics);
+      this.writeWhisperLog({
+        fileName: this.logFileName(options.debugName),
+        actionType: this.actionType(options.debugName),
+        status: 'success',
+        startedAt,
+        durationMs: Math.max(1, Date.now() - startedAt),
+        modelPath,
+        audio,
+        wavInfo,
+        settings,
+        segments,
+        serverDiagnostics,
+        serverCalled: true,
+        outputText: result.text,
+      });
+      return result.text;
+    } catch (error) {
+      const diagnostics = whisperServerDiagnosticsFromError(error);
+      if (diagnostics) {
+        serverDiagnostics.push(diagnostics);
+      }
+      this.writeWhisperLog({
+        fileName: this.logFileName(options.debugName),
+        actionType: this.actionType(options.debugName),
+        status: 'error',
+        startedAt,
+        durationMs: Math.max(1, Date.now() - startedAt),
+        modelPath,
+        audio,
+        wavInfo,
+        settings,
+        segments,
+        serverDiagnostics,
+        serverCalled: serverDiagnostics.length > 0,
+        error,
+      });
+      throw error;
     } finally {
       await this.cleanupTemporaryFiles(temporaryRoot);
     }
@@ -172,17 +251,17 @@ export class WhisperService {
       const audio = await readFile(audioPath);
       const settings = await this.settingsService.get();
       const segments = this.speechSegments(audio, settings.silenceSensitivity);
+      if (segments.length === 0) {
+        return '';
+      }
       if (segments.length <= 1) {
-        return await this.transcribeAudioFile(
+        const result = await this.transcribeWithServer(
           modelPath,
-          audioPath,
-          temporaryRoot,
-          id,
+          audio,
           options.timeoutMs,
           exactTranscriptionPrompt,
-          options.debugName,
-          options.onProgress,
         );
+        return result.text;
       }
 
       const texts: string[] = [];
@@ -195,18 +274,13 @@ export class WhisperService {
         const segmentId = `${id}-segment-${index}`;
         const segmentPath = join(temporaryRoot, `${segmentId}.wav`);
         await writeFile(segmentPath, segment);
-        const text = await this.transcribeAudioFile(
+        const result = await this.transcribeWithServer(
           modelPath,
-          segmentPath,
-          temporaryRoot,
-          segmentId,
+          segment,
           options.timeoutMs,
           exactTranscriptionPrompt,
-          options.debugName ? `${options.debugName}-segment-${index}` : undefined,
-          (segmentPercent) => {
-            options.onProgress?.(progressTracker.current(index, segmentPercent));
-          },
         );
+        const text = result.text;
         if (text) {
           texts.push(text);
         }
@@ -247,74 +321,30 @@ export class WhisperService {
     debugName?: string,
     onProgress?: (progress: number) => void,
   ): Promise<string> {
-    const audioPath = join(temporaryRoot, 'input.wav');
-    await writeFile(audioPath, audio);
-    return this.transcribeAudioFile(
+    const result = await this.transcribeWithServer(
       modelPath,
-      audioPath,
-      temporaryRoot,
-      id,
+      audio,
       timeoutMs,
       exactTranscriptionPrompt,
-      debugName,
-      onProgress,
     );
+    return result.text;
   }
 
-  private async transcribeAudioFile(
+  private async transcribeWithServer(
     modelPath: string,
-    audioPath: string,
-    temporaryRoot: string,
-    id: string,
+    audio: Uint8Array,
     timeoutMs: number | null | undefined,
     prompt?: string,
-    debugName?: string,
-    onProgress?: (progress: number) => void,
-  ): Promise<string> {
-    const attempts: Array<{
-      mode: WhisperRunMode;
-      inputMode: 'positional' | 'flag';
-      outputMode: 'file' | 'stdout';
-    }> = [
-      { mode: 'auto', inputMode: 'positional', outputMode: 'file' },
-      { mode: 'cpu', inputMode: 'positional', outputMode: 'file' },
-      { mode: 'auto', inputMode: 'flag', outputMode: 'file' },
-      { mode: 'cpu', inputMode: 'flag', outputMode: 'file' },
-      { mode: 'auto', inputMode: 'positional', outputMode: 'stdout' },
-      { mode: 'cpu', inputMode: 'positional', outputMode: 'stdout' },
-      { mode: 'auto', inputMode: 'flag', outputMode: 'stdout' },
-      { mode: 'cpu', inputMode: 'flag', outputMode: 'stdout' },
-    ];
-    const errors: string[] = [];
-
-    for (const attempt of attempts) {
-      const outputBase = join(temporaryRoot, `${id}-${attempt.mode}-${attempt.inputMode}-${attempt.outputMode}`);
-      const outputId = basename(outputBase);
-      const run = await this.runWhisper(
-        modelPath,
-        audioPath,
-        outputBase,
-        temporaryRoot,
-        attempt.mode,
-        attempt.inputMode,
-        attempt.outputMode,
-        timeoutMs,
-        prompt,
-        debugName,
-        onProgress,
-      ).catch((error: unknown) => {
-        errors.push(error instanceof Error ? error.message : 'Whisper failed.');
-        return null;
-      });
-      if (run) {
-        const text = await this.readTranscript(temporaryRoot, outputId, run.stdout, run.stderr);
-        if (text) {
-          onProgress?.(100);
-          return text;
-        }
-      }
-    }
-    return '';
+  ): Promise<WhisperServerResult> {
+    const executable = await this.executablePath();
+    const settings = await this.settingsService.get();
+    return this.server.transcribe(executable, modelPath, audio, {
+      language: whisperLanguage(settings.whisperLanguage),
+      threads: whisperThreadCount(),
+      qualityArgs: whisperQualityArgs(settings.whisperQualityMode),
+      prompt,
+      timeoutMs,
+    });
   }
 
   private async modelPath(modelFileName: string): Promise<string> {
@@ -343,167 +373,6 @@ export class WhisperService {
     return runtime.path;
   }
 
-  private async runWhisper(
-    modelPath: string,
-    audioPath: string,
-    outputBase: string,
-    cwd: string,
-    mode: WhisperRunMode,
-    inputMode: 'positional' | 'flag',
-    outputMode: 'file' | 'stdout',
-    timeoutMs: number | null | undefined = 180000,
-    prompt?: string,
-    logName?: string,
-    onProgress?: (progress: number) => void,
-  ): Promise<WhisperRunResult> {
-    const executable = await this.executablePath();
-    const settings = await this.settingsService.get();
-    return new Promise((resolvePromise, reject) => {
-      const args = [
-        '-m',
-        modelPath,
-        '-l',
-        whisperLanguage(settings.whisperLanguage),
-        '-nt',
-        '-t',
-        String(whisperThreadCount()),
-      ];
-      args.push(...whisperQualityArgs(settings.whisperQualityMode));
-
-      if (outputMode === 'file') {
-        args.push('-otxt', '-of', outputBase);
-      }
-
-      if (prompt) {
-        args.push('-mc', '0', '--prompt', prompt);
-      }
-
-      if (mode === 'cpu') {
-        args.push('-ng');
-      }
-
-      if (inputMode === 'flag') {
-        args.push('-f', audioPath);
-      } else {
-        args.push(audioPath);
-      }
-
-      const process = spawn(executable, args, {
-        cwd,
-        windowsHide: true,
-        shell: false,
-      });
-      const errors: Buffer[] = [];
-      const output: Buffer[] = [];
-      const rawOutput: Buffer[] = [];
-      const timeout =
-        timeoutMs === null
-          ? null
-          : setTimeout(async () => {
-              await this.appendWhisperLog(
-                args,
-                cwd,
-                Buffer.concat(rawOutput).toString('utf8'),
-                'timeout',
-                logName,
-              );
-              process.kill();
-              reject(new Error('Whisper transcription timed out.'));
-            }, timeoutMs);
-
-      process.stdout.on('data', (chunk: Buffer) => {
-        output.push(chunk);
-        rawOutput.push(chunk);
-        emitWhisperProgress(chunk, onProgress);
-      });
-
-      process.stderr.on('data', (chunk: Buffer) => {
-        errors.push(chunk);
-        rawOutput.push(chunk);
-        emitWhisperProgress(chunk, onProgress);
-      });
-
-      process.on('error', async (error) => {
-        if (timeout) {
-          clearTimeout(timeout);
-        }
-        await this.appendWhisperLog(args, cwd, '', error.message, logName);
-        reject(error);
-      });
-
-      process.on('close', async (code) => {
-        if (timeout) {
-          clearTimeout(timeout);
-        }
-        const stderr = Buffer.concat(errors).toString('utf8');
-        const stdout = Buffer.concat(output).toString('utf8');
-        const raw = Buffer.concat(rawOutput).toString('utf8');
-        await this.appendWhisperLog(args, cwd, raw, `exit code: ${code ?? 'unknown'}`, logName);
-        if (code !== 0) {
-          reject(new Error(stderr.trim() || stdout.trim() || 'Whisper failed.'));
-          return;
-        }
-        resolvePromise({
-          stdout,
-          stderr,
-        });
-      });
-    });
-  }
-
-  private async appendWhisperLog(
-    args: string[],
-    cwd: string,
-    rawOutput: string,
-    status: string,
-    logName?: string,
-  ): Promise<void> {
-    const executable = await this.executablePath();
-    const command = [executable, ...args].map((part) => `"${part}"`).join(' ');
-    const fileName = logName === 'transcript'
-      ? 'transcript.log'
-      : logName === 'speak'
-        ? 'speak.log'
-        : 'whisper.log';
-    await this.logger.append(fileName, [`cwd: ${cwd}`, `command: ${command}`, rawOutput, status]);
-  }
-
-  private async readTranscript(
-    temporaryRoot: string,
-    id: string,
-    stdout: string,
-    stderr: string,
-  ): Promise<string> {
-    const fileText = await this.readTranscriptFile(temporaryRoot, id);
-    if (fileText) {
-      return fileText;
-    }
-
-    const stdoutText = this.cleanTranscriptOutput(stdout);
-    if (stdoutText) {
-      return stdoutText;
-    }
-
-    return this.cleanTranscriptOutput(stderr);
-  }
-
-  private async readTranscriptFile(temporaryRoot: string, id: string): Promise<string> {
-    try {
-      const files = await readdir(temporaryRoot);
-      const candidates = files
-        .filter((file) => file.startsWith(id) && file.endsWith('.txt'))
-        .sort((a, b) => a.localeCompare(b));
-
-      for (const candidate of candidates) {
-        const text = (await readFile(join(temporaryRoot, candidate), 'utf8')).trim();
-        if (text) {
-          return text;
-        }
-      }
-    } catch {}
-
-    return '';
-  }
 
   private speechSegments(audio: Uint8Array, sensitivity: SilenceSensitivity): Uint8Array[] {
     const info = this.wavInfo(audio);
@@ -513,7 +382,7 @@ export class WhisperService {
 
     const ranges = this.detectSpeechRanges(audio, info, sensitivity);
     if (ranges.length === 0) {
-      return [audio];
+      return [];
     }
 
     return this.expandSpeechRanges(ranges, info)
@@ -725,29 +594,6 @@ export class WhisperService {
     } catch {}
   }
 
-  private cleanTranscriptOutput(output: string): string {
-    return output
-      .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .filter((line) => !/^whisper/i.test(line))
-      .filter((line) => !/^system_info/i.test(line))
-      .filter((line) => !/^main:/i.test(line))
-      .filter((line) => !/^ggml/i.test(line))
-      .filter((line) => !/^whisper_/i.test(line))
-      .filter((line) => !/^error:/i.test(line))
-      .filter((line) => !/^usage:/i.test(line))
-      .filter((line) => !/^Device\s+\d+:/i.test(line))
-      .filter((line) => !/^read_audio_data:/i.test(line))
-      .filter((line) => !/^output_txt:/i.test(line))
-      .filter((line) => !/^CUDA\d+\s+total size/i.test(line))
-      .map((line) => line.replace(/^\[[^\]]+\]\s*/, '').trim())
-      .filter(Boolean)
-      .join('\n')
-      .trim();
-  }
-
   private async helpText(): Promise<string> {
     const executable = await this.executablePath();
     return new Promise((resolveHelp) => {
@@ -788,6 +634,104 @@ export class WhisperService {
     } catch {
       return false;
     }
+  }
+
+  private writeWhisperLog(input: {
+    fileName: 'speak.log' | 'transcript.log';
+    actionType: 'speak' | 'transcript';
+    status: 'success' | 'error' | 'no speech';
+    startedAt: number;
+    durationMs: number;
+    modelPath: string;
+    audio: Uint8Array;
+    wavInfo: WavInfo | null;
+    settings: Settings | null;
+    segments: Uint8Array[];
+    serverDiagnostics: WhisperServerDiagnostics[];
+    serverCalled: boolean;
+    outputText?: string;
+    error?: unknown;
+  }): void {
+    const lastDiagnostics = input.serverDiagnostics.at(-1);
+    void this.logger.writeSnapshot(input.fileName, [
+      '',
+      '[ACTION]',
+      `type: ${input.actionType}`,
+      `status: ${input.status}`,
+      `duration ms: ${input.durationMs}`,
+      `trigger/debug name: ${input.actionType}`,
+      '',
+      '[SERVER PROCESS]',
+      'engine: whisper',
+      `executable: ${lastDiagnostics?.executable ?? 'unknown'}`,
+      `args: ${lastDiagnostics ? quoteArgs(lastDiagnostics.args) : 'unknown'}`,
+      `pid: ${lastDiagnostics?.pid ?? 'unknown'}`,
+      `host: ${lastDiagnostics?.host ?? 'unknown'}`,
+      `port: ${lastDiagnostics?.port ?? 'unknown'}`,
+      `url: ${lastDiagnostics?.url ?? 'unknown'}`,
+      `server reused: ${yesNo(lastDiagnostics?.serverReused)}`,
+      `server started during action: ${yesNo(lastDiagnostics?.serverStartedDuringAction)}`,
+      `startup duration ms: ${lastDiagnostics?.startupDurationMs ?? 'unknown'}`,
+      `alive before request: ${yesNo(lastDiagnostics?.aliveBeforeRequest)}`,
+      `alive after request: ${yesNo(lastDiagnostics?.aliveAfterRequest)}`,
+      '',
+      '[SERVER STDOUT RAW TAIL]',
+      lastDiagnostics?.stdoutTail || 'empty',
+      '',
+      '[SERVER STDERR RAW TAIL]',
+      lastDiagnostics?.stderrTail || 'empty',
+      '',
+      '[CLIENT REQUEST]',
+      `method: ${lastDiagnostics?.method ?? 'unknown'}`,
+      `endpoint: ${lastDiagnostics?.endpoint ?? 'unknown'}`,
+      `timeout ms: ${lastDiagnostics?.timeoutMs ?? 'unknown'}`,
+      `request started at: ${lastDiagnostics?.requestStartedAt ?? new Date(input.startedAt).toISOString()}`,
+      `request finished at: ${lastDiagnostics?.requestFinishedAt ?? 'unknown'}`,
+      `request duration ms: ${lastDiagnostics?.requestDurationMs ?? 'unknown'}`,
+      `http status: ${lastDiagnostics?.httpStatus ?? 'unknown'}`,
+      `http status text: ${lastDiagnostics?.httpStatusText ?? 'unknown'}`,
+      `content type: ${lastDiagnostics?.contentType ?? 'unknown'}`,
+      `request bytes: ${lastDiagnostics?.requestBytes ?? 'unknown'}`,
+      `response bytes: ${lastDiagnostics?.responseBytes ?? 'unknown'}`,
+      '',
+      '[WHISPER]',
+      `model: ${input.modelPath}`,
+      `language: ${input.settings ? whisperLanguage(input.settings.whisperLanguage) : 'unknown'}`,
+      `threads: ${whisperThreadCount()}`,
+      `quality args: ${input.settings ? quoteArgs(whisperQualityArgs(input.settings.whisperQualityMode)) : 'unknown'}`,
+      `audio bytes: ${input.audio.byteLength}`,
+      `wav valid: ${yesNo(Boolean(input.wavInfo))}`,
+      `sample rate: ${input.wavInfo?.sampleRate ?? 'unknown'}`,
+      `channels: ${input.wavInfo?.channels ?? 'unknown'}`,
+      `bits per sample: ${input.wavInfo?.bitsPerSample ?? 'unknown'}`,
+      `audio duration ms: ${input.wavInfo ? wavDurationMs(input.wavInfo) : 'unknown'}`,
+      `silence sensitivity: ${input.settings?.silenceSensitivity ?? 'unknown'}`,
+      `speech detected: ${yesNo(input.segments.length > 0)}`,
+      `speech segments: ${input.segments.length}`,
+      `segment durations ms: ${input.segments.map((segment) => wavDurationWeight(segment).toFixed(0)).join(', ') || 'none'}`,
+      `server called: ${yesNo(input.serverCalled)}`,
+      '',
+      '[HTTP RAW RESPONSE TAIL]',
+      input.serverDiagnostics.map((diagnostics) => diagnostics.rawResponseTail || 'empty').join('\n\n--- response ---\n\n') || 'empty',
+      '',
+      '[RESULT]',
+      `output chars: ${input.outputText?.length ?? 'unknown'}`,
+      `output lines: ${input.outputText ? lineCount(input.outputText) : 'unknown'}`,
+      '',
+      '[ERROR]',
+      ...(input.error ? errorDiagnostics(input.error) : ['name: none', 'message: none', 'stack: none']),
+      `http error body tail: ${lastDiagnostics?.httpErrorBodyTail || 'empty'}`,
+      `server stdout tail: ${lastDiagnostics?.stdoutTail || 'empty'}`,
+      `server stderr tail: ${lastDiagnostics?.stderrTail || 'empty'}`,
+    ]).catch(() => {});
+  }
+
+  private logFileName(debugName?: string): 'speak.log' | 'transcript.log' {
+    return debugName === 'transcript' ? 'transcript.log' : 'speak.log';
+  }
+
+  private actionType(debugName?: string): 'speak' | 'transcript' {
+    return debugName === 'transcript' ? 'transcript' : 'speak';
   }
 }
 
@@ -860,20 +804,16 @@ const wavDurationWeight = (audio: Uint8Array): number => {
 
 const clampProgress = (progress: number): number => Math.max(0, Math.min(100, progress));
 
-const emitWhisperProgress = (chunk: Buffer, onProgress?: (progress: number) => void): void => {
-  if (!onProgress) {
-    return;
-  }
-  const output = chunk.toString('utf8');
-  const match = output.match(/(?:progress|progression)?\s*[=:]?\s*(\d{1,3})\s*%/i);
-  if (!match) {
-    return;
-  }
-  const progress = Number(match[1]);
-  if (Number.isFinite(progress)) {
-    onProgress(clampProgress(progress));
-  }
+const wavDurationMs = (info: WavInfo): number => {
+  const bytesPerFrame = info.channels * (info.bitsPerSample / 8);
+  return Math.round((info.dataSize / bytesPerFrame / info.sampleRate) * 1000);
 };
+
+const lineCount = (text: string): number => text ? text.split(/\r?\n/).length : 0;
+
+const quoteArgs = (args: string[]): string => args.map((part) => `"${part}"`).join(' ');
+
+const yesNo = (value: boolean | undefined): string => value === undefined ? 'unknown' : value ? 'yes' : 'no';
 
 const silenceSensitivityConfig: Record<
   SilenceSensitivity,

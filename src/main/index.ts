@@ -6,6 +6,8 @@ import { ErrorLogService } from '@services/error-log-service';
 import { SettingsService } from '@services/settings-service';
 import { HotkeyService } from '@services/hotkey-service';
 import { StartupLogService } from '@services/startup-log-service';
+import { llamaServerService } from '@services/llama-server-service';
+import { whisperServerService } from '@services/whisper-server-service';
 import { AppStorage } from '@storage/app-storage';
 import { packageInfo } from '@shared/GlobalVars';
 
@@ -65,8 +67,8 @@ void app.whenReady().then(async () => {
   await appStorage.clearDir('tmp').catch(() => {});
 
   registerIpc();
+  await startupLogService.write().catch(() => {});
   createMainWindow();
-  void startupLogService.write().catch(() => {});
 
   void settingsService.get().then((settings) => {
     hotkeyService.register(settings, {
@@ -84,6 +86,8 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
   hotkeyService.unregisterAll();
+  llamaServerService.stop();
+  whisperServerService.stop();
   destroyTray();
 });
 

@@ -64,7 +64,7 @@ export const overlayProcessing = (
   active: true,
   mode,
   status: mode === 'improve' ? 'improving' : 'transcribing',
-  phase: progress?.phase ?? (mode === 'improve' ? 'thinking' : 'preparing'),
+  phase: progress?.phase ?? (mode === 'improve' ? 'thinking' : 'transcribing'),
   waveform,
   ...progress,
   message,

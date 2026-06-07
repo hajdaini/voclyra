@@ -509,18 +509,6 @@
   white-space: nowrap;
 }
 
-.inline-status.warning .inline-status-badge {
-  border-color: rgba(255, 156, 77, 0.42);
-  color: var(--primary-strong);
-  background: rgba(255, 156, 77, 0.1);
-}
-
-.inline-status.error .inline-status-badge {
-  border-color: rgba(255, 107, 107, 0.42);
-  color: #ff9b9b;
-  background: rgba(255, 107, 107, 0.1);
-}
-
 .inline-runtime-badge {
   display: inline-flex;
   align-items: center;
@@ -538,26 +526,53 @@
 
 .inline-runtime-badge svg {
   flex: 0 0 auto;
+  color: currentColor;
 }
 
-.inline-status.ready svg {
+.inline-status .inline-runtime-badge svg {
+  color: currentColor;
+}
+
+.inline-runtime-badge.success {
   color: var(--success);
 }
 
-.inline-status.listening svg,
-.inline-status.processing svg {
-  color: var(--muted);
-}
-
-.inline-status.error svg {
+.inline-runtime-badge.error {
   color: var(--danger);
 }
 
-.inline-status.warning svg {
+.inline-runtime-badge.warning {
   color: var(--primary-strong);
 }
 
-.inline-status.processing svg,
+.inline-status.success .inline-status-badge {
+  color: var(--success);
+}
+
+.inline-status.success .inline-status-badge > svg {
+  color: var(--success);
+}
+
+.inline-status.default .inline-status-badge,
+.inline-status.default .inline-status-badge > svg {
+  color: var(--muted);
+}
+
+.inline-status.info .inline-status-badge,
+.inline-status.info .inline-status-badge > svg {
+  color: #a9c7ff;
+}
+
+.inline-status.error .inline-status-badge,
+.inline-status.error .inline-status-badge > svg {
+  color: var(--danger);
+}
+
+.inline-status.warning .inline-status-badge,
+.inline-status.warning .inline-status-badge > svg {
+  color: var(--primary-strong);
+}
+
 .model-state-icon.downloading svg {
   animation: spin 1.1s linear infinite;
 }

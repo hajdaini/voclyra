@@ -52,6 +52,7 @@ const api: AppApi = {
       ipcRenderer.invoke(channels.whisperDeleteModel, id) as ReturnType<AppApi['whisper']['deleteModel']>,
     runtimeInfo: () =>
       ipcRenderer.invoke(channels.whisperRuntimeInfo) as ReturnType<AppApi['whisper']['runtimeInfo']>,
+    warmup: (model) => ipcRenderer.invoke(channels.whisperWarmup, model) as ReturnType<AppApi['whisper']['warmup']>,
     onDownloadProgress: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, progress: WhisperDownloadProgress): void => {
         callback(progress);
@@ -71,6 +72,7 @@ const api: AppApi = {
       ipcRenderer.invoke(channels.llmDeleteModel, id) as ReturnType<AppApi['llm']['deleteModel']>,
     runtimeInfo: () =>
       ipcRenderer.invoke(channels.llmRuntimeInfo) as ReturnType<AppApi['llm']['runtimeInfo']>,
+    warmup: (model) => ipcRenderer.invoke(channels.llmWarmup, model) as ReturnType<AppApi['llm']['warmup']>,
     onDownloadProgress: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, progress: LlmDownloadProgress): void => {
         callback(progress);

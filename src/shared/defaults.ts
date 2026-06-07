@@ -1,15 +1,10 @@
-import { text } from 'stream/iter';
 import type { HistoryEntry, Settings } from './types';
 
 export const defaultSettings: Settings = {
   llmModel: '',
   whisperModel: '',
-  whisperCudaRuntimeVersion: 'cuda-12',
   whisperLanguage: 'auto',
   whisperQualityMode: 'balanced',
-  llmCudaRuntimeVersion: 'cuda-13',
-  llmMaxTokensMode: 'auto',
-  llmMaxTokens: 160,
   llmContextSize: 4096,
   llmTemperature: 0.1,
 correctionPrompt: [

@@ -9,12 +9,8 @@ export const hotkeysSchema = z.object({
 export const settingsSchema = z.object({
   llmModel: z.string().max(260),
   whisperModel: z.string().max(260),
-  whisperCudaRuntimeVersion: z.enum(['cuda-11', 'cuda-12']),
   whisperLanguage: z.enum(['auto', 'fr', 'en', 'es', 'de', 'it', 'pt']),
   whisperQualityMode: z.enum(['fast', 'balanced', 'accurate']),
-  llmCudaRuntimeVersion: z.enum(['cuda-12', 'cuda-13']),
-  llmMaxTokensMode: z.enum(['auto', 'fixed']),
-  llmMaxTokens: z.number().int().min(64).max(1200),
   llmContextSize: z.union([z.literal(2048), z.literal(3072), z.literal(4096)]),
   llmTemperature: z.number().min(0).max(1),
   correctionPrompt: z.string().min(1).max(4000),

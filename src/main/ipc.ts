@@ -50,8 +50,10 @@ const mainActionLockState = () => ({
   speakRecording: false,
   speakProcessing: false,
   improveProcessing: improveShortcutRunning,
+  improveLoading: false,
   transcriptRecording: false,
   transcriptProcessing: false,
+  whisperLoading: false,
 });
 
 const ready = (
@@ -223,9 +225,27 @@ export const registerIpc = (): void => {
 
   ipcMain.handle(channels.whisperRuntimeInfo, () => whisperService.runtimeInfo());
 
+  ipcMain.handle(channels.whisperWarmup, async (_event, value: unknown) => {
+    const model = typeof value === 'string' ? value : '';
+    const models = await whisperModelService.downloadedModelNames();
+    if (!model || !models.includes(model)) {
+      return;
+    }
+    await whisperService.warmup(model);
+  });
+
   ipcMain.handle(channels.llmAvailableModels, () => llmModelService.availableModels());
 
   ipcMain.handle(channels.llmRuntimeInfo, () => llamaService.runtimeInfo());
+
+  ipcMain.handle(channels.llmWarmup, async (_event, value: unknown) => {
+    const model = typeof value === 'string' ? value : '';
+    const models = await llmModelService.downloadedModelNames();
+    if (!model || !models.includes(model)) {
+      return;
+    }
+    await llamaService.warmup(llmModelService.modelPath(model));
+  });
 
   ipcMain.handle(channels.hardwareInfo, () => hardwareService.info());
 
@@ -268,7 +288,6 @@ export const registerIpc = (): void => {
     try {
       const startedAt = performance.now();
       const audioDurationMs = wavDurationMs(audio);
-      showProcessingProgress('speak', { phase: 'preparing' });
       const text = singleLineText(await whisperService.transcribe(audio, whisperModel, {
         debugName: 'speak',
         onProgress: (progress) => {
@@ -307,7 +326,6 @@ export const registerIpc = (): void => {
     try {
       const startedAt = performance.now();
       const audioDurationMs = wavDurationMs(audio);
-      showProcessingProgress('transcript', { phase: 'preparing' });
       const text = await whisperService.transcribe(audio, whisperModel, {
         timeoutMs: null,
         debugName: 'transcript',
