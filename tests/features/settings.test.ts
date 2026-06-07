@@ -178,7 +178,7 @@ describe('Settings', () => {
       hotkeys: {
         speak: 'Alt+A',
         improveText: 'Alt+Z',
-        transcript: 'Alt+E',
+        transcript: 'Alt+T',
       },
     });
 

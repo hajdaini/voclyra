@@ -20,10 +20,6 @@ export const appAssetConfig = {
 } as const;
 
 export const whisperCudaRuntimeVersionConfig = {
-  'cuda-11': {
-    label: 'CUDA 11.8',
-    directory: 'cuda-11',
-  },
   'cuda-12': {
     label: 'CUDA 12.4',
     directory: 'cuda-12',
@@ -34,10 +30,6 @@ export const llamaCudaRuntimeVersionConfig = {
   'cuda-12': {
     label: 'CUDA 12.4',
     directory: 'cuda-12',
-  },
-  'cuda-13': {
-    label: 'CUDA 13.3',
-    directory: 'cuda-13',
   },
 } as const;
 

@@ -25,8 +25,15 @@ No cloud transcription. No hosted correction API. Your data stays on your machin
 
 <video src="assets/voclyra_presentation.mp4" controls width="820"></video>
 
+## 📦 Download
+
+Download the latest Windows installer from the [latest release](https://github.com/hajdaini/voclyra/releases/latest).
+
+Install it like a normal desktop app, then open Voclyra and download the local models from **Settings**.
+
 ## 📚 Table Of Contents
 
+- [Download](#-download)
 - [Why Voclyra](#-why-voclyra)
 - [Core Modes](#-core-modes)
 - [What You Get](#-what-you-get)

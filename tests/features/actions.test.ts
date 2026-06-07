@@ -240,7 +240,7 @@ const setup = async (): Promise<void> => {
     hotkeys: {
       speak: 'Alt+A',
       improveText: 'Alt+Z',
-      transcript: 'Alt+E',
+      transcript: 'Alt+T',
     },
   });
   const { registerIpc } = await import('@main/ipc');

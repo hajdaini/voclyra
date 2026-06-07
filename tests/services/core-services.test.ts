@@ -209,7 +209,7 @@ describe('Core services', () => {
 
     expect(result).toEqual({ speak: true, improveText: false, transcript: true });
     expect(shortcuts.unregisterAllCalls).toBe(1);
-    expect(shortcuts.registered).toEqual(['Alt+A', 'Alt+Z', 'Alt+E']);
+    expect(shortcuts.registered).toEqual(['Alt+A', 'Alt+Z', 'Alt+T']);
 
     service.unregisterAll();
 
@@ -340,21 +340,19 @@ describe('Core services', () => {
     const { RuntimePathService } = await import('@services/runtime-path-service');
     const service = new RuntimePathService();
     fsState.files.set('C:\\project\\voclyra\\resources\\runtimes\\llama\\cuda-12\\win-x64\\llama-server.exe', '');
-    fsState.files.set('C:\\project\\voclyra\\resources\\runtimes\\llama\\cuda-13\\win-x64\\llama-server.exe', '');
 
     await expect(
       service.selectCudaRuntime(
         'llama',
         {
-          old: { label: 'CUDA 12.4', directory: 'cuda-12' },
-          current: { label: 'CUDA 13.3', directory: 'cuda-13' },
+          current: { label: 'CUDA 12.4', directory: 'cuda-12' },
         },
         'win-x64',
         'llama-server.exe',
       ),
     ).resolves.toEqual({
-      label: 'CUDA 13.3',
-      path: 'C:\\project\\voclyra\\resources\\runtimes\\llama\\cuda-13\\win-x64\\llama-server.exe',
+      label: 'CUDA 12.4',
+      path: 'C:\\project\\voclyra\\resources\\runtimes\\llama\\cuda-12\\win-x64\\llama-server.exe',
     });
   });
 
@@ -478,7 +476,7 @@ describe('Core services', () => {
     fsState.files.set('C:\\test-user\\.voclyra\\models\\whisper\\ggml-large-v3.bin', '');
     fsState.files.set('C:\\test-user\\.voclyra\\models\\llm\\gemma-4-e4b-it.Q4_K_M.gguf', '');
     fsState.files.set('C:\\project\\voclyra\\resources\\runtimes\\whisper\\cuda-12\\win-x64\\whisper-server.exe', '');
-    fsState.files.set('C:\\project\\voclyra\\resources\\runtimes\\llama\\cuda-13\\win-x64\\llama-server.exe', '');
+    fsState.files.set('C:\\project\\voclyra\\resources\\runtimes\\llama\\cuda-12\\win-x64\\llama-server.exe', '');
 
     await new StartupLogService().write();
 
@@ -487,7 +485,7 @@ describe('Core services', () => {
     expect(log).toContain('[GPU INFO]');
     expect(log).toContain('gpu: NVIDIA GeForce RTX 5060 Ti');
     expect(log).toContain('whisper cuda version: CUDA 12.4');
-    expect(log).toContain('llama cuda version: CUDA 13.3');
+    expect(log).toContain('llama cuda version: CUDA 12.4');
   });
 
   it('keeps audio service start and stop as no-op promises', async () => {
