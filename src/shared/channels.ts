@@ -35,6 +35,7 @@ export const channels = {
   llmRuntimeInfo: 'llm:runtimeInfo',
   llmWarmup: 'llm:warmup',
   hardwareInfo: 'hardware:info',
+  hardwareUsage: 'hardware:usage',
   appSpeak: 'app:speak',
   appImproveText: 'app:improveText',
   appTranscript: 'app:transcript',

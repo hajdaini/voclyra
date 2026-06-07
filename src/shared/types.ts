@@ -8,7 +8,7 @@ export type WhisperQualityMode = 'fast' | 'balanced' | 'accurate';
 
 export type SilenceSensitivity = 'low' | 'normal' | 'high';
 
-export type LlmContextSize = 2048 | 3072 | 4096;
+export type LlmContextSize = 512 | 1024 | 2048 | 3072 | 4096 | 6144 | 8192 | 12288 | 16384 | 32768;
 
 export type Hotkeys = {
   speak: string;
@@ -97,6 +97,15 @@ export type HardwareInfo = {
   gpuCudaVersion: string;
   gpuMemoryUsedGb: number | null;
   gpuMemoryFreeGb: number | null;
+};
+
+export type GpuUsage = {
+  available: boolean;
+  name: string;
+  memoryUsedGb: number | null;
+  memoryTotalGb: number | null;
+  memoryUsagePercent: number | null;
+  utilizationPercent: number | null;
 };
 
 export type LlmModelId =
@@ -201,6 +210,7 @@ export type AppApi = {
   };
   hardware: {
     info: () => Promise<HardwareInfo>;
+    usage: () => Promise<GpuUsage>;
   };
   actions: {
     onSpeak: (callback: () => void) => () => void;

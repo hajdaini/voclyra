@@ -133,6 +133,14 @@ vi.mock('@services/history-service', () => ({
 vi.mock('@services/hardware-service', () => ({
   HardwareService: class {
     info = vi.fn(async () => ({}));
+    usage = vi.fn(async () => ({
+      available: true,
+      name: 'NVIDIA GeForce RTX 5060 Ti',
+      memoryUsedGb: 9.3,
+      memoryTotalGb: 15.9,
+      memoryUsagePercent: 58,
+      utilizationPercent: 47,
+    }));
   },
 }));
 
@@ -395,6 +403,15 @@ describe('App actions', () => {
 
     dialogState.filePaths = ['C:\\audio\\missing.wav'];
     await expect(handlers.get(channels.appImportAudio)?.({ sender: {} })).rejects.toThrow('File not found.');
+  });
+
+  it('returns live GPU usage through IPC', async () => {
+    await expect(handlers.get(channels.hardwareUsage)?.({})).resolves.toMatchObject({
+      available: true,
+      memoryUsedGb: 9.3,
+      memoryTotalGb: 15.9,
+      utilizationPercent: 47,
+    });
   });
 
   it('cancels audio import', async () => {

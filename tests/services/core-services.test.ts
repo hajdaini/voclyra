@@ -21,6 +21,8 @@ const spawnState = vi.hoisted(() => ({
 
 class FakeChild extends EventEmitter {
   stdout = new EventEmitter();
+  stderr = new EventEmitter();
+  exitCode: number | null = null;
 
   kill(): void {}
 }
@@ -121,6 +123,12 @@ vi.mock('node:child_process', () => ({
         return;
       }
 
+      if (command === 'nvidia-smi' && args.includes('--query-gpu=name,memory.total,memory.used,utilization.gpu')) {
+        child.stdout.emit('data', Buffer.from('NVIDIA GeForce RTX 5060 Ti, 16311, 12097, 93\n'));
+        child.emit('close', 0);
+        return;
+      }
+
       if (command === 'nvidia-smi') {
         child.stdout.emit('data', Buffer.from(nvidiaSummary));
         child.emit('close', 0);
@@ -129,11 +137,17 @@ vi.mock('node:child_process', () => ({
 
       if (command === 'powershell.exe') {
         child.stdout.emit('data', Buffer.from('8'));
+        child.exitCode = 0;
         child.emit('close', 0);
         child.emit('exit', 0);
         return;
       }
 
+      if (command.includes('llama-server.exe')) {
+        return;
+      }
+
+      child.exitCode = 0;
       child.emit('exit', 0);
     });
 
@@ -154,6 +168,21 @@ describe('Core services', () => {
     spawnState.calls = [];
     spawnState.nvidiaMode = 'ok';
     vi.clearAllMocks();
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, options?: RequestInit) => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: {
+        get: () => 'application/json',
+      },
+      text: async () => options?.method === 'POST'
+        ? JSON.stringify({
+            choices: [{ message: { content: 'corrected text' } }],
+            usage: { completion_tokens: 3 },
+            timings: { predicted_per_second: 12.3 },
+          })
+        : '',
+    })));
   });
 
   it('reads and writes clipboard text', async () => {
@@ -254,6 +283,14 @@ describe('Core services', () => {
       gpuMemoryUsedGb: 1.1,
       gpuMemoryFreeGb: 14.9,
     });
+    await expect(service.usage()).resolves.toMatchObject({
+      available: true,
+      name: 'NVIDIA GeForce RTX 5060 Ti',
+      memoryUsedGb: 11.9,
+      memoryTotalGb: 16,
+      memoryUsagePercent: 74,
+      utilizationPercent: 93,
+    });
     await expect(service.cudaMajorVersion()).resolves.toBe(13);
 
     spawnState.nvidiaMode = 'missing';
@@ -262,6 +299,11 @@ describe('Core services', () => {
       gpuAvailable: false,
       gpuName: 'Unknown GPU',
       gpuVramGb: null,
+    });
+    await expect(service.usage()).resolves.toMatchObject({
+      available: false,
+      memoryUsedGb: null,
+      memoryTotalGb: null,
     });
   });
 
@@ -320,6 +362,61 @@ describe('Core services', () => {
 
     expect(store.read()).toEqual({ value: 'fallback' });
     expect(store.write({ value: 'next' })).toEqual({ value: 'next' });
+  });
+
+  it('uses chat completions for local LLM requests', async () => {
+    const { LlamaServerService } = await import('@services/llama-server-service');
+    const service = new LlamaServerService();
+
+    const result = await service.complete('C:\\runtime\\llama-server.exe', 'C:\\models\\model.gguf', 'Correct this.', {
+      mode: 'auto',
+      maxTokens: 64,
+      contextSize: 2048,
+      temperature: 0.1,
+    });
+
+    const fetchMock = vi.mocked(fetch);
+    const postCall = fetchMock.mock.calls.find((call) => String(call[0]).endsWith('/v1/chat/completions'));
+    const body = JSON.parse(String((postCall?.[1] as RequestInit | undefined)?.body));
+    const serverArgs = spawnState.calls.find((call) => call.command.endsWith('llama-server.exe'))?.args;
+
+    expect(result).toMatchObject({ output: 'corrected text', tokensGenerated: 3, tokensPerSecond: 12.3 });
+    expect(serverArgs).toEqual(expect.arrayContaining(['-np', '1', '--cache-ram', '0', '--reasoning', 'off']));
+    expect(body).toMatchObject({
+      messages: [{ role: 'user', content: 'Correct this.' }],
+      max_tokens: 64,
+      temperature: 0.1,
+      stream: false,
+    });
+  });
+
+  it('restarts the local LLM server when context size changes', async () => {
+    const { LlamaServerService } = await import('@services/llama-server-service');
+    const service = new LlamaServerService();
+    const options = {
+      mode: 'auto' as const,
+      maxTokens: 64,
+      temperature: 0.1,
+    };
+
+    await service.complete('C:\\runtime\\llama-server.exe', 'C:\\models\\model.gguf', 'Correct this.', {
+      ...options,
+      contextSize: 2048,
+    });
+    await service.complete('C:\\runtime\\llama-server.exe', 'C:\\models\\model.gguf', 'Correct this again.', {
+      ...options,
+      contextSize: 2048,
+    });
+    await service.complete('C:\\runtime\\llama-server.exe', 'C:\\models\\model.gguf', 'Correct with more context.', {
+      ...options,
+      contextSize: 4096,
+    });
+
+    const llamaStarts = spawnState.calls.filter((call) => call.command.endsWith('llama-server.exe'));
+
+    expect(llamaStarts).toHaveLength(2);
+    expect(llamaStarts[0].args).toEqual(expect.arrayContaining(['-c', '2048']));
+    expect(llamaStarts[1].args).toEqual(expect.arrayContaining(['-c', '4096']));
   });
 
   it('transcribes meeting audio and stores non-empty transcript history', async () => {

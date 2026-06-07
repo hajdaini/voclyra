@@ -89,6 +89,7 @@ const api: AppApi = {
   },
   hardware: {
     info: () => ipcRenderer.invoke(channels.hardwareInfo) as ReturnType<AppApi['hardware']['info']>,
+    usage: () => ipcRenderer.invoke(channels.hardwareUsage) as ReturnType<AppApi['hardware']['usage']>,
   },
   actions: {
     onSpeak: (callback) => {

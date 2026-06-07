@@ -455,9 +455,16 @@ export const SettingsView = ({
                   onChange({ ...settings, llmContextSize: Number(event.target.value) as SettingsType['llmContextSize'] })
                 }
               >
+                <option value={512}>512</option>
+                <option value={1024}>1024</option>
                 <option value={2048}>2048</option>
                 <option value={3072}>3072</option>
                 <option value={4096}>4096</option>
+                <option value={6144}>6144</option>
+                <option value={8192}>8192</option>
+                <option value={12288}>12288</option>
+                <option value={16384}>16384</option>
+                <option value={32768}>32768</option>
               </select>
             </label>
             <label>

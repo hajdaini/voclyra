@@ -80,6 +80,15 @@ const fallbackApi: AppApi = {
         gpuMemoryUsedGb: null,
         gpuMemoryFreeGb: null,
       }),
+    usage: () =>
+      Promise.resolve({
+        available: false,
+        name: 'Unknown GPU',
+        memoryUsedGb: null,
+        memoryTotalGb: null,
+        memoryUsagePercent: null,
+        utilizationPercent: null,
+      }),
   },
   actions: {
     onSpeak: () => () => {},

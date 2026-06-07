@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { cpus } from 'node:os';
-import type { HardwareInfo } from '@shared/types';
+import type { GpuUsage, HardwareInfo } from '@shared/types';
 
 type GpuInfo = {
   name: string;
@@ -48,6 +48,19 @@ export class HardwareService {
       gpuCudaVersion: bestGpu?.cudaVersion ?? 'unknown',
       gpuMemoryUsedGb: bestGpu?.memoryUsedGb ?? null,
       gpuMemoryFreeGb: bestGpu?.memoryFreeGb ?? null,
+    };
+  }
+
+  async usage(): Promise<GpuUsage> {
+    const gpus = await this.gpuUsage();
+    const bestGpu = gpus.sort((left, right) => (right.memoryTotalGb ?? 0) - (left.memoryTotalGb ?? 0))[0];
+    return bestGpu ?? {
+      available: false,
+      name: 'Unknown GPU',
+      memoryUsedGb: null,
+      memoryTotalGb: null,
+      memoryUsagePercent: null,
+      utilizationPercent: null,
     };
   }
 
@@ -136,6 +149,26 @@ export class HardwareService {
     return (await this.gpuInfoWithStatus()).items;
   }
 
+  private async gpuUsage(): Promise<GpuUsage[]> {
+    if (process.platform !== 'win32') {
+      return [];
+    }
+
+    const query = await this.commandText(
+      'nvidia-smi',
+      ['--query-gpu=name,memory.total,memory.used,utilization.gpu', '--format=csv,noheader,nounits'],
+      2000,
+    );
+    if (query.status !== 'ok') {
+      return [];
+    }
+
+    return query.value
+      .split(/\r?\n/)
+      .map((line) => this.parseNvidiaGpuUsage(line))
+      .filter((gpu): gpu is GpuUsage => Boolean(gpu));
+  }
+
   private async gpuInfoWithStatus(): Promise<{ status: CheckStatus; items: GpuInfo[] }> {
     if (process.platform !== 'win32') {
       return { status: 'missing', items: [] };
@@ -176,6 +209,25 @@ export class HardwareService {
       vramGb: this.mibToGb(total),
       memoryUsedGb: this.optionalMibToGb(usedMiB),
       memoryFreeGb: this.optionalMibToGb(freeMiB),
+    };
+  }
+
+  private parseNvidiaGpuUsage(line: string): GpuUsage | null {
+    const [name, totalMiB, usedMiB, utilization] = line.split(',').map((part) => part.trim());
+    const total = Number(totalMiB);
+    const used = Number(usedMiB);
+    const utilizationPercent = Number(utilization);
+    if (!name || !Number.isFinite(total) || total <= 0 || !Number.isFinite(used) || used < 0) {
+      return null;
+    }
+
+    return {
+      available: true,
+      name,
+      memoryUsedGb: this.mibToGb(used),
+      memoryTotalGb: this.mibToGb(total),
+      memoryUsagePercent: Math.min(100, Math.max(0, Math.round((used / total) * 100))),
+      utilizationPercent: Number.isFinite(utilizationPercent) && utilizationPercent >= 0 ? utilizationPercent : null,
     };
   }
 

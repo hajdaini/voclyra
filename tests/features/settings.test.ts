@@ -104,6 +104,9 @@ describe('Settings', () => {
     for (const whisperLanguage of ['auto', 'fr', 'en', 'es', 'de', 'it', 'pt']) {
       expect(settingsSchema.safeParse({ ...defaultSettings, whisperLanguage }).success).toBe(true);
     }
+    for (const llmContextSize of [512, 1024, 2048, 3072, 4096, 6144, 8192, 12288, 16384, 32768]) {
+      expect(settingsSchema.safeParse({ ...defaultSettings, llmContextSize }).success).toBe(true);
+    }
     expect(settingsSchema.safeParse({ ...defaultSettings, whisperLanguage: 'jp' }).success).toBe(false);
     expect(settingsSchema.safeParse({ ...defaultSettings, llmContextSize: 9999 }).success).toBe(false);
     expect(settingsSchema.safeParse({ ...defaultSettings, correctionPrompt: '' }).success).toBe(false);
@@ -190,7 +193,7 @@ describe('Settings', () => {
       maxHistoryItems: 25,
       llmModel: 'model.gguf',
       whisperModel: 'ggml-large-v3.bin',
-      llmContextSize: 3072 as const,
+      llmContextSize: 8192 as const,
       llmTemperature: 0.2,
       whisperLanguage: 'fr' as const,
       whisperQualityMode: 'accurate' as const,

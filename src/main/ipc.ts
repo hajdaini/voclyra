@@ -263,6 +263,8 @@ export const registerIpc = (): void => {
 
   ipcMain.handle(channels.hardwareInfo, () => hardwareService.info());
 
+  ipcMain.handle(channels.hardwareUsage, () => hardwareService.usage());
+
   ipcMain.handle(channels.llmDownloadModel, (event, value: unknown) => {
     const id = llmModelIdSchema.parse(value);
     return llmModelService.downloadModel(id, (progress) => {

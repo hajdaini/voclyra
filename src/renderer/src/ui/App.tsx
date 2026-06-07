@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import type {
   AppSection,
+  GpuUsage,
   HardwareInfo,
   HistoryEntry,
   HomeMode,
@@ -64,6 +65,14 @@ export const App = (): JSX.Element => {
   const [whisperRuntime, setWhisperRuntime] = useState<WhisperRuntimeInfo>({
     runtimeAvailable: false,
   });
+  const [gpuUsage, setGpuUsage] = useState<GpuUsage>({
+    available: false,
+    name: 'Unknown GPU',
+    memoryUsedGb: null,
+    memoryTotalGb: null,
+    memoryUsagePercent: null,
+    utilizationPercent: null,
+  });
   const [llmRuntime, setLlmRuntime] = useState<LlmRuntimeInfo>({
     runtimeAvailable: false,
   });
@@ -92,6 +101,7 @@ export const App = (): JSX.Element => {
   const whisperWarmupRunRef = useRef(0);
   const llmWarmupModelRef = useRef<string | null>(null);
   const llmWarmupRunRef = useRef(0);
+  const [llmWarmupRevision, setLlmWarmupRevision] = useState(0);
   const loadingOverlayRef = useRef<Record<HomeMode, boolean>>({
     speak: false,
     improve: false,
@@ -165,7 +175,12 @@ export const App = (): JSX.Element => {
       void loadModels(nextSettings);
     });
     void api.history.list().then(setHistory);
-    void api.hardware.info().then(setHardwareInfo);
+    void api.hardware.info().then((nextHardwareInfo) => {
+      setHardwareInfo(nextHardwareInfo);
+      if (!nextHardwareInfo.gpuAvailable) {
+        setGpuUsage((current) => ({ ...current, available: false }));
+      }
+    });
     const removeWhisperDownloadListener = api.whisper.onDownloadProgress((progress) => {
       setAvailableWhisperModels((models) =>
         models.map((model) =>
@@ -196,6 +211,34 @@ export const App = (): JSX.Element => {
       removeOverlayListener();
     };
   }, []);
+
+  useEffect(() => {
+    if (!hardwareInfo.gpuAvailable) {
+      return;
+    }
+
+    let active = true;
+    const refreshGpuUsage = async (): Promise<void> => {
+      try {
+        const nextUsage = await api.hardware.usage();
+        if (active) {
+          setGpuUsage(nextUsage);
+        }
+      } catch {
+        if (active) {
+          setGpuUsage((current) => ({ ...current, available: false }));
+        }
+      }
+    };
+    void refreshGpuUsage();
+    const timer = window.setInterval(() => {
+      void refreshGpuUsage();
+    }, 2000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [hardwareInfo.gpuAvailable]);
 
   useEffect(() => {
     if (!whisperRuntime.runtimeAvailable || !whisperModelAvailable || !settings.whisperModel) {
@@ -233,18 +276,19 @@ export const App = (): JSX.Element => {
       setIsLlmLoading(false);
       return;
     }
-    if (llmWarmupModelRef.current === settings.llmModel) {
+    const warmupKey = llmWarmupKey(settings.llmModel, settings.llmContextSize);
+    if (llmWarmupModelRef.current === warmupKey) {
       return;
     }
 
     const model = settings.llmModel;
     const runId = llmWarmupRunRef.current + 1;
     llmWarmupRunRef.current = runId;
-    llmWarmupModelRef.current = model;
+    llmWarmupModelRef.current = warmupKey;
     setIsLlmLoading(true);
     void api.llm.warmup(model)
       .catch(() => {
-        if (llmWarmupModelRef.current === model) {
+        if (llmWarmupModelRef.current === warmupKey) {
           llmWarmupModelRef.current = null;
         }
       })
@@ -253,7 +297,7 @@ export const App = (): JSX.Element => {
           setIsLlmLoading(false);
         }
       });
-  }, [settings.llmModel, llmModelAvailable, llmRuntime.runtimeAvailable]);
+  }, [settings.llmModel, settings.llmContextSize, llmModelAvailable, llmRuntime.runtimeAvailable, llmWarmupRevision]);
 
   useEffect(() => {
     if (!isWhisperLoading) {
@@ -730,6 +774,13 @@ export const App = (): JSX.Element => {
       showToast('success', 'Transcript shortcut updated.');
       return;
     }
+    if (
+      savedSettings.llmModel !== previousSettings.llmModel ||
+      savedSettings.llmContextSize !== previousSettings.llmContextSize
+    ) {
+      llmWarmupModelRef.current = null;
+      setLlmWarmupRevision((current) => current + 1);
+    }
   };
 
   const showToast = (type: ToastType, message: string): void => {
@@ -956,6 +1007,7 @@ export const App = (): JSX.Element => {
     <main className="app-shell">
       <AppTopbar
         hotkeys={settings.hotkeys}
+        gpuUsage={gpuUsage}
         hasRecording={Boolean(recorder || transcriptRecorder)}
         isImproveProcessing={isImproveProcessing}
         onOpenLogsFolder={() => void api.app.openLogsFolder()}
@@ -1075,6 +1127,9 @@ const settingsAreEqual = (left: SettingsType, right: SettingsType): boolean =>
   left.hotkeys.speak === right.hotkeys.speak &&
   left.hotkeys.improveText === right.hotkeys.improveText &&
   left.hotkeys.transcript === right.hotkeys.transcript;
+
+const llmWarmupKey = (model: string, contextSize: SettingsType['llmContextSize']): string =>
+  `${model}:${contextSize}`;
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : 'Operation failed.';

@@ -87,13 +87,13 @@ export class LlamaServerService {
       mode: options.mode,
       contextSize: options.contextSize,
     });
-    const endpoint = '/completion';
+    const endpoint = '/v1/chat/completions';
     const timeoutMs = options.timeoutMs ?? 45000;
     const requestStartedAtMs = Date.now();
     const requestStartedAt = new Date(requestStartedAtMs).toISOString();
     const requestBody = JSON.stringify({
-      prompt,
-      n_predict: options.maxTokens,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: options.maxTokens,
       temperature: options.temperature,
       stream: false,
     });
@@ -299,6 +299,12 @@ export class LlamaServerService {
       '-c',
       String(key.contextSize),
       '--no-webui',
+      '-np',
+      '1',
+      '--cache-ram',
+      '0',
+      '--reasoning',
+      'off',
     ];
     if (key.mode === 'auto') {
       args.push('-ngl', 'auto');
@@ -331,14 +337,14 @@ export class LlamaServerService {
         throw new Error('Llama server stopped during warmup.');
       }
       try {
-        const response = await fetch(`${server.url}/completion`, {
+        const response = await fetch(`${server.url}/v1/chat/completions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            prompt: 'OK',
-            n_predict: 1,
+            messages: [{ role: 'user', content: 'OK' }],
+            max_tokens: 1,
             temperature: 0,
             stream: false,
           }),
@@ -365,24 +371,40 @@ export class LlamaServerService {
         response?: unknown;
         text?: unknown;
         tokens_predicted?: unknown;
+        choices?: Array<{
+          message?: {
+            content?: unknown;
+          };
+          text?: unknown;
+        }>;
+        usage?: {
+          completion_tokens?: unknown;
+        };
         timings?: {
           predicted_n?: unknown;
           predicted_per_second?: unknown;
         };
       };
-      const output = typeof value.content === 'string'
-        ? value.content.trim()
-        : typeof value.response === 'string'
-          ? value.response.trim()
-          : typeof value.text === 'string'
-            ? value.text.trim()
-            : raw.trim();
+      const output =
+        typeof value.choices?.[0]?.message?.content === 'string'
+          ? value.choices[0].message.content.trim()
+          : typeof value.choices?.[0]?.text === 'string'
+            ? value.choices[0].text.trim()
+            : typeof value.content === 'string'
+              ? value.content.trim()
+              : typeof value.response === 'string'
+                ? value.response.trim()
+                : typeof value.text === 'string'
+                  ? value.text.trim()
+                  : raw.trim();
       const tokensGenerated =
         typeof value.timings?.predicted_n === 'number'
           ? value.timings.predicted_n
-          : typeof value.tokens_predicted === 'number'
-            ? value.tokens_predicted
-            : estimateTokenCount(output);
+          : typeof value.usage?.completion_tokens === 'number'
+            ? value.usage.completion_tokens
+            : typeof value.tokens_predicted === 'number'
+              ? value.tokens_predicted
+              : estimateTokenCount(output);
       const tokensPerSecond =
         typeof value.timings?.predicted_per_second === 'number'
           ? Number(value.timings.predicted_per_second.toFixed(1))
