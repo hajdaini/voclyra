@@ -27,6 +27,7 @@ export type Settings = {
   pasteAfterDictation: boolean;
   pasteAfterImprovement: boolean;
   improveSelectedText: boolean;
+  startAtStartup: boolean;
   microphoneDeviceId: string;
   microphoneDeviceLabel: string;
   microphoneEchoCancellation: boolean;

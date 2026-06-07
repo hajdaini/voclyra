@@ -1,7 +1,6 @@
 import { access, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { cpus, homedir } from 'node:os';
-import { spawn } from 'node:child_process';
 import { AppStorage } from '@storage/app-storage';
 import { ProcessLogService } from '@services/process-log-service';
 import { appStorageConfig, whisperCudaRuntimeVersionConfig, whisperRuntimeConfig } from '@shared/GlobalVars';
@@ -59,12 +58,8 @@ export class WhisperService {
 
   async runtimeInfo(): Promise<WhisperRuntimeInfo> {
     const executablePath = await this.executablePath();
-    const executableExists = await this.exists(executablePath);
-    const help = executableExists ? await this.helpText() : '';
-    const runtimeStarts = help.trim().length > 0;
-
     return {
-      runtimeAvailable: executableExists && runtimeStarts,
+      runtimeAvailable: await this.exists(executablePath),
     };
   }
 
@@ -588,39 +583,6 @@ export class WhisperService {
     try {
       await rm(temporaryRoot, { recursive: true, force: true });
     } catch {}
-  }
-
-  private async helpText(): Promise<string> {
-    const executable = await this.executablePath();
-    return new Promise((resolveHelp) => {
-      const process = spawn(executable, ['--help'], {
-        windowsHide: true,
-        shell: false,
-      });
-      const chunks: Buffer[] = [];
-      const timeout = setTimeout(() => {
-        process.kill();
-        resolveHelp('');
-      }, 5000);
-
-      process.stdout.on('data', (chunk: Buffer) => {
-        chunks.push(chunk);
-      });
-
-      process.stderr.on('data', (chunk: Buffer) => {
-        chunks.push(chunk);
-      });
-
-      process.on('error', () => {
-        clearTimeout(timeout);
-        resolveHelp('');
-      });
-
-      process.on('close', () => {
-        clearTimeout(timeout);
-        resolveHelp(Buffer.concat(chunks).toString('utf8'));
-      });
-    });
   }
 
   private async exists(path: string): Promise<boolean> {

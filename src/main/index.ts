@@ -6,6 +6,7 @@ import { ErrorLogService } from '@services/error-log-service';
 import { SettingsService } from '@services/settings-service';
 import { HotkeyService } from '@services/hotkey-service';
 import { StartupLogService } from '@services/startup-log-service';
+import { StartupService } from '@services/startup-service';
 import { llamaServerService } from '@services/llama-server-service';
 import { whisperServerService } from '@services/whisper-server-service';
 import { AppStorage } from '@storage/app-storage';
@@ -19,6 +20,7 @@ const errorLogService = new ErrorLogService();
 const settingsService = new SettingsService();
 const hotkeyService = new HotkeyService();
 const startupLogService = new StartupLogService();
+const startupService = new StartupService();
 const appStorage = new AppStorage();
 
 if (!gotLock) {
@@ -70,6 +72,7 @@ void app.whenReady().then(async () => {
   void appStorage.clearDir('tmp', 'current').catch(() => {});
   void startupLogService.write().catch(() => {});
   void settingsService.get().then((settings) => {
+    startupService.apply(settings.startAtStartup);
     hotkeyService.register(settings, {
       speak: () => sendAppAction('speak'),
       improveText: () => void improveClipboardFromHotkey(),

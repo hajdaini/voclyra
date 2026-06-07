@@ -524,6 +524,31 @@
   white-space: nowrap;
 }
 
+.inline-model-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 176, 96, 0.45);
+  border-radius: 999px;
+  color: var(--primary-strong);
+  background: rgba(255, 149, 64, 0.1);
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.inline-model-action:hover {
+  border-color: rgba(255, 176, 96, 0.75);
+  background: rgba(255, 149, 64, 0.16);
+}
+
+.inline-model-action svg {
+  flex: 0 0 auto;
+  color: currentColor;
+}
+
 .inline-runtime-badge svg {
   flex: 0 0 auto;
   color: currentColor;

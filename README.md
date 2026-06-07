@@ -2,7 +2,8 @@
 
 **Dictate, correct, transcribe, and reuse text locally.**
 
-[![CI](https://github.com/timtim/voclyra/actions/workflows/ci.yml/badge.svg)](https://github.com/timtim/voclyra/actions/workflows/ci.yml)
+[![CI](https://github.com/timtim/voclyra/actions/workflows/ci.yml/badge.svg)](https://github.com/hajdaini/voclyra/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/timtim/voclyra?label=release)](https://github.com/hajdaini/voclyra/releases)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6)
 ![Local AI](https://img.shields.io/badge/AI-local-2ea44f)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
@@ -17,6 +18,8 @@ Voclyra is an open-source Windows desktop app for people who write a lot and wan
 - keep history, audio, and exports under control.
 
 No cloud transcription. No hosted correction API. Your data stays on your machine.
+
+<img src="assets/screenshot.png" alt="Voclyra app screenshot" width="820">
 
 ## 📚 Table Of Contents
 
@@ -52,7 +55,7 @@ Local correction and rewriting from a shortcut. Use it for spelling, punctuation
 
 ### 🎧 Transcript
 
-Long-form transcription for meetings, videos, courses, notes, or conversations, with local history and audio replay.
+Long-form transcription for meetings, videos, courses, notes, or conversations, with local history and audio replay. After transcription, you can send the text to a larger LLM to get a short summary quickly.
 
 ### 📥 Import Audio
 
@@ -104,6 +107,34 @@ There are more settings available, but the goal stays simple: make the app match
 - **whisper.cpp** for local speech-to-text.
 - **llama.cpp** for local text improvement.
 - **CUDA** support when you have GPU
+
+### Available local models
+
+Voclyra currently ships with guided downloads for these local models:
+
+**Speech-to-text**
+
+| Model | VRAM | Quick note |
+| --- | --- | --- |
+| Whisper Tiny | ~0.5 GB | Fastest, less accurate |
+| Whisper Base | ~0.5 GB | Light everyday use |
+| Whisper Small | ~1 GB | Good speed/accuracy |
+| Whisper Medium | ~2.5 GB | More accurate, heavier |
+| Whisper Large v3 | ~4.5 GB | Best quality, slowest |
+
+**Text improvement**
+
+| Model | VRAM | Quick note |
+| --- | --- | --- |
+| Gemma 4 E2B QAT | ~4.5 GB | Lightest |
+| Gemma 4 E4B QAT | ~6.5 GB | Recommended |
+| Gemma 4 12B QAT | ~8.5 GB | Better quality, slower |
+| Gemma 4 26B A4B QAT | ~16.5 GB | High quality, tight VRAM |
+| Gemma 4 31B QAT | ~21 GB | Very heavy |
+
+Smaller models are faster. Larger models can improve quality, but need more VRAM and may run slower.
+
+In a future version, Voclyra will let you use your own local models directly.
 
 ## 🔒 Privacy
 
@@ -175,9 +206,18 @@ npm run dev
 Useful commands:
 
 ```powershell
-npm run typecheck
-npm run build
-npm run dist
+npm run dev            # Start the Electron development app
+npm run start          # Preview the built app locally
+npm run typecheck      # Check TypeScript without emitting files
+npm run lint           # Run ESLint
+npm run test           # Run unit tests
+npm run test:watch     # Run tests in watch mode
+npm run test:coverage  # Run tests with coverage
+npm run test:runtime   # Run runtime smoke tests
+npm run build          # Typecheck and build the app
+npm run pack           # Build and package an unpacked Windows app
+npm run dist           # Build the Windows installer
+npm run format         # Format the project with Prettier
 ```
 
 ## 📌 Project Status

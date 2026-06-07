@@ -1117,6 +1117,7 @@ const settingsAreEqual = (left: SettingsType, right: SettingsType): boolean =>
   left.pasteAfterDictation === right.pasteAfterDictation &&
   left.pasteAfterImprovement === right.pasteAfterImprovement &&
   left.improveSelectedText === right.improveSelectedText &&
+  left.startAtStartup === right.startAtStartup &&
   left.microphoneDeviceId === right.microphoneDeviceId &&
   left.microphoneDeviceLabel === right.microphoneDeviceLabel &&
   left.microphoneEchoCancellation === right.microphoneEchoCancellation &&

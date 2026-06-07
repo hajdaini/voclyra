@@ -78,6 +78,8 @@ vi.mock('electron', () => ({
   app: {
     isQuitting: false,
     quit: vi.fn(),
+    getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
+    setLoginItemSettings: vi.fn(),
   },
   clipboard: {
     readText: vi.fn(() => clipboardState.text),
@@ -225,6 +227,7 @@ const setup = async (): Promise<void> => {
     pasteAfterDictation: false,
     pasteAfterImprovement: false,
     improveSelectedText: false,
+    startAtStartup: false,
     microphoneDeviceId: '',
     microphoneDeviceLabel: '',
     microphoneEchoCancellation: true,

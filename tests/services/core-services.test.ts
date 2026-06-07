@@ -41,6 +41,8 @@ vi.mock('electron', () => ({
   app: {
     isPackaged: false,
     getAppPath: vi.fn(() => 'C:\\project\\voclyra'),
+    getLoginItemSettings: vi.fn(() => ({ openAtLogin: true })),
+    setLoginItemSettings: vi.fn(),
   },
   clipboard: {
     readText: vi.fn(() => clipboardState.text),
@@ -214,6 +216,20 @@ describe('Core services', () => {
     expect(shortcuts.unregisterAllCalls).toBe(2);
   });
 
+  it('applies Windows startup settings through Electron', async () => {
+    const { app } = await import('electron');
+    const { StartupService } = await import('@services/startup-service');
+    const service = new StartupService();
+
+    service.apply(true);
+
+    expect(app.setLoginItemSettings).toHaveBeenCalledWith({
+      openAtLogin: true,
+      openAsHidden: false,
+    });
+    expect(service.enabled()).toBe(true);
+  });
+
   it('keeps debug logs bounded and formats errors', async () => {
     const { DebugLogBuffer, errorDiagnostics } = await import('@services/debug-log-buffer');
     const buffer = new DebugLogBuffer(5);
@@ -340,6 +356,14 @@ describe('Core services', () => {
       label: 'CUDA 13.3',
       path: 'C:\\project\\voclyra\\resources\\runtimes\\llama\\cuda-13\\win-x64\\llama-server.exe',
     });
+  });
+
+  it('marks Whisper runtime ready from the packaged executable path', async () => {
+    const { WhisperService } = await import('@services/whisper-service');
+    fsState.files.set('C:\\project\\voclyra\\resources\\runtimes\\whisper\\cuda-12\\win-x64\\whisper-server.exe', '');
+
+    await expect(new WhisperService().runtimeInfo()).resolves.toEqual({ runtimeAvailable: true });
+    expect(spawnState.calls.some((call) => call.command.includes('whisper-server.exe'))).toBe(false);
   });
 
   it('stores JSON and clears storage folders safely', async () => {

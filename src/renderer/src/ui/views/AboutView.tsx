@@ -43,7 +43,7 @@ export const AboutView = (): JSX.Element => (
           Transcript
         </h2>
         <p>
-          Transcript is made for longer captures, such as meetings, notes, or conversations. It keeps the transcript local, then lets you reuse that text with another AI to summarize, organize, or extract action items.
+          Transcript is made for longer captures, such as meetings, notes, or conversations. It keeps the transcript local, then lets you send it to a larger LLM for a short summary.
         </p>
       </article>
 

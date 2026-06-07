@@ -235,6 +235,17 @@ export const SettingsView = ({
             <HelpHint text="When enabled, Improve first copies the current selection from the active app before correcting it." />
           </span>
         </label>
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={settings.startAtStartup}
+            onChange={(event) => onChange({ ...settings, startAtStartup: event.target.checked })}
+          />
+          <span className="settings-option-label">
+            Start Voclyra when Windows starts
+            <HelpHint text="When enabled, Windows opens Voclyra automatically after you sign in." />
+          </span>
+        </label>
       </section>
 
       <section className="settings-section focused-target" ref={microphoneRef}>

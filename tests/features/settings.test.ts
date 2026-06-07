@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { app } from 'electron';
 import { channels } from '@shared/channels';
 import { defaultSettings } from '@shared/defaults';
 import { settingsSchema } from '@shared/schemas';
@@ -29,6 +30,8 @@ vi.mock('electron', () => ({
   app: {
     isQuitting: false,
     quit: vi.fn(),
+    getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
+    setLoginItemSettings: vi.fn(),
   },
   clipboard: {
     readText: vi.fn(() => ''),
@@ -184,6 +187,7 @@ describe('Settings', () => {
       pasteAfterDictation: true,
       pasteAfterImprovement: true,
       improveSelectedText: true,
+      startAtStartup: true,
       microphoneDeviceId: 'mic-1',
       microphoneDeviceLabel: 'Studio Mic',
       microphoneEchoCancellation: false,
@@ -205,6 +209,10 @@ describe('Settings', () => {
     };
     await expect(handlers.get(channels.settingsSave)?.({}, nextSettings)).resolves.toEqual(nextSettings);
     expect(store['settings.json']).toEqual(nextSettings);
+    expect(app.setLoginItemSettings).toHaveBeenCalledWith({
+      openAtLogin: true,
+      openAsHidden: false,
+    });
 
     vi.clearAllMocks();
     hotkeyResult = { speak: true, improveText: false, transcript: true };

@@ -20,6 +20,7 @@ import { TranscriptService } from '@services/transcript-service';
 import { WhisperModelService } from '@services/whisper-model-service';
 import { WhisperService } from '@services/whisper-service';
 import { HotkeyService } from '@services/hotkey-service';
+import { StartupService } from '@services/startup-service';
 import { AppStorage } from '@storage/app-storage';
 import {
   cancelRecordingFromOverlay,
@@ -45,6 +46,7 @@ const whisperModelService = new WhisperModelService();
 const whisperService = new WhisperService();
 const transcriptService = new TranscriptService(whisperService, historyService);
 const hotkeyService = new HotkeyService();
+const startupService = new StartupService();
 let improveShortcutRunning = false;
 const progressUpdateState = new Map<OverlayState['mode'], { at: number; key: string }>();
 
@@ -178,6 +180,7 @@ export const registerIpc = (): void => {
     }
     const savedSettings = await settingsService.save(nextSettings);
     settings = savedSettings;
+    startupService.apply(savedSettings.startAtStartup);
     updateTray(savedSettings);
     return savedSettings;
   });

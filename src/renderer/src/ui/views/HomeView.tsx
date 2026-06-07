@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Clipboard,
   Cpu,
+  Download,
   FileText,
   Headphones,
   Home,
@@ -51,6 +52,13 @@ export type HomeViewProps = {
   onImproveInputFocusChange: (focused: boolean) => void;
   onCopy: () => void;
 };
+
+export const shouldShowDownloadModelButton = (
+  mode: HomeMode,
+  runtimeInfoLoaded: boolean,
+  whisperModelAvailable: boolean,
+  llmModelAvailable: boolean,
+): boolean => runtimeInfoLoaded && !(mode === 'improve' ? llmModelAvailable : whisperModelAvailable);
 
 export const HomeView = ({
   mode,
@@ -100,6 +108,12 @@ export const HomeView = ({
     ? activeOverlay.actionPhase === 'loading' || activeOverlay.actionPhase === 'processing'
     : result.status === 'processing' || result.actionPhase === 'loading';
   const activeRuntimeAvailable = runtimeInfoLoaded && (mode === 'improve' ? llmRuntime.runtimeAvailable : whisperRuntime.runtimeAvailable);
+  const showDownloadModelButton = shouldShowDownloadModelButton(
+    mode,
+    runtimeInfoLoaded,
+    whisperModelAvailable,
+    llmModelAvailable,
+  );
   const runtimeLabel = !runtimeInfoLoaded
     ? 'Runtime loading'
     : activeRuntimeAvailable
@@ -279,7 +293,7 @@ export const HomeView = ({
                 <FileText size={18} />
                 <span>
                   {mode === 'speak'
-                    ? 'Dictation result'
+                    ? 'Speak result'
                     : mode === 'improve'
                       ? 'Improved result'
                       : 'Transcript result'}
@@ -294,6 +308,17 @@ export const HomeView = ({
                   )}
                   {statusMessage && <span>{statusMessage}</span>}
                 </span>
+                {showDownloadModelButton && (
+                  <button
+                    className="inline-model-action"
+                    type="button"
+                    title="Open model downloads"
+                    onClick={onOpenSettings}
+                  >
+                    <Download size={14} />
+                    <span>Download model</span>
+                  </button>
+                )}
                 {(mode === 'speak' || mode === 'transcript' || mode === 'improve') && (
                   <small className={`inline-runtime-badge ${runtimeTone}`}>
                     <Cpu size={14} />

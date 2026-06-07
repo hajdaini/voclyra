@@ -28,6 +28,7 @@ export const settingsSchema = z.object({
   pasteAfterDictation: z.boolean(),
   pasteAfterImprovement: z.boolean(),
   improveSelectedText: z.boolean(),
+  startAtStartup: z.boolean(),
   microphoneDeviceId: z.string().max(260),
   microphoneDeviceLabel: z.string().max(260),
   microphoneEchoCancellation: z.boolean(),

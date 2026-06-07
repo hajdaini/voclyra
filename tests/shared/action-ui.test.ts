@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { actionOverlay, actionResult, actionUi } from '@shared/action-ui';
+import { shouldShowDownloadModelButton } from '@renderer/ui/views/HomeView';
 
 describe('Action status', () => {
   it('shows simple messages and colors', () => {
@@ -69,5 +70,14 @@ describe('Action status', () => {
       message: 'Speak ready',
       messageType: 'success',
     });
+  });
+
+  it('shows model download action only when the active model is missing', () => {
+    expect(shouldShowDownloadModelButton('speak', true, false, true)).toBe(true);
+    expect(shouldShowDownloadModelButton('transcript', true, false, true)).toBe(true);
+    expect(shouldShowDownloadModelButton('improve', true, true, false)).toBe(true);
+    expect(shouldShowDownloadModelButton('speak', true, true, false)).toBe(false);
+    expect(shouldShowDownloadModelButton('improve', true, false, true)).toBe(false);
+    expect(shouldShowDownloadModelButton('speak', false, false, false)).toBe(false);
   });
 });

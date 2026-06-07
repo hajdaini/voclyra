@@ -27,6 +27,7 @@ correctionPrompt: [
   pasteAfterDictation: false,
   pasteAfterImprovement: false,
   improveSelectedText: false,
+  startAtStartup: false,
   microphoneDeviceId: '',
   microphoneDeviceLabel: '',
   microphoneEchoCancellation: true,
@@ -37,7 +38,7 @@ correctionPrompt: [
   hotkeys: {
     speak: 'Alt+A',
     improveText: 'Alt+Z',
-    transcript: 'Alt+E',
+    transcript: 'Alt+T',
   },
 };
 
