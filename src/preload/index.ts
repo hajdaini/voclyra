@@ -10,6 +10,7 @@ const api: AppApi = {
   app: {
     openDataFolder: () => ipcRenderer.invoke(channels.appOpenDataFolder) as Promise<void>,
     openLogsFolder: () => ipcRenderer.invoke(channels.appOpenLogsFolder) as Promise<void>,
+    importAudio: () => ipcRenderer.invoke(channels.appImportAudio) as ReturnType<AppApi['app']['importAudio']>,
     quit: () => ipcRenderer.invoke(channels.appQuit) as Promise<void>,
   },
   models: {
@@ -42,6 +43,9 @@ const api: AppApi = {
       ipcRenderer.invoke(channels.historyUpdateTitle, { id, title }) as ReturnType<AppApi['history']['updateTitle']>,
     delete: (id) => ipcRenderer.invoke(channels.historyDelete, id) as Promise<void>,
     clear: () => ipcRenderer.invoke(channels.historyClear) as ReturnType<AppApi['history']['clear']>,
+    audio: (id) => ipcRenderer.invoke(channels.historyAudio, id) as ReturnType<AppApi['history']['audio']>,
+    exportText: (id) =>
+      ipcRenderer.invoke(channels.historyExportText, id) as ReturnType<AppApi['history']['exportText']>,
   },
   whisper: {
     availableModels: () =>

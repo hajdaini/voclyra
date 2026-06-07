@@ -13,6 +13,7 @@ type AppHomeProps = {
   settings: Settings;
   whisperRuntime: WhisperRuntimeInfo;
   llmRuntime: LlmRuntimeInfo;
+  runtimeInfoLoaded: boolean;
   hardwareInfo: HardwareInfo;
   whisperModelAvailable: boolean;
   llmModelAvailable: boolean;
@@ -40,6 +41,7 @@ export const AppHome = ({
   settings,
   whisperRuntime,
   llmRuntime,
+  runtimeInfoLoaded,
   hardwareInfo,
   whisperModelAvailable,
   llmModelAvailable,
@@ -68,6 +70,7 @@ export const AppHome = ({
     hotkeys={settings.hotkeys}
     whisperRuntime={whisperRuntime}
     llmRuntime={llmRuntime}
+    runtimeInfoLoaded={runtimeInfoLoaded}
     hardwareInfo={hardwareInfo}
     whisperModelAvailable={whisperModelAvailable}
     llmModelAvailable={llmModelAvailable}

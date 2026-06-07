@@ -30,6 +30,7 @@ type AppContentProps = {
   settings: Settings;
   whisperRuntime: WhisperRuntimeInfo;
   llmRuntime: LlmRuntimeInfo;
+  runtimeInfoLoaded: boolean;
   whisperModelAvailable: boolean;
   llmModelAvailable: boolean;
   history: HistoryEntry[];
@@ -80,6 +81,7 @@ export const AppContent = ({
   settings,
   whisperRuntime,
   llmRuntime,
+  runtimeInfoLoaded,
   whisperModelAvailable,
   llmModelAvailable,
   history,
@@ -130,6 +132,7 @@ export const AppContent = ({
         settings={settings}
         whisperRuntime={whisperRuntime}
         llmRuntime={llmRuntime}
+        runtimeInfoLoaded={runtimeInfoLoaded}
         hardwareInfo={hardwareInfo}
         whisperModelAvailable={whisperModelAvailable}
         llmModelAvailable={llmModelAvailable}

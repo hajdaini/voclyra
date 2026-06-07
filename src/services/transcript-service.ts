@@ -13,7 +13,7 @@ export class TranscriptService {
       debugName: 'transcript',
     });
     if (text.trim()) {
-      await this.historyService.add({ kind: 'transcript', text }, maxHistoryItems);
+      await this.historyService.add({ kind: 'transcript', text, audio }, maxHistoryItems);
     }
     return text;
   }

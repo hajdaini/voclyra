@@ -1,3 +1,5 @@
+import { actionUi } from './action-ui';
+
 export type ActionLockAction = 'speak' | 'improve' | 'transcript';
 
 export type ActionLockState = {
@@ -18,14 +20,14 @@ export const actionBlockMessage = (
 ): string | null => {
   if (action === 'improve') {
     if (state.improveLoading) {
-      return 'Improve is loading...';
+      return actionUi('improve', 'loading').message;
     }
     return state.improveProcessing ? improveRunningMessage : null;
   }
 
   if (action === 'speak') {
     if (state.whisperLoading) {
-      return 'Speak is loading...';
+      return actionUi('speak', 'loading').message;
     }
     if (state.speakRecording) {
       return 'Speak is already running.';
@@ -40,7 +42,7 @@ export const actionBlockMessage = (
   }
 
   if (state.whisperLoading) {
-    return 'Transcript is loading...';
+    return actionUi('transcript', 'loading').message;
   }
   if (state.transcriptRecording) {
     return 'Transcript is already running.';

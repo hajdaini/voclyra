@@ -8,7 +8,7 @@ const csp = [
   "img-src 'self' data:",
   "font-src 'self'",
   "connect-src 'self'",
-  "media-src 'self'",
+  "media-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'none'",
   "frame-ancestors 'none'",

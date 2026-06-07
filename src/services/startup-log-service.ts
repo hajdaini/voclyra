@@ -27,6 +27,9 @@ export class StartupLogService {
     const tmpFolder = await this.ensurePath(() => this.storage.ensureDir('tmp'), this.storage.path('tmp'));
     const logsFolder = await this.ensurePath(() => this.storage.ensureDir('logs'), this.storage.path('logs'));
     const modelsFolder = await this.ensurePath(() => this.storage.ensureDir('models'), this.storage.path('models'));
+    const audioFolder = await this.ensurePath(() => this.storage.ensureDir('audio'), this.storage.path('audio'));
+    const speakAudioFolder = await this.ensurePath(() => this.storage.ensureDir('audio', 'speak'), this.storage.path('audio', 'speak'));
+    const transcriptAudioFolder = await this.ensurePath(() => this.storage.ensureDir('audio', 'transcript'), this.storage.path('audio', 'transcript'));
     const settings = await this.settingsService.get();
     const whisperRuntimeSelection = await this.whisperRuntime();
     const whisperRuntime = await this.fileCheck(whisperRuntimeSelection.path);
@@ -67,6 +70,9 @@ export class StartupLogService {
         this.line('tmp folder', tmpFolder),
         this.line('logs folder', logsFolder),
         this.line('models folder', modelsFolder),
+        this.line('audio folder', audioFolder),
+        this.line('speak audio folder', speakAudioFolder),
+        this.line('transcript audio folder', transcriptAudioFolder),
         `settings path: ${this.value(this.storage.path('settings.json'))}`,
         `history path: ${this.value(this.storage.path('history.json'))}`,
         '',

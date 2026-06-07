@@ -15,6 +15,7 @@ const fallbackApi: AppApi = {
   app: {
     openDataFolder: () => Promise.resolve(),
     openLogsFolder: () => Promise.resolve(),
+    importAudio: () => Promise.resolve(null),
     quit: () => Promise.resolve(),
   },
   models: {
@@ -43,6 +44,8 @@ const fallbackApi: AppApi = {
     updateTitle: () => Promise.resolve([]),
     delete: () => Promise.resolve(),
     clear: () => Promise.resolve([]),
+    audio: () => Promise.resolve(null),
+    exportText: () => Promise.resolve(false),
   },
   whisper: {
     availableModels: () => Promise.resolve([]),

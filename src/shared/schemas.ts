@@ -58,6 +58,7 @@ export const overlayStateSchema = z.object({
   mode: z.enum(['speak', 'improve', 'transcript']),
   status: z.enum(['recording', 'transcribing', 'improving', 'done', 'warning']),
   phase: z.enum(['recording', 'stopping', 'preparing', 'loading', 'transcribing', 'thinking', 'generating', 'finalizing']).optional(),
+  actionPhase: z.enum(['ready', 'loading', 'recording', 'processing', 'done', 'warning', 'error']).optional(),
   waveform: z.array(z.number().min(0).max(1)).max(16),
   progress: z.number().min(0).max(100).optional(),
   tokensGenerated: z.number().int().min(0).max(1000000).optional(),

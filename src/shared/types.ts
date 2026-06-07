@@ -46,6 +46,7 @@ export type HistoryEntry = {
   text: string;
   createdAt: string;
   favorite?: boolean;
+  audioFileName?: string;
 };
 
 export type AppStatus = 'ready' | 'listening' | 'processing' | 'error';
@@ -55,6 +56,7 @@ export type ResultState = {
   text: string;
   status: AppStatus;
   tone?: StatusTone;
+  actionPhase?: 'ready' | 'loading' | 'recording' | 'processing' | 'done' | 'warning' | 'error';
   message: string;
   durationMs?: number;
   audioDurationMs?: number;
@@ -139,6 +141,7 @@ export type OverlayState = {
   mode: 'speak' | 'improve' | 'transcript';
   status: 'recording' | 'transcribing' | 'improving' | 'done' | 'warning';
   phase?: 'recording' | 'stopping' | 'preparing' | 'loading' | 'transcribing' | 'thinking' | 'generating' | 'finalizing';
+  actionPhase?: 'ready' | 'loading' | 'recording' | 'processing' | 'done' | 'warning' | 'error';
   waveform: number[];
   progress?: number;
   tokensGenerated?: number;
@@ -155,6 +158,7 @@ export type AppApi = {
   app: {
     openDataFolder: () => Promise<void>;
     openLogsFolder: () => Promise<void>;
+    importAudio: () => Promise<ArrayBuffer | null>;
     quit: () => Promise<void>;
   };
   models: {
@@ -183,6 +187,8 @@ export type AppApi = {
     updateTitle: (id: string, title: string) => Promise<HistoryEntry[]>;
     delete: (id: string) => Promise<void>;
     clear: () => Promise<HistoryEntry[]>;
+    audio: (id: string) => Promise<ArrayBuffer | null>;
+    exportText: (id: string) => Promise<boolean>;
   };
   whisper: {
     availableModels: () => Promise<WhisperAvailableModel[]>;

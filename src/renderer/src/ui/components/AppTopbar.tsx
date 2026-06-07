@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from 'react';
+import { FileUp } from 'lucide-react';
 import type { Hotkeys } from '@shared/types';
 import { packageInfo } from '@shared/GlobalVars';
 import logoUrl from '@assets/logo.svg';
@@ -14,9 +15,11 @@ type AppTopbarProps = {
   onSpeak: () => void;
   onImprove: () => void;
   onTranscript: () => void;
+  onImportAudio: () => void;
   onStopRecording: () => void;
   onCancelRecording: () => void;
-  onModelSettings: () => void;
+  onImproveModelSettings: () => void;
+  onSpeechModelSettings: () => void;
   onMicrophoneSettings: () => void;
   onShortcutSettings: () => void;
   onHistorySettings: () => void;
@@ -37,9 +40,11 @@ export const AppTopbar = ({
   onSpeak,
   onImprove,
   onTranscript,
+  onImportAudio,
   onStopRecording,
   onCancelRecording,
-  onModelSettings,
+  onImproveModelSettings,
+  onSpeechModelSettings,
   onMicrophoneSettings,
   onShortcutSettings,
   onHistorySettings,
@@ -93,6 +98,10 @@ export const AppTopbar = ({
           </button>
           {openMenu === 'file' && (
             <div className="topbar-dropdown-menu">
+              <button type="button" onClick={() => runAction(onImportAudio)}>
+                <span>Import audio</span>
+              </button>
+              <hr />
               <button type="button" onClick={() => runAction(onOpenLogsFolder)}>
                 <span>Logs folder</span>
               </button>
@@ -145,9 +154,13 @@ export const AppTopbar = ({
           </button>
           {openMenu === 'edit' && (
             <div className="topbar-dropdown-menu">
-              <button type="button" onClick={() => runAction(onModelSettings)}>
-                <span>Model settings</span>
+              <button type="button" onClick={() => runAction(onImproveModelSettings)}>
+                <span>Improve AI model</span>
               </button>
+              <button type="button" onClick={() => runAction(onSpeechModelSettings)}>
+                <span>Speak & Transcript model</span>
+              </button>
+              <hr />
               <button type="button" onClick={() => runAction(onMicrophoneSettings)}>
                 <span>Microphone settings</span>
               </button>
@@ -160,6 +173,10 @@ export const AppTopbar = ({
             </div>
           )}
         </div>
+        <button type="button" className="topbar-import-action" onClick={() => runAction(onImportAudio)}>
+          <FileUp size={14} />
+          <span>Import audio</span>
+        </button>
       </nav>
       <div className={`topbar-spacer ${openMenu ? 'menu-open' : ''}`} onMouseDown={() => setOpenMenu(null)} />
       <WindowControls onMinimize={onMinimize} onMaximize={onMaximize} onClose={onClose} />

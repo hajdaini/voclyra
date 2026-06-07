@@ -1,5 +1,6 @@
 import { History, Home, Info, Settings } from 'lucide-react';
 import type { AppSection, OverlayState, ResultState } from '@shared/types';
+import { actionResult } from '@shared/action-ui';
 
 export const navItems: Array<{ id: AppSection; label: string; icon: typeof Home }> = [
   { id: 'home', label: 'Home', icon: Home },
@@ -8,30 +9,16 @@ export const navItems: Array<{ id: AppSection; label: string; icon: typeof Home 
   { id: 'about', label: 'About', icon: Info },
 ];
 
-export const speakFallbackResult: ResultState = {
-  text: '',
-  status: 'ready',
-  tone: 'success',
-  message: 'Speak ready',
-};
+export const speakFallbackResult: ResultState = actionResult('speak', 'ready');
 
-export const improveFallbackResult: ResultState = {
-  text: '',
-  status: 'ready',
-  tone: 'success',
-  message: 'Improve ready',
-};
+export const improveFallbackResult: ResultState = actionResult('improve', 'ready');
 
-export const transcriptFallbackResult: ResultState = {
-  text: '',
-  status: 'ready',
-  tone: 'success',
-  message: 'Transcription ready',
-};
+export const transcriptFallbackResult: ResultState = actionResult('transcript', 'ready');
 
 export const inactiveOverlayState: OverlayState = {
   active: false,
   mode: 'speak',
   status: 'recording',
+  actionPhase: 'ready',
   waveform: [],
 };

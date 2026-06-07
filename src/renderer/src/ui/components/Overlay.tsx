@@ -1,12 +1,12 @@
-import { useEffect, useState, type JSX } from 'react';
-import { AlertTriangle, CheckCircle2, Headphones, Info, Mic, TriangleAlert, Wand2 } from 'lucide-react';
+import { useEffect, useRef, useState, type JSX } from 'react';
+import { AlertTriangle, CheckCircle2, Headphones, LoaderCircle, Mic, Wand2 } from 'lucide-react';
 import type { OverlayState } from '@shared/types';
 import { defaultSettings } from '@shared/defaults';
 import { api } from '../../api';
 import { inactiveOverlayState } from '../appState';
-import { ActionProgressIndicator } from './ActionProgressIndicator';
 
-export const SpeakOverlay = (): JSX.Element => {
+export const Overlay = (): JSX.Element => {
+  const lastContentSizeRef = useRef<{ width: number; height: number } | null>(null);
   const overlayMode =
     new URLSearchParams(window.location.search).get('overlay') === 'improve'
       ? 'improve'
@@ -19,30 +19,10 @@ export const SpeakOverlay = (): JSX.Element => {
   );
   const modeLabel =
     overlayState.mode === 'speak' ? 'Speak' : overlayState.mode === 'improve' ? 'Improve' : 'Transcript';
-  const label =
-    overlayState.status === 'warning'
-      ? 'Action unavailable'
-      : overlayState.status === 'recording'
-      ? 'Listening'
-      : overlayState.status === 'transcribing'
-        ? 'Transcribing'
-        : overlayState.status === 'improving'
-          ? 'Improving'
-          : overlayState.status === 'done'
-            ? `${modeLabel} done`
-          : overlayState.mode === 'speak'
-            ? 'Speak done'
-            : overlayState.mode === 'improve'
-              ? 'Improve done'
-              : 'Transcript done';
-  const MessageIcon =
-    overlayState.messageType === 'success'
-      ? CheckCircle2
-      : overlayState.messageType === 'warning'
-        ? TriangleAlert
-        : overlayState.messageType === 'info'
-          ? Info
-          : AlertTriangle;
+  const statusMessage = overlayState.message ?? fallbackMessage(overlayState);
+  const isBusy = overlayState.status === 'warning' && overlayState.actionPhase === 'loading'
+    || overlayState.status === 'transcribing'
+    || overlayState.status === 'improving';
 
   useEffect(() => {
     let mounted = true;
@@ -69,23 +49,32 @@ export const SpeakOverlay = (): JSX.Element => {
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      const element = document.querySelector('.speak-overlay');
+      const element = document.querySelector('.overlay');
       if (!element) {
         return;
       }
       const rect = element.getBoundingClientRect();
+      const width = Math.ceil(rect.width);
+      const height = Math.ceil(rect.height);
+      const lastContentSize = lastContentSizeRef.current;
+      if (lastContentSize?.width === width && lastContentSize.height === height) {
+        return;
+      }
+      lastContentSizeRef.current = { width, height };
       void api.overlay.setContentSize(overlayMode, {
-        width: Math.ceil(rect.width),
-        height: Math.ceil(rect.height),
+        width,
+        height,
       });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [overlayState, overlayMode]);
 
   return (
-    <main className={`speak-overlay ${overlayState.status}`}>
-      <div className="speak-overlay-icon">
-        {overlayState.status === 'warning' ? (
+    <main className={`overlay ${overlayState.status}`}>
+      <div className="overlay-icon">
+        {isBusy ? (
+          <LoaderCircle className="status-spinner-icon" size={20} aria-label={statusMessage} />
+        ) : overlayState.status === 'warning' ? (
           <AlertTriangle size={18} />
         ) : overlayState.mode === 'speak' ? (
           <Mic size={20} />
@@ -95,33 +84,30 @@ export const SpeakOverlay = (): JSX.Element => {
           <Headphones size={18} />
         )}
       </div>
-      <div className="speak-overlay-main">
-        <div className="speak-overlay-title">
+      <div className="overlay-main">
+        <div className="overlay-title">
           {overlayState.status === 'done' && <CheckCircle2 size={14} />}
-          <strong>{label}</strong>
+          <strong>{modeLabel}</strong>
         </div>
         {overlayState.status === 'recording' && overlayState.waveform.length > 0 ? (
-          <div className="speak-overlay-wave" aria-hidden="true">
-            {Array.from({ length: 8 }, (_, index) => (
-              <span
-                key={index}
-                style={{ height: `${Math.round(8 + (overlayState.waveform[index] ?? 0.08) * 24)}px` }}
-              />
-            ))}
-          </div>
-        ) : overlayState.status === 'transcribing' || overlayState.status === 'improving' ? (
-          <ActionProgressIndicator state={overlayState} />
-        ) : null}
-        {overlayState.message && (
-          <span className={`speak-overlay-message ${overlayState.messageType ?? 'error'}`}>
-            <MessageIcon size={13} />
-            <span>{overlayState.message}</span>
-          </span>
+          <>
+            <span className={`overlay-message ${overlayState.messageType ?? 'info'}`}>{statusMessage}</span>
+            <div className="overlay-wave" aria-hidden="true">
+              {Array.from({ length: 8 }, (_, index) => (
+                <span
+                  key={index}
+                  style={{ height: `${Math.round(8 + (overlayState.waveform[index] ?? 0.08) * 24)}px` }}
+                />
+              ))}
+            </div>
+          </>
+        ) : (
+          <span className={`overlay-message ${overlayState.messageType ?? 'info'}`}>{statusMessage}</span>
         )}
       </div>
       {overlayState.status === 'recording' && (
         <button
-          className="speak-overlay-stop"
+          className="overlay-stop"
           type="button"
           title="Stop recording"
           onClick={() => void api.overlay.stopSpeak(overlayMode)}
@@ -132,7 +118,7 @@ export const SpeakOverlay = (): JSX.Element => {
       )}
       {overlayState.status === 'recording' && overlayMode !== 'improve' && (
         <button
-          className="speak-overlay-cancel"
+          className="overlay-cancel"
           type="button"
           title="Cancel recording"
           onClick={() => void api.overlay.cancelRecording(overlayMode)}
@@ -142,4 +128,20 @@ export const SpeakOverlay = (): JSX.Element => {
       )}
     </main>
   );
+};
+
+const fallbackMessage = (state: OverlayState): string => {
+  if (state.status === 'warning') {
+    return 'Action unavailable';
+  }
+  if (state.status === 'recording') {
+    return state.mode === 'speak' ? 'Listening...' : 'Recording...';
+  }
+  if (state.status === 'transcribing') {
+    return state.mode === 'transcript' ? 'Transcribing...' : 'Transcribing...';
+  }
+  if (state.status === 'improving') {
+    return 'Improving text...';
+  }
+  return state.mode === 'speak' ? 'Speak done' : state.mode === 'improve' ? 'Improve done' : 'Transcript done';
 };

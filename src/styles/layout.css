@@ -127,6 +127,9 @@
 }
 
 .topbar-menu > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   height: 26px;
   padding: 0 10px;
   border: 0;
@@ -140,6 +143,11 @@
 .topbar-menu > button:hover {
   color: var(--text);
   background: var(--hover-bg);
+}
+
+.topbar-import-action svg {
+  flex: 0 0 auto;
+  color: var(--primary);
 }
 
 .topbar-spacer {
@@ -418,10 +426,11 @@
   }
 }
 
-.speak-overlay {
+.overlay {
   --overlay-accent: var(--primary);
   --overlay-accent-strong: var(--primary-strong);
   --overlay-on-accent: #120c06;
+  min-width: 190px;
   display: grid;
   grid-template-columns: 38px max-content;
   align-items: center;
@@ -435,32 +444,32 @@
   background: #252526;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
   color: var(--text);
-  -webkit-app-region: drag;
+  -webkit-app-region: no-drag;
 }
 
-.speak-overlay.done {
+.overlay.done {
   grid-template-columns: 38px max-content;
 }
 
-.speak-overlay.recording {
+.overlay.recording {
   grid-template-columns: 38px minmax(72px, 1fr) 66px 64px;
 }
 
-.speak-overlay.warning {
+.overlay.warning {
   --overlay-accent: #ffd166;
   --overlay-accent-strong: #ffe39a;
   --overlay-on-accent: #161006;
   grid-template-columns: 38px max-content;
 }
 
-body:has(.speak-overlay) {
+body:has(.overlay) {
   display: inline-block;
   width: max-content;
   height: max-content;
   background: transparent;
 }
 
-.speak-overlay-icon {
+.overlay-icon {
   grid-row: 1;
   display: grid;
   width: 38px;
@@ -472,43 +481,43 @@ body:has(.speak-overlay) {
   background: rgba(255, 156, 77, 0.1);
 }
 
-.speak-overlay-icon.done {
+.overlay-icon.done {
   border-color: rgba(137, 209, 133, 0.48);
   color: var(--success);
   background: rgba(137, 209, 133, 0.1);
 }
 
-.speak-overlay-icon.warning {
+.overlay-icon.warning {
   border-color: rgba(255, 209, 102, 0.48);
   color: #ffd166;
   background: rgba(255, 209, 102, 0.12);
 }
 
-.speak-overlay-main {
+.overlay-main {
   display: grid;
   gap: 5px;
   min-width: max-content;
 }
 
-.speak-overlay-main strong {
+.overlay-main strong {
   color: var(--text);
   font-size: 12px;
   line-height: 1;
 }
 
-.speak-overlay-title {
+.overlay-title {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   min-width: 0;
 }
 
-.speak-overlay-title svg {
+.overlay-title svg {
   flex: 0 0 auto;
   color: var(--success);
 }
 
-.speak-overlay-message {
+.overlay-message {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -519,28 +528,28 @@ body:has(.speak-overlay) {
   white-space: nowrap;
 }
 
-.speak-overlay-message span {
+.overlay-message span {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.speak-overlay-message.error {
+.overlay-message.error {
   color: #ff9b9b;
 }
 
-.speak-overlay-message.success {
+.overlay-message.success {
   color: var(--success);
 }
 
-.speak-overlay-message.warning {
+.overlay-message.warning {
   color: #ffd166;
 }
 
-.speak-overlay-message.info {
+.overlay-message.info {
   color: var(--primary-strong);
 }
 
-.speak-overlay-wave {
+.overlay-wave {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -548,7 +557,7 @@ body:has(.speak-overlay) {
   min-width: 0;
 }
 
-.speak-overlay-wave span {
+.overlay-wave span {
   width: 4px;
   min-height: 8px;
   border-radius: 999px;
@@ -556,7 +565,7 @@ body:has(.speak-overlay) {
   transition: height 90ms linear;
 }
 
-.speak-overlay button {
+.overlay button {
   grid-row: 1;
   display: inline-flex;
   align-items: center;
@@ -573,44 +582,60 @@ body:has(.speak-overlay) {
   -webkit-app-region: no-drag;
 }
 
-.speak-overlay button:hover {
+.overlay button:hover {
   border-color: var(--overlay-accent-strong);
   background: #ffad66;
 }
 
-.speak-overlay .speak-overlay-stop {
+.overlay .overlay-stop {
   flex-direction: column;
   gap: 1px;
   padding: 0 8px;
   line-height: 1;
 }
 
-.speak-overlay .speak-overlay-stop small {
+.overlay .overlay-stop small {
   font-size: var(--ring-font-size, 9px);
   font-weight: 650;
   opacity: 0.78;
 }
 
-.speak-overlay .speak-overlay-cancel {
+.overlay .overlay-cancel {
   border-color: var(--border);
   background: transparent;
   color: var(--muted);
   padding: 0 6px;
 }
 
-.speak-overlay .speak-overlay-cancel:hover {
+.overlay .overlay-cancel:hover {
   border-color: var(--danger);
   background: rgba(255, 107, 122, 0.08);
   color: var(--danger);
 }
 
-.speak-overlay-spinner {
+.overlay-spinner {
   width: 20px;
   height: 20px;
   border: 2px solid rgba(255, 156, 77, 0.22);
   border-top-color: var(--overlay-accent);
   border-radius: 999px;
   animation: spin 760ms linear infinite;
+}
+
+.status-spinner-icon {
+  flex: 0 0 auto;
+  animation: spin 820ms linear infinite !important;
+  animation-duration: 820ms !important;
+  animation-iteration-count: infinite !important;
+  transform-origin: center;
+}
+
+.overlay .status-spinner {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  border-color: rgba(255, 156, 77, 0.22);
+  border-top-color: var(--overlay-accent);
 }
 
 .action-progress {
@@ -621,7 +646,7 @@ body:has(.speak-overlay) {
   color: var(--muted);
 }
 
-.speak-overlay .action-progress {
+.overlay .action-progress {
   width: max-content;
   min-width: max-content;
 }
@@ -664,7 +689,7 @@ body:has(.speak-overlay) {
   color: var(--muted);
 }
 
-.speak-overlay .action-progress-label {
+.overlay .action-progress-label {
   overflow: visible;
   text-overflow: clip;
 }

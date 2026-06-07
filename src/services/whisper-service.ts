@@ -124,7 +124,7 @@ export class WhisperService {
     const startedAt = Date.now();
     const modelPath = await this.modelPath(modelFileName);
     const id = crypto.randomUUID();
-    const temporaryRoot = await this.storage.ensureDir('tmp', id);
+    const temporaryRoot = await this.storage.ensureDir('tmp', 'current', id);
     const serverDiagnostics: WhisperServerDiagnostics[] = [];
     let settings: Settings | null = null;
     let segments: Uint8Array[] = [];
@@ -152,7 +152,6 @@ export class WhisperService {
       }
       if (segments.length > 1) {
         const texts: string[] = [];
-        const progressTracker = segmentProgressTracker(segments);
         for (let index = 0; index < segments.length; index += 1) {
           const segment = segments[index];
           if (!segment) {
@@ -172,7 +171,6 @@ export class WhisperService {
           if (text) {
             texts.push(text);
           }
-          options.onProgress?.(progressTracker.done(index));
         }
         const text = texts.join('\n').trim();
         this.writeWhisperLog({
@@ -244,7 +242,7 @@ export class WhisperService {
   async transcribeFile(audioPath: string, modelFileName: string, options: TranscribeOptions = {}): Promise<string> {
     const modelPath = await this.modelPath(modelFileName);
     const id = crypto.randomUUID();
-    const temporaryRoot = await this.storage.ensureDir('tmp', id);
+    const temporaryRoot = await this.storage.ensureDir('tmp', 'current', id);
 
     try {
       await access(audioPath);
@@ -265,7 +263,6 @@ export class WhisperService {
       }
 
       const texts: string[] = [];
-      const progressTracker = segmentProgressTracker(segments);
       for (let index = 0; index < segments.length; index += 1) {
         const segment = segments[index];
         if (!segment) {
@@ -284,7 +281,6 @@ export class WhisperService {
         if (text) {
           texts.push(text);
         }
-        options.onProgress?.(progressTracker.done(index));
       }
       return texts.join('\n').trim();
     } finally {
@@ -295,7 +291,7 @@ export class WhisperService {
   async transcribeMeeting(audio: Uint8Array, modelFileName: string, options: TranscribeOptions = {}): Promise<string> {
     const modelPath = await this.modelPath(modelFileName);
     const id = crypto.randomUUID();
-    const temporaryRoot = await this.storage.ensureDir('tmp', id);
+    const temporaryRoot = await this.storage.ensureDir('tmp', 'current', id);
 
     try {
       return await this.transcribeMeetingAudio(
@@ -749,27 +745,6 @@ const whisperQualityArgs = (mode: Settings['whisperQualityMode']): string[] => {
   return [];
 };
 
-const segmentProgressTracker = (segments: Uint8Array[]): {
-  current: (index: number, progress: number) => number;
-  done: (index: number) => number;
-} => {
-  const weights = segments.map((segment) => Math.max(1, wavDurationWeight(segment)));
-  const total = weights.reduce((sum, weight) => sum + weight, 0) || 1;
-  const starts = weights.map((_, index) => weights.slice(0, index).reduce((sum, weight) => sum + weight, 0));
-  return {
-    current: (index, progress) => {
-      const start = starts[index] ?? 0;
-      const weight = weights[index] ?? 1;
-      return Math.round(((start + weight * clampProgress(progress) / 100) / total) * 100);
-    },
-    done: (index) => {
-      const start = starts[index] ?? 0;
-      const weight = weights[index] ?? 1;
-      return Math.round(((start + weight) / total) * 100);
-    },
-  };
-};
-
 const wavDurationWeight = (audio: Uint8Array): number => {
   const view = new DataView(audio.buffer, audio.byteOffset, audio.byteLength);
   if (audio.byteLength < 44) {
@@ -801,8 +776,6 @@ const wavDurationWeight = (audio: Uint8Array): number => {
     ? dataSize / channels / sampleRate
     : audio.byteLength;
 };
-
-const clampProgress = (progress: number): number => Math.max(0, Math.min(100, progress));
 
 const wavDurationMs = (info: WavInfo): number => {
   const bytesPerFrame = info.channels * (info.bitsPerSample / 8);

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, type JSX, type MouseEvent } from 'react';
-import { Calendar, Check, CheckSquare, Clipboard, FileText, Headphones, History, Mic, Pencil, Search, Square, Star, Trash2, Wand2, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type JSX, type MouseEvent } from 'react';
+import { Calendar, Check, CheckSquare, Clipboard, Ear, FileDown, FileText, Headphones, History, Mic, Pencil, Search, Square, Star, Trash2, Wand2, X } from 'lucide-react';
 import type { HistoryEntry } from '@shared/types';
+import { api } from '../../api';
 
 export type HistoryViewProps = {
   entries: HistoryEntry[];
@@ -27,6 +28,10 @@ export const HistoryView = ({
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
+  const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
+  const [audioLoadingIds, setAudioLoadingIds] = useState<string[]>([]);
+  const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
+  const audioUrlsRef = useRef<Record<string, string>>({});
   const filteredEntries = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return entries.filter((entry) => {
@@ -44,6 +49,42 @@ export const HistoryView = ({
   useEffect(() => {
     setSelectedIds((ids) => ids.filter((id) => entries.some((entry) => entry.id === id)));
   }, [entries]);
+
+  useEffect(() => {
+    audioUrlsRef.current = audioUrls;
+  }, [audioUrls]);
+
+  useEffect(() => () => {
+    Object.values(audioUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
+  }, []);
+
+  useEffect(() => {
+    if (activeAudioId && !entries.some((entry) => entry.id === activeAudioId)) {
+      setActiveAudioId(null);
+    }
+  }, [activeAudioId, entries]);
+
+  const loadAudio = async (entry: HistoryEntry): Promise<void> => {
+    if (!entry.audioFileName || audioLoadingIds.includes(entry.id)) {
+      return;
+    }
+    if (audioUrls[entry.id]) {
+      setActiveAudioId(entry.id);
+      return;
+    }
+    setAudioLoadingIds((ids) => [...ids, entry.id]);
+    try {
+      const audio = await api.history.audio(entry.id);
+      if (!audio) {
+        return;
+      }
+      const url = URL.createObjectURL(new Blob([audio], { type: 'audio/wav' }));
+      setAudioUrls((urls) => ({ ...urls, [entry.id]: url }));
+      setActiveAudioId(entry.id);
+    } finally {
+      setAudioLoadingIds((ids) => ids.filter((id) => id !== entry.id));
+    }
+  };
 
   const toggleSelected = (entry: HistoryEntry, event: MouseEvent<HTMLButtonElement>): void => {
     if (event.shiftKey && lastSelectedId) {
@@ -86,9 +127,10 @@ export const HistoryView = ({
     setEditingId(null);
     setEditingTitle('');
   };
+  const activeAudioEntry = activeAudioId ? entries.find((entry) => entry.id === activeAudioId) : undefined;
 
   return (
-    <section className="page">
+    <section className="page history-page">
       <div className="page-heading">
         <div>
           <h1 className="view-title">
@@ -141,6 +183,15 @@ export const HistoryView = ({
           </button>
         </div>
       </div>
+      {activeAudioEntry && audioUrls[activeAudioEntry.id] && (
+        <div className="history-player">
+          <div className="history-player-title">
+            <Ear size={15} />
+            <span>{activeAudioEntry.title}</span>
+          </div>
+          <audio key={activeAudioEntry.id} controls autoPlay preload="metadata" src={audioUrls[activeAudioEntry.id]} />
+        </div>
+      )}
       <div className="history-list">
         {filteredEntries.length === 0 && (
           <div className="history-empty">
@@ -203,48 +254,70 @@ export const HistoryView = ({
                     <X size={17} />
                   </button>
                 </div>
-              ) : (
-              <button className="history-open" type="button" title="Select entry" onClick={(event) => toggleSelected(entry, event)}>
-                <div className="history-content">
-                  <p>{entry.title}</p>
-                  <div className="history-title-row">
-                    <span className={`history-kind-tag ${entry.kind}`}>
-                      {entry.kind === 'dictation' ? (
-                        <Mic size={13} />
-                      ) : entry.kind === 'improvement' ? (
-                        <Wand2 size={13} />
-                      ) : (
-                        <Headphones size={13} />
-                      )}
-                      {entry.kind === 'dictation' ? 'Speak' : entry.kind === 'improvement' ? 'Improve' : 'Transcript'}
-                    </span>
-                    <time>
-                      <Calendar size={13} />
-                      {new Date(entry.createdAt).toLocaleString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit',
-                      })}
-                    </time>
+                ) : (
+                <div className="history-open">
+                  <div className="history-content">
+                    <div className="history-entry-title">
+                      <button type="button" title="Select entry" onClick={(event) => toggleSelected(entry, event)}>
+                        <span>{entry.title}</span>
+                      </button>
+                      <button
+                        type="button"
+                        title="Edit title"
+                        aria-label="Edit title"
+                        onClick={() => {
+                          setEditingId(entry.id);
+                          setEditingTitle(entry.title);
+                        }}
+                      >
+                        <Pencil size={16} />
+                      </button>
+                    </div>
+                    <div className="history-title-row">
+                      <span className={`history-kind-tag ${entry.kind}`}>
+                        {entry.kind === 'dictation' ? (
+                          <Mic size={13} />
+                        ) : entry.kind === 'improvement' ? (
+                          <Wand2 size={13} />
+                        ) : (
+                          <Headphones size={13} />
+                        )}
+                        {entry.kind === 'dictation' ? 'Speak' : entry.kind === 'improvement' ? 'Improve' : 'Transcript'}
+                      </span>
+                      <time>
+                        <Calendar size={13} />
+                        {new Date(entry.createdAt).toLocaleString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })}
+                      </time>
+                    </div>
                   </div>
                 </div>
-              </button>
               )}
               <div className="history-actions">
-                {editingId !== entry.id && (
+                {entry.audioFileName && (
                   <button
+                    className={activeAudioId === entry.id ? 'active' : ''}
                     type="button"
-                    title="Edit title"
-                    aria-label="Edit title"
-                    onClick={() => {
-                      setEditingId(entry.id);
-                      setEditingTitle(entry.title);
-                    }}
+                    title="Play audio"
+                    aria-label="Play audio"
+                    disabled={audioLoadingIds.includes(entry.id)}
+                    onClick={() => void loadAudio(entry)}
                   >
-                    <Pencil size={18} />
+                    <Ear size={18} />
                   </button>
                 )}
+                <button
+                  type="button"
+                  title="Export text"
+                  aria-label="Export text"
+                  onClick={() => void api.history.exportText(entry.id)}
+                >
+                  <FileDown size={18} />
+                </button>
                 <button type="button" title="Copy entry" aria-label="Copy entry" onClick={() => onCopy(entry)}>
                   <Clipboard size={18} />
                 </button>

@@ -29,6 +29,7 @@ type LlamaServerState = {
 type LlamaServerResult = {
   output: string;
   tokensGenerated: number;
+  tokensPerSecond: number | null;
   diagnostics: LlamaServerDiagnostics;
 };
 
@@ -59,10 +60,6 @@ export type LlamaServerDiagnostics = {
   requestBytes: number;
   responseBytes: number;
   rawResponseTail: string;
-  chunksReceived: number;
-  firstChunkAfterMs: number | null;
-  lastChunkAfterMs: number | null;
-  streamRawChunksTail: string;
   httpErrorBodyTail: string;
   errorLines: string[];
 };
@@ -82,7 +79,6 @@ export class LlamaServerService {
       contextSize: number;
       temperature: number;
       timeoutMs?: number;
-      onProgress?: (tokensGenerated: number) => void;
     },
   ): Promise<LlamaServerResult> {
     const server = await this.ensureServer({
@@ -99,9 +95,9 @@ export class LlamaServerService {
       prompt,
       n_predict: options.maxTokens,
       temperature: options.temperature,
-      stream: true,
+      stream: false,
     });
-    const diagnosticsBase = (): Omit<LlamaServerDiagnostics, 'requestFinishedAt' | 'requestDurationMs' | 'httpStatus' | 'httpStatusText' | 'contentType' | 'responseBytes' | 'rawResponseTail' | 'chunksReceived' | 'firstChunkAfterMs' | 'lastChunkAfterMs' | 'streamRawChunksTail' | 'httpErrorBodyTail' | 'errorLines'> => ({
+    const diagnosticsBase = (): Omit<LlamaServerDiagnostics, 'requestFinishedAt' | 'requestDurationMs' | 'httpStatus' | 'httpStatusText' | 'contentType' | 'responseBytes' | 'rawResponseTail' | 'httpErrorBodyTail' | 'errorLines'> => ({
       engine: 'llama',
       executable: server.executable,
       args: server.args,
@@ -137,11 +133,12 @@ export class LlamaServerService {
         const body = await response.text().catch(() => '');
         throw serverError(`Llama server failed: ${response.status}`, body);
       }
-      const stream = await this.textFromStream(response, requestStartedAtMs, options.onProgress);
-      const output = stream.output;
+      const raw = await response.text();
+      const completion = this.completionFromResponse(raw);
       return {
-        output,
-        tokensGenerated: estimateTokenCount(output),
+        output: completion.output,
+        tokensGenerated: completion.tokensGenerated,
+        tokensPerSecond: completion.tokensPerSecond,
         diagnostics: {
           ...diagnosticsBase(),
           aliveAfterRequest: server.child.exitCode === null,
@@ -152,12 +149,8 @@ export class LlamaServerService {
           httpStatus: response.status,
           httpStatusText: response.statusText,
           contentType: response.headers.get('content-type') ?? 'unknown',
-          responseBytes: Buffer.byteLength(output, 'utf8'),
-          rawResponseTail: stream.rawResponseTail,
-          chunksReceived: stream.chunksReceived,
-          firstChunkAfterMs: stream.firstChunkAfterMs,
-          lastChunkAfterMs: stream.lastChunkAfterMs,
-          streamRawChunksTail: stream.rawChunksTail,
+          responseBytes: Buffer.byteLength(raw, 'utf8'),
+          rawResponseTail: raw,
           httpErrorBodyTail: '',
           errorLines: [],
         },
@@ -175,10 +168,6 @@ export class LlamaServerService {
         contentType: 'unknown',
         responseBytes: 0,
         rawResponseTail: '',
-        chunksReceived: 0,
-        firstChunkAfterMs: null,
-        lastChunkAfterMs: null,
-        streamRawChunksTail: '',
         httpErrorBodyTail: httpErrorBody(error),
         errorLines: errorDiagnostics(error),
       };
@@ -198,12 +187,13 @@ export class LlamaServerService {
       contextSize: number;
     },
   ): Promise<void> {
-    await this.ensureServer({
+    const server = await this.ensureServer({
       executable,
       modelPath,
       mode: options.mode,
       contextSize: options.contextSize,
     });
+    await this.waitUntilCompletionReady(server);
   }
 
   stop(): void {
@@ -334,139 +324,77 @@ export class LlamaServerService {
     throw new Error('Llama server startup timed out.');
   }
 
-  private textFromResponse(raw: string): string {
-    try {
-      const value = JSON.parse(raw) as { content?: unknown; response?: unknown; text?: unknown };
-      if (typeof value.content === 'string') {
-        return value.content.trim();
+  private async waitUntilCompletionReady(server: LlamaServerState): Promise<void> {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < 60000) {
+      if (server.child.exitCode !== null) {
+        throw new Error('Llama server stopped during warmup.');
       }
-      if (typeof value.response === 'string') {
-        return value.response.trim();
-      }
-      if (typeof value.text === 'string') {
-        return value.text.trim();
-      }
-      return raw.trim();
-    } catch {
-      return raw.trim();
-    }
-  }
-
-  private async textFromStream(
-    response: Response,
-    startedAtMs: number,
-    onProgress?: (tokensGenerated: number) => void,
-  ): Promise<{
-    output: string;
-    chunksReceived: number;
-    firstChunkAfterMs: number | null;
-    lastChunkAfterMs: number | null;
-    rawResponseTail: string;
-    rawChunksTail: string;
-  }> {
-    if (!response.body) {
-      const raw = await response.text();
-      return {
-        output: this.textFromResponse(raw),
-        chunksReceived: raw ? 1 : 0,
-        firstChunkAfterMs: raw ? Date.now() - startedAtMs : null,
-        lastChunkAfterMs: raw ? Date.now() - startedAtMs : null,
-        rawResponseTail: raw,
-        rawChunksTail: raw,
-      };
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    const rawResponse = new DebugLogBuffer();
-    const rawChunks = new DebugLogBuffer();
-    let buffer = '';
-    let output = '';
-    let chunksReceived = 0;
-    let firstChunkAfterMs: number | null = null;
-    let lastChunkAfterMs: number | null = null;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      chunksReceived += 1;
-      firstChunkAfterMs ??= Date.now() - startedAtMs;
-      lastChunkAfterMs = Date.now() - startedAtMs;
-      const chunkText = decoder.decode(value, { stream: true });
-      rawResponse.append(chunkText);
-      rawChunks.append(chunkText);
-      buffer += chunkText;
-      const lines = buffer.split(/\r?\n/);
-      buffer = lines.pop() ?? '';
-      for (const line of lines) {
-        const content = this.contentFromStreamLine(line);
-        if (!content) {
-          continue;
+      try {
+        const response = await fetch(`${server.url}/completion`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            prompt: 'OK',
+            n_predict: 1,
+            temperature: 0,
+            stream: false,
+          }),
+        });
+        if (response.ok) {
+          await response.text().catch(() => {});
+          return;
         }
-        output += content;
-        onProgress?.(estimateTokenCount(output));
-      }
+        await response.text().catch(() => {});
+      } catch {}
+      await delay(250);
     }
-
-    const finalText = decoder.decode();
-    rawResponse.append(finalText);
-    buffer += finalText;
-    for (const line of buffer.split(/\r?\n/)) {
-      const content = this.contentFromStreamLine(line);
-      if (!content) {
-        continue;
-      }
-      output += content;
-      onProgress?.(estimateTokenCount(output));
-    }
-
-    return {
-      output: output.trim(),
-      chunksReceived,
-      firstChunkAfterMs,
-      lastChunkAfterMs,
-      rawResponseTail: rawResponse.text(),
-      rawChunksTail: rawChunks.text(),
-    };
+    throw new Error('Llama server warmup timed out.');
   }
 
-  private contentFromStreamLine(line: string): string {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed === 'data: [DONE]' || trimmed === '[DONE]') {
-      return '';
-    }
-    const raw = trimmed.startsWith('data:') ? trimmed.slice(5).trim() : trimmed;
-    if (!raw) {
-      return '';
-    }
+  private completionFromResponse(raw: string): {
+    output: string;
+    tokensGenerated: number;
+    tokensPerSecond: number | null;
+  } {
     try {
       const value = JSON.parse(raw) as {
         content?: unknown;
         response?: unknown;
         text?: unknown;
-        choices?: Array<{ text?: unknown; delta?: { content?: unknown } }>;
+        tokens_predicted?: unknown;
+        timings?: {
+          predicted_n?: unknown;
+          predicted_per_second?: unknown;
+        };
       };
-      if (typeof value.content === 'string') {
-        return value.content;
-      }
-      if (typeof value.response === 'string') {
-        return value.response;
-      }
-      if (typeof value.text === 'string') {
-        return value.text;
-      }
-      const choice = value.choices?.[0];
-      if (typeof choice?.text === 'string') {
-        return choice.text;
-      }
-      if (typeof choice?.delta?.content === 'string') {
-        return choice.delta.content;
-      }
-      return '';
+      const output = typeof value.content === 'string'
+        ? value.content.trim()
+        : typeof value.response === 'string'
+          ? value.response.trim()
+          : typeof value.text === 'string'
+            ? value.text.trim()
+            : raw.trim();
+      const tokensGenerated =
+        typeof value.timings?.predicted_n === 'number'
+          ? value.timings.predicted_n
+          : typeof value.tokens_predicted === 'number'
+            ? value.tokens_predicted
+            : estimateTokenCount(output);
+      const tokensPerSecond =
+        typeof value.timings?.predicted_per_second === 'number'
+          ? Number(value.timings.predicted_per_second.toFixed(1))
+          : null;
+      return { output, tokensGenerated, tokensPerSecond };
     } catch {
-      return raw;
+      const output = raw.trim();
+      return {
+        output,
+        tokensGenerated: estimateTokenCount(output),
+        tokensPerSecond: null,
+      };
     }
   }
 

@@ -9,6 +9,7 @@ import {
   Headphones,
   Home,
   Info,
+  LoaderCircle,
   Mic,
   Pencil,
   Signal,
@@ -20,7 +21,6 @@ import {
 } from 'lucide-react';
 import type { HardwareInfo, HomeMode, Hotkeys, LlmRuntimeInfo, OverlayState, ResultState, WhisperRuntimeInfo } from '@shared/types';
 import { missingActionMessage } from '@shared/action-messages';
-import { ActionProgressIndicator } from '../components/ActionProgressIndicator';
 
 export type HomeViewProps = {
   mode: HomeMode;
@@ -35,6 +35,7 @@ export type HomeViewProps = {
   hotkeys: Hotkeys;
   whisperRuntime: WhisperRuntimeInfo;
   llmRuntime: LlmRuntimeInfo;
+  runtimeInfoLoaded: boolean;
   hardwareInfo: HardwareInfo;
   whisperModelAvailable: boolean;
   llmModelAvailable: boolean;
@@ -64,6 +65,7 @@ export const HomeView = ({
   hotkeys,
   whisperRuntime,
   llmRuntime,
+  runtimeInfoLoaded,
   hardwareInfo,
   whisperModelAvailable,
   llmModelAvailable,
@@ -80,24 +82,34 @@ export const HomeView = ({
   onCopy,
 }: HomeViewProps): JSX.Element => {
   const isActionBlocked = Boolean(actionBlockMessage) && !isRecording;
-  const missingMessage = missingActionMessage({
-    mode,
-    resultStatus: result.status,
-    whisperRuntime,
-    llmRuntime,
-    whisperModelAvailable,
-    llmModelAvailable,
-  });
-  const statusMessage = result.status === 'processing' ? '' : (missingMessage ?? result.message);
-  const statusTone = missingMessage ? 'error' : statusToneFor(result);
+  const missingMessage = runtimeInfoLoaded
+    ? missingActionMessage({
+        mode,
+        resultStatus: result.status,
+        whisperRuntime,
+        llmRuntime,
+        whisperModelAvailable,
+        llmModelAvailable,
+      })
+    : null;
+  const activeOverlay = overlayState.active && overlayState.mode === mode ? overlayState : null;
+  const statusMessage = missingMessage ?? activeOverlay?.message ?? result.message;
+  const statusTone = missingMessage ? 'error' : activeOverlay ? statusToneForOverlay(activeOverlay) : statusToneFor(result);
   const StatusIcon = statusIcon[statusTone];
-  const activeRuntimeAvailable = mode === 'improve' ? llmRuntime.runtimeAvailable : whisperRuntime.runtimeAvailable;
-  const runtimeLabel = activeRuntimeAvailable
+  const showProgressStatus = activeOverlay
+    ? activeOverlay.actionPhase === 'loading' || activeOverlay.actionPhase === 'processing'
+    : result.status === 'processing' || result.actionPhase === 'loading';
+  const activeRuntimeAvailable = runtimeInfoLoaded && (mode === 'improve' ? llmRuntime.runtimeAvailable : whisperRuntime.runtimeAvailable);
+  const runtimeLabel = !runtimeInfoLoaded
+    ? 'Runtime loading'
+    : activeRuntimeAvailable
     ? hardwareInfo.gpuAvailable
       ? 'GPU ready'
       : 'CPU auto'
     : 'Runtime missing';
-  const runtimeTone = activeRuntimeAvailable
+  const runtimeTone = !runtimeInfoLoaded
+    ? 'info'
+    : activeRuntimeAvailable
     ? hardwareInfo.gpuAvailable
       ? 'success'
       : 'error'
@@ -275,8 +287,8 @@ export const HomeView = ({
               </h2>
               <div className={`inline-status ${statusTone}`}>
                 <span className="inline-status-badge">
-                  {result.status === 'processing' ? (
-                    <ActionProgressIndicator state={overlayState} compact />
+                  {showProgressStatus ? (
+                    <LoaderCircle className="status-spinner-icon" size={15} aria-label={statusMessage} />
                   ) : (
                     <StatusIcon size={15} />
                   )}
@@ -374,4 +386,17 @@ const statusToneFor = (result: ResultState): 'default' | 'info' | 'success' | 'w
     return 'info';
   }
   return result.text ? 'success' : 'default';
+};
+
+const statusToneForOverlay = (state: OverlayState): 'default' | 'info' | 'success' | 'warning' | 'error' => {
+  if (state.messageType) {
+    return state.messageType;
+  }
+  if (state.status === 'done') {
+    return 'success';
+  }
+  if (state.status === 'warning') {
+    return state.actionPhase === 'loading' ? 'info' : 'warning';
+  }
+  return 'info';
 };

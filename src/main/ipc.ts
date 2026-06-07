@@ -1,10 +1,12 @@
-import { BrowserWindow, app, clipboard, ipcMain, shell } from 'electron';
+import { BrowserWindow, app, clipboard, dialog, ipcMain, shell, type OpenDialogOptions } from 'electron';
 import { randomUUID } from 'node:crypto';
+import { readFile, writeFile } from 'node:fs/promises';
 import { channels } from '@shared/channels';
 import { defaultSettings } from '@shared/defaults';
 import { appMessages } from '@shared/GlobalVars';
 import { actionMessages } from '@shared/action-messages';
 import { actionBlockMessage } from '@shared/action-locks';
+import { actionOverlay, actionUi } from '@shared/action-ui';
 import { historyTitleUpdateSchema, idSchema, llmModelIdSchema, overlayStateSchema, settingsSchema, textSchema } from '@shared/schemas';
 import { whisperModelIdSchema } from '@shared/schemas';
 import type { OverlayState, ResultState, Settings } from '@shared/types';
@@ -21,13 +23,13 @@ import { HotkeyService } from '@services/hotkey-service';
 import { AppStorage } from '@storage/app-storage';
 import {
   cancelRecordingFromOverlay,
-  dismissSpeakOverlay,
-  getSpeakOverlayState,
-  resizeSpeakOverlayToContent,
+  dismissOverlay,
+  getOverlayState,
+  resizeOverlayToContent,
   sendAppAction,
   sendImproveResult,
-  setSpeakOverlayState,
-  stopSpeakFromOverlay,
+  setOverlayState,
+  stopFromOverlay,
 } from './window';
 import { updateTray } from './tray';
 
@@ -70,24 +72,16 @@ const ready = (
 });
 
 const showImproveBlocked = (message: string): void => {
-  setSpeakOverlayState({
-    active: true,
-    mode: 'improve',
-    status: 'warning',
-    waveform: [],
+  setOverlayState(actionOverlay('improve', 'warning', [], {
     message,
     messageType: 'warning',
-  });
+  }));
 };
 
 const showImproveProcessing = (): void => {
-  setSpeakOverlayState({
-    active: true,
-    mode: 'improve',
-    status: 'improving',
+  setOverlayState(actionOverlay('improve', 'processing', [], {
     phase: 'thinking',
-    waveform: [],
-  });
+  }));
 };
 
 const showProcessingProgress = (
@@ -106,12 +100,15 @@ const showProcessingProgress = (
     return;
   }
   progressUpdateState.set(mode, { at: now, key: `${key}:${phase}` });
-  setSpeakOverlayState({
+  setOverlayState({
     active: true,
     mode,
     status: mode === 'improve' ? 'improving' : 'transcribing',
     phase: progress.phase ?? (mode === 'improve' ? 'generating' : 'transcribing'),
+    actionPhase: 'processing',
     waveform: [],
+    message: actionUi(mode, 'processing').message,
+    messageType: 'info',
     ...progress,
   });
 };
@@ -138,11 +135,6 @@ export const improveClipboardFromHotkey = async (): Promise<void> => {
       llmModelService.modelPath(settings.llmModel),
       settings.correctionPrompt,
       text,
-      {
-        onProgress: (progress) => {
-          showProcessingProgress('improve', progress);
-        },
-      },
     );
     const durationMs = elapsedMs(startedAt);
     if (!improved.text.trim()) {
@@ -204,6 +196,28 @@ export const registerIpc = (): void => {
     if (error) {
       throw new Error(error);
     }
+  });
+
+  ipcMain.handle(channels.appImportAudio, async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const options: OpenDialogOptions = {
+      title: 'Import audio',
+      properties: ['openFile'],
+      filters: [{ name: 'WAV audio', extensions: ['wav'] }],
+    };
+    const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+    const filePath = result.filePaths[0];
+    if (result.canceled || !filePath) {
+      return null;
+    }
+    const audio = await readFile(filePath);
+    if (!isWavAudio(audio)) {
+      throw new Error('Unsupported audio format. Please choose a WAV file.');
+    }
+    if (audio.byteLength === 0) {
+      throw new Error('Audio file is empty.');
+    }
+    return audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength);
   });
 
   ipcMain.handle(channels.appQuit, () => {
@@ -302,7 +316,7 @@ export const registerIpc = (): void => {
       if (settings.pasteAfterDictation) {
         await activePasteService.paste();
       }
-      await historyService.add({ kind: 'dictation', text }, settings.maxHistoryItems);
+      await historyService.add({ kind: 'dictation', text, audio }, settings.maxHistoryItems);
       return ready(text, appMessages.copiedToClipboard, durationMs, { audioDurationMs });
     } catch (error) {
       return failed(error);
@@ -337,7 +351,7 @@ export const registerIpc = (): void => {
       if (!text.trim()) {
         return ready('', 'No speech detected.', durationMs, { audioDurationMs });
       }
-      await historyService.add({ kind: 'transcript', text }, settings.maxHistoryItems);
+      await historyService.add({ kind: 'transcript', text, audio }, settings.maxHistoryItems);
       return ready(text, 'Transcript generated.', durationMs, { audioDurationMs });
     } catch (error) {
       return failed(error);
@@ -362,11 +376,6 @@ export const registerIpc = (): void => {
         llmModelService.modelPath(settings.llmModel),
         settings.correctionPrompt,
         text,
-        {
-          onProgress: (progress) => {
-            showProcessingProgress('improve', progress);
-          },
-        },
       );
       const durationMs = elapsedMs(startedAt);
       if (!improved.text.trim()) {
@@ -419,13 +428,39 @@ export const registerIpc = (): void => {
 
   ipcMain.handle(channels.historyClear, () => historyService.clear());
 
+  ipcMain.handle(channels.historyAudio, async (_event, value: unknown) => {
+    const id = idSchema.parse(value);
+    const audio = await historyService.audio(id);
+    return audio ? audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength) : null;
+  });
+
+  ipcMain.handle(channels.historyExportText, async (event, value: unknown) => {
+    const id = idSchema.parse(value);
+    const entry = (await historyService.list()).find((item) => item.id === id);
+    if (!entry) {
+      throw new Error('History entry not found.');
+    }
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const options = {
+      title: 'Export text',
+      defaultPath: `${safeFileName(entry.title)}.txt`,
+      filters: [{ name: 'Text files', extensions: ['txt'] }],
+    };
+    const result = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) {
+      return false;
+    }
+    await writeFile(result.filePath, entry.text, 'utf8');
+    return true;
+  });
+
   ipcMain.handle(channels.overlaySetState, (_event, value: unknown) => {
-    setSpeakOverlayState(overlayStateSchema.parse(value));
+    setOverlayState(overlayStateSchema.parse(value));
   });
 
   ipcMain.handle(channels.overlayGetState, (_event, value: unknown) => {
     const mode = value === 'improve' || value === 'transcript' ? value : 'speak';
-    return getSpeakOverlayState(mode);
+    return getOverlayState(mode);
   });
 
   ipcMain.handle(channels.overlayContentSize, (_event, value: unknown) => {
@@ -442,7 +477,7 @@ export const registerIpc = (): void => {
       typeof value.size.width === 'number' &&
       typeof value.size.height === 'number'
     ) {
-      resizeSpeakOverlayToContent(value.mode, {
+      resizeOverlayToContent(value.mode, {
         width: Math.ceil(value.size.width),
         height: Math.ceil(value.size.height),
       });
@@ -451,7 +486,7 @@ export const registerIpc = (): void => {
 
   ipcMain.handle(channels.overlayStopSpeak, (_event, value: unknown) => {
     const mode = value === 'transcript' ? value : 'speak';
-    stopSpeakFromOverlay(mode);
+    stopFromOverlay(mode);
   });
 
   ipcMain.handle(channels.overlayCancelRecording, (_event, value: unknown) => {
@@ -462,7 +497,7 @@ export const registerIpc = (): void => {
 
   ipcMain.handle(channels.overlayDismiss, (_event, value: unknown) => {
     const mode = value === 'improve' || value === 'transcript' ? value : 'speak';
-    dismissSpeakOverlay(mode);
+    dismissOverlay(mode);
   });
 
   ipcMain.handle(channels.windowMinimize, (event) => {
@@ -494,6 +529,19 @@ const failed = (error: unknown): ResultState => ({
 });
 
 const singleLineText = (text: string): string => text.replace(/\s*\r?\n+\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+
+const isWavAudio = (audio: Uint8Array): boolean => {
+  if (audio.byteLength < 12) {
+    return false;
+  }
+  const view = new DataView(audio.buffer, audio.byteOffset, audio.byteLength);
+  return readAscii(view, 0, 4) === 'RIFF' && readAscii(view, 8, 4) === 'WAVE';
+};
+
+const safeFileName = (name: string): string => {
+  const fileName = name.replace(/\.{3,}$/g, '').replace(/[<>:"/\\|?*\x00-\x1F]/g, ' ').replace(/\s+/g, ' ').trim();
+  return fileName.slice(0, 80) || 'voclyra-export';
+};
 
 const elapsedMs = (startedAt: number): number => Math.max(0, Math.round(performance.now() - startedAt));
 

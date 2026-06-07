@@ -13,6 +13,7 @@ type OverlayMode = OverlayState['mode'];
 const overlayModes: OverlayMode[] = ['speak', 'improve', 'transcript'];
 const overlayWindows = new Map<OverlayMode, BrowserWindow>();
 const overlayDismissed = new Map<OverlayMode, boolean>();
+const overlayContentSizes = new Map<OverlayMode, { width: number; height: number }>();
 const defaultOverlayState: OverlayState = {
   active: false,
   mode: 'speak',
@@ -63,14 +64,6 @@ export const createMainWindow = (): BrowserWindow => {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
-  });
-
-  mainWindow.on('focus', () => {
-    updateSpeakOverlayVisibility();
-  });
-
-  mainWindow.on('blur', () => {
-    updateSpeakOverlayVisibility();
   });
 
   mainWindow.on('close', () => {
@@ -146,7 +139,7 @@ export const sendImproveResult = (result: ResultState): void => {
   mainWindow?.webContents.send(channels.appImproveResult, result);
 };
 
-export const setSpeakOverlayState = (state: OverlayState): void => {
+export const setOverlayState = (state: OverlayState): void => {
   const mode = state.mode;
   const previousState = overlayStates.get(mode);
   if (!state.active) {
@@ -167,15 +160,16 @@ export const setSpeakOverlayState = (state: OverlayState): void => {
     previousState.status === state.status
   ) {
     window.webContents.send(channels.overlayStateChanged, state);
+    positionActiveOverlayWindows();
     return;
   }
-  updateSpeakOverlayVisibility();
+  updateOverlayVisibility();
 };
 
-export const getSpeakOverlayState = (mode: OverlayMode = 'speak'): OverlayState =>
+export const getOverlayState = (mode: OverlayMode = 'speak'): OverlayState =>
   overlayStates.get(mode) ?? { ...defaultOverlayState, mode };
 
-export const stopSpeakFromOverlay = (mode: OverlayMode = 'speak'): void => {
+export const stopFromOverlay = (mode: OverlayMode = 'speak'): void => {
   if (mode === 'transcript') {
     mainWindow?.webContents.send(channels.appTranscript);
     return;
@@ -190,13 +184,13 @@ export const cancelRecordingFromOverlay = (mode: 'speak' | 'transcript'): void =
   mainWindow?.webContents.send(channels.appCancelRecording, mode);
 };
 
-export const dismissSpeakOverlay = (mode: OverlayMode = 'speak'): void => {
+export const dismissOverlay = (mode: OverlayMode = 'speak'): void => {
   overlayDismissed.set(mode, true);
   overlayWindows.get(mode)?.hide();
-  updateSpeakOverlayVisibility();
+  updateOverlayVisibility();
 };
 
-const updateSpeakOverlayVisibility = (): void => {
+const updateOverlayVisibility = (): void => {
   const activeStates = overlayModes
     .map((mode) => overlayStates.get(mode) ?? { ...defaultOverlayState, mode })
     .filter((state) => state.active && !overlayDismissed.get(state.mode));
@@ -209,16 +203,36 @@ const updateSpeakOverlayVisibility = (): void => {
     }
   }
 
-  activeStates.forEach((state, index) => {
-    const window = createSpeakOverlayWindow(state.mode);
+  activeStates.forEach((state) => {
+    const window = createOverlayWindow(state.mode);
     window.setFocusable(false);
     window.webContents.send(channels.overlayStateChanged, state);
-    positionSpeakOverlay(window, index, state);
-    window.showInactive();
+  });
+  positionActiveOverlayWindows();
+  activeStates.forEach((state) => {
+    const window = overlayWindows.get(state.mode);
+    if (window && !window.isDestroyed() && !window.isVisible()) {
+      window.showInactive();
+    }
   });
 };
 
-const createSpeakOverlayWindow = (mode: OverlayMode): BrowserWindow => {
+const positionActiveOverlayWindows = (): void => {
+  const activeStates = overlayModes
+    .map((mode) => overlayStates.get(mode) ?? { ...defaultOverlayState, mode })
+    .filter((state) => state.active && !overlayDismissed.get(state.mode));
+
+  let offset = 0;
+  activeStates.forEach((state) => {
+    const window = overlayWindows.get(state.mode);
+    if (window && !window.isDestroyed()) {
+      positionOverlay(window, state, offset);
+      offset += getOverlayHeight(window, state) + 10;
+    }
+  });
+};
+
+const createOverlayWindow = (mode: OverlayMode): BrowserWindow => {
   const existingWindow = overlayWindows.get(mode);
   if (existingWindow && !existingWindow.isDestroyed()) {
     return existingWindow;
@@ -235,6 +249,7 @@ const createSpeakOverlayWindow = (mode: OverlayMode): BrowserWindow => {
     transparent: true,
     show: false,
     focusable: false,
+    parent: mainWindow ?? undefined,
     skipTaskbar: true,
     alwaysOnTop: true,
     title: `${packageInfo.productName} ${mode}`,
@@ -251,6 +266,7 @@ const createSpeakOverlayWindow = (mode: OverlayMode): BrowserWindow => {
     },
   });
 
+  window.setSkipTaskbar(true);
   window.setAlwaysOnTop(true, 'floating');
   window.setFocusable(false);
   applyWindowSecurity(window);
@@ -277,7 +293,7 @@ const createSpeakOverlayWindow = (mode: OverlayMode): BrowserWindow => {
   });
 
   window.webContents.once('did-finish-load', () => {
-    window.webContents.send(channels.overlayStateChanged, getSpeakOverlayState(mode));
+    window.webContents.send(channels.overlayStateChanged, getOverlayState(mode));
   });
 
   if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
@@ -292,20 +308,41 @@ const createSpeakOverlayWindow = (mode: OverlayMode): BrowserWindow => {
   return window;
 };
 
-const positionSpeakOverlay = (window: BrowserWindow, index: number, state: OverlayState): void => {
+const setWindowBoundsIfChanged = (
+  window: BrowserWindow,
+  bounds: { x: number; y: number; width: number; height: number },
+): void => {
+  const currentBounds = window.getBounds();
+  if (
+    currentBounds.x === bounds.x &&
+    currentBounds.y === bounds.y &&
+    currentBounds.width === bounds.width &&
+    currentBounds.height === bounds.height
+  ) {
+    return;
+  }
+  window.setBounds(bounds);
+};
+
+const getOverlayWidth = (window: BrowserWindow, state: OverlayState): number =>
+  overlayContentSizes.get(state.mode)?.width ?? window.getBounds().width;
+
+const getOverlayHeight = (window: BrowserWindow, state: OverlayState): number =>
+  overlayContentSizes.get(state.mode)?.height ?? (state.message ? 72 : 62);
+
+const positionOverlay = (window: BrowserWindow, state: OverlayState, offset: number): void => {
   const { workArea } = screen.getPrimaryDisplay();
-  const width = window.getBounds().width;
-  const height = state.message ? 72 : 62;
-  const gap = 10;
-  window.setBounds({
+  const width = getOverlayWidth(window, state);
+  const height = getOverlayHeight(window, state);
+  setWindowBoundsIfChanged(window, {
     x: workArea.x + workArea.width - width - 18,
-    y: workArea.y + workArea.height - height - 18 - index * (height + gap),
+    y: workArea.y + workArea.height - height - 18 - offset,
     width,
     height,
   });
 };
 
-export const resizeSpeakOverlayToContent = (
+export const resizeOverlayToContent = (
   mode: OverlayMode,
   size: { width: number; height: number },
 ): void => {
@@ -313,18 +350,12 @@ export const resizeSpeakOverlayToContent = (
   if (!window || window.isDestroyed() || size.width <= 0 || size.height <= 0) {
     return;
   }
-  const activeStates = overlayModes
-    .map((overlayMode) => overlayStates.get(overlayMode) ?? { ...defaultOverlayState, mode: overlayMode })
-    .filter((state) => state.active && !overlayDismissed.get(state.mode));
-  const index = Math.max(0, activeStates.findIndex((state) => state.mode === mode));
-  const { workArea } = screen.getPrimaryDisplay();
-  const gap = 10;
   const width = Math.ceil(size.width);
   const height = Math.ceil(size.height);
-  window.setBounds({
-    x: workArea.x + workArea.width - width - 18,
-    y: workArea.y + workArea.height - height - 18 - index * (height + gap),
-    width,
-    height,
-  });
+  const previousSize = overlayContentSizes.get(mode);
+  if (previousSize?.width === width && previousSize.height === height) {
+    return;
+  }
+  overlayContentSizes.set(mode, { width, height });
+  positionActiveOverlayWindows();
 };

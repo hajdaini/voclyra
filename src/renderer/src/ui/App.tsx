@@ -17,13 +17,14 @@ import { defaultSettings } from '@shared/defaults';
 import { appMessages } from '@shared/GlobalVars';
 import { actionMessages } from '@shared/action-messages';
 import { actionBlockMessage } from '@shared/action-locks';
+import { actionOverlay, actionResult, actionUi } from '@shared/action-ui';
 import { api } from '../api';
 import { startTranscriptRecorder, startWavRecorder, type WavRecorder } from '../audio/wav-recorder';
 import { AppContent } from './components/AppContent';
 import { AppToast, type Toast, type ToastType } from './components/AppToast';
 import { AppSidebar } from './components/AppSidebar';
 import { AppTopbar } from './components/AppTopbar';
-import { SpeakOverlay } from './components/SpeakOverlay';
+import { Overlay } from './components/Overlay';
 import { syncModelSettings } from './modelSettingsSync';
 import { overlayDone, overlayInactive, overlayProcessing, overlayRecording, overlayWarning } from './overlayStates';
 import {
@@ -38,7 +39,7 @@ const defaultWaveform = (): number[] => Array.from({ length: 28 }, () => 0.08);
 export const App = (): JSX.Element => {
   const overlayMode = new URLSearchParams(window.location.search).get('overlay');
   if (overlayMode === 'speak' || overlayMode === 'improve' || overlayMode === 'transcript') {
-    return <SpeakOverlay />;
+    return <Overlay />;
   }
 
   const [section, setSection] = useState<AppSection>('home');
@@ -66,6 +67,7 @@ export const App = (): JSX.Element => {
   const [llmRuntime, setLlmRuntime] = useState<LlmRuntimeInfo>({
     runtimeAvailable: false,
   });
+  const [runtimeInfoLoaded, setRuntimeInfoLoaded] = useState(false);
   const [mode, setMode] = useState<HomeMode>('speak');
   const [improveInput, setImproveInput] = useState('');
   const [recorder, setRecorder] = useState<WavRecorder | null>(null);
@@ -90,6 +92,11 @@ export const App = (): JSX.Element => {
   const whisperWarmupRunRef = useRef(0);
   const llmWarmupModelRef = useRef<string | null>(null);
   const llmWarmupRunRef = useRef(0);
+  const loadingOverlayRef = useRef<Record<HomeMode, boolean>>({
+    speak: false,
+    improve: false,
+    transcript: false,
+  });
   const overlayNoticeRef = useRef<
     Partial<Record<'speak' | 'improve' | 'transcript', { message: string; messageType: 'error' | 'success' | 'warning' | 'info' }>>
   >({});
@@ -108,6 +115,14 @@ export const App = (): JSX.Element => {
   const currentActionBlockMessage = actionBlockMessage(mode, audioLockState);
   const whisperModelAvailable = Boolean(settings.whisperModel && whisperModels.includes(settings.whisperModel));
   const llmModelAvailable = Boolean(settings.llmModel && llmModels.includes(settings.llmModel));
+
+  const publishOverlayState = (state: OverlayState): void => {
+    setOverlayStateByMode((current) => ({
+      ...current,
+      [state.mode]: state,
+    }));
+    void api.overlay.setState(state);
+  };
 
   const loadModels = async (baseSettings = settingsRef.current): Promise<void> => {
     const [
@@ -131,6 +146,7 @@ export const App = (): JSX.Element => {
     setAvailableLlmModels(nextAvailableLlmModels);
     setWhisperRuntime(nextWhisperRuntime);
     setLlmRuntime(nextLlmRuntime);
+    setRuntimeInfoLoaded(true);
     const syncedSettings = syncModelSettings(baseSettings, {
       llm: nextLlmModels,
       whisper: nextWhisperModels,
@@ -242,40 +258,55 @@ export const App = (): JSX.Element => {
   useEffect(() => {
     if (!isWhisperLoading) {
       setSpeakResult((current) =>
-        current.status === 'ready' && current.message === 'Speak is loading...'
+        current.status === 'ready' && current.message === actionUi('speak', 'loading').message
           ? speakFallbackResult
           : current,
       );
       setTranscriptResult((current) =>
-        current.status === 'ready' && current.message === 'Transcript is loading...'
+        current.status === 'ready' && current.message === actionUi('transcript', 'loading').message
           ? transcriptFallbackResult
           : current,
       );
+      if (loadingOverlayRef.current.speak) {
+        loadingOverlayRef.current.speak = false;
+        showReadyOverlay('speak');
+      }
+      if (loadingOverlayRef.current.transcript) {
+        loadingOverlayRef.current.transcript = false;
+        showReadyOverlay('transcript');
+      }
       return;
     }
 
-    if (mode === 'speak') {
-      setSpeakResult((current) => current.status === 'ready' ? { ...current, tone: 'info', message: 'Speak is loading...' } : current);
+    if (!loadingOverlayRef.current.speak) {
+      loadingOverlayRef.current.speak = true;
+      publishOverlayState(actionOverlay('speak', 'loading'));
     }
-    if (mode === 'transcript') {
-      setTranscriptResult((current) => current.status === 'ready' ? { ...current, tone: 'info', message: 'Transcript is loading...' } : current);
+    if (!loadingOverlayRef.current.transcript) {
+      loadingOverlayRef.current.transcript = true;
+      publishOverlayState(actionOverlay('transcript', 'loading'));
     }
-  }, [isWhisperLoading, mode]);
+  }, [isWhisperLoading]);
 
   useEffect(() => {
     if (!isLlmLoading) {
       setImproveResult((current) =>
-        current.status === 'ready' && current.message === 'Improve is loading...'
+        current.status === 'ready' && current.message === actionUi('improve', 'loading').message
           ? improveFallbackResult
           : current,
       );
+      if (loadingOverlayRef.current.improve) {
+        loadingOverlayRef.current.improve = false;
+        showReadyOverlay('improve');
+      }
       return;
     }
 
-    if (mode === 'improve') {
-      setImproveResult((current) => current.status === 'ready' ? { ...current, tone: 'info', message: 'Improve is loading...' } : current);
+    if (!loadingOverlayRef.current.improve) {
+      loadingOverlayRef.current.improve = true;
+      publishOverlayState(actionOverlay('improve', 'loading'));
     }
-  }, [isLlmLoading, mode]);
+  }, [isLlmLoading]);
 
 
   const downloadWhisperModel = async (id: WhisperAvailableModel['id']): Promise<void> => {
@@ -305,13 +336,13 @@ export const App = (): JSX.Element => {
   const startRecording = async (): Promise<void> => {
     if (!whisperRuntime.runtimeAvailable) {
       setMode('speak');
-      setSpeakResult({ text: '', status: 'error', message: actionMessages.whisperMissing });
+      setSpeakResult(actionResult('speak', 'error', { message: actionMessages.whisperMissing }));
       showOverlayWarning('speak', actionMessages.whisperMissing, 'error');
       return;
     }
     if (!whisperModelAvailable) {
       setMode('speak');
-      setSpeakResult({ text: '', status: 'error', message: actionMessages.whisperModelMissing });
+      setSpeakResult(actionResult('speak', 'error', { message: actionMessages.whisperModelMissing }));
       showOverlayWarning('speak', actionMessages.whisperModelMissing, 'error');
       return;
     }
@@ -324,14 +355,14 @@ export const App = (): JSX.Element => {
       return;
     }
     setMode('speak');
-    setSpeakResult({ text: '', status: 'listening', tone: 'info', message: 'Listening...' });
+    publishOverlayState(overlayRecording('speak', defaultWaveform().slice(-8)));
     try {
       setRecorder(
         await startWavRecorder(
           (level) => {
             setWaveform((current) => {
               const nextWaveform = [...current.slice(1), Math.max(0.08, level)];
-              void api.overlay.setState(overlayRecording(
+              publishOverlayState(overlayRecording(
                 'speak',
                 nextWaveform.slice(-8),
                 overlayNoticeRef.current.speak?.message,
@@ -353,7 +384,7 @@ export const App = (): JSX.Element => {
       );
     } catch (error) {
       const message = errorMessage(error);
-      setSpeakResult({ text: '', status: 'error', message });
+      setSpeakResult(actionResult('speak', 'error', { message }));
       showOverlayWarning('speak', message, 'error');
     }
   };
@@ -366,9 +397,8 @@ export const App = (): JSX.Element => {
     setRecorder(null);
     setWaveform(defaultWaveform());
     setIsSpeakProcessing(true);
-    setSpeakResult({ text: '', status: 'processing', tone: 'info', message: 'Transcribing...' });
     clearOverlayWarningTimer('speak');
-    void api.overlay.setState(overlayProcessing('speak', defaultWaveform().slice(-8), undefined, undefined, {
+    publishOverlayState(overlayProcessing('speak', defaultWaveform().slice(-8), undefined, undefined, {
       phase: 'transcribing',
     }));
     try {
@@ -376,16 +406,18 @@ export const App = (): JSX.Element => {
       const nextResult = await api.dictation.start(audio);
       setSpeakResult(normalizeCopyResult('speak', nextResult));
       showCopyToast(nextResult);
-      setWhisperRuntime(await api.whisper.runtimeInfo());
-      await refreshHistoryAndModels();
       if (!nextResult.text) {
         showOverlayWarning('speak', nextResult.message);
+        setWhisperRuntime(await api.whisper.runtimeInfo());
+        await refreshHistoryAndModels();
         return;
       }
       showCompletionOverlay('speak', nextResult);
+      setWhisperRuntime(await api.whisper.runtimeInfo());
+      await refreshHistoryAndModels();
     } catch (error) {
       const message = errorMessage(error);
-      setSpeakResult({ text: '', status: 'error', message });
+      setSpeakResult(actionResult('speak', 'error', { message }));
       showOverlayWarning('speak', message, 'error');
     } finally {
       setIsSpeakProcessing(false);
@@ -399,15 +431,15 @@ export const App = (): JSX.Element => {
     }
     if (recordingMode === 'speak') {
       setRecorder(null);
-      setSpeakResult({ text: '', status: 'ready', tone: 'warning', message: actionMessages.recordingCancelled });
+      setSpeakResult(actionResult('speak', 'warning', { message: actionMessages.recordingCancelled }));
     } else {
       setTranscriptRecorder(null);
-      setTranscriptResult({ text: '', status: 'ready', tone: 'warning', message: actionMessages.recordingCancelled });
+      setTranscriptResult(actionResult('transcript', 'warning', { message: actionMessages.recordingCancelled }));
     }
     delete overlayNoticeRef.current[recordingMode];
     setWaveform(defaultWaveform());
     await activeRecorder.cancel();
-    void api.overlay.setState(overlayInactive(recordingMode));
+    publishOverlayState(overlayInactive(recordingMode));
   };
 
   const refreshHistoryAndModels = async (): Promise<void> => {
@@ -431,12 +463,12 @@ export const App = (): JSX.Element => {
       return;
     }
     if (!llmRuntime.runtimeAvailable) {
-      setImproveResult({ text: '', status: 'error', message: actionMessages.llamaMissing });
+      setImproveResult(actionResult('improve', 'error', { message: actionMessages.llamaMissing }));
       showOverlayWarning('improve', actionMessages.llamaMissing, 'error');
       return;
     }
     if (!llmModelAvailable) {
-      setImproveResult({ text: '', status: 'error', message: actionMessages.llamaModelMissing });
+      setImproveResult(actionResult('improve', 'error', { message: actionMessages.llamaModelMissing }));
       showOverlayWarning('improve', actionMessages.llamaModelMissing, 'error');
       return;
     }
@@ -450,29 +482,29 @@ export const App = (): JSX.Element => {
     }
     if (!sourceText.trim()) {
       const message = isImproveInputFocused ? actionMessages.enterTextToImprove : actionMessages.clipboardEmpty;
-      setImproveResult({ text: '', status: 'error', message });
+      setImproveResult(actionResult('improve', 'error', { message }));
       showOverlayWarning('improve', message);
       return;
     }
     setIsImproveProcessing(true);
-    setImproveResult({ text: '', status: 'processing', tone: 'info', message: 'Improving text...' });
     clearOverlayWarningTimer('improve');
-    void api.overlay.setState(overlayProcessing('improve', [], undefined, undefined, {
+    publishOverlayState(overlayProcessing('improve', [], undefined, undefined, {
       phase: 'thinking',
     }));
     try {
       const nextResult = await api.text.improve(sourceText);
       setImproveResult(normalizeCopyResult('improve', nextResult));
       showCopyToast(nextResult);
-      await refreshHistoryAndModels();
       if (!nextResult.text) {
         showOverlayWarning('improve', nextResult.message);
+        await refreshHistoryAndModels();
         return;
       }
       showCompletionOverlay('improve', nextResult);
+      await refreshHistoryAndModels();
     } catch (error) {
       const message = errorMessage(error);
-      setImproveResult({ text: '', status: 'error', message });
+      setImproveResult(actionResult('improve', 'error', { message }));
       showOverlayWarning('improve', message, 'error');
     } finally {
       setIsImproveProcessing(false);
@@ -483,14 +515,14 @@ export const App = (): JSX.Element => {
     if (!whisperRuntime.runtimeAvailable) {
       setSection('home');
       setMode('transcript');
-      setTranscriptResult({ text: '', status: 'error', message: actionMessages.whisperMissing });
+      setTranscriptResult(actionResult('transcript', 'error', { message: actionMessages.whisperMissing }));
       showOverlayWarning('transcript', actionMessages.whisperMissing, 'error');
       return;
     }
     if (!whisperModelAvailable) {
       setSection('home');
       setMode('transcript');
-      setTranscriptResult({ text: '', status: 'error', message: actionMessages.whisperModelMissing });
+      setTranscriptResult(actionResult('transcript', 'error', { message: actionMessages.whisperModelMissing }));
       showOverlayWarning('transcript', actionMessages.whisperModelMissing, 'error');
       return;
     }
@@ -504,14 +536,14 @@ export const App = (): JSX.Element => {
     }
     setSection('home');
     setMode('transcript');
-    setTranscriptResult({ text: '', status: 'listening', tone: 'info', message: 'Recording...' });
+    publishOverlayState(overlayRecording('transcript', defaultWaveform().slice(-8)));
     try {
       setTranscriptRecorder(
         await startTranscriptRecorder(
           (level) => {
             setWaveform((current) => {
               const nextWaveform = [...current.slice(1), Math.max(0.08, level)];
-              void api.overlay.setState(overlayRecording(
+              publishOverlayState(overlayRecording(
                 'transcript',
                 nextWaveform.slice(-8),
                 overlayNoticeRef.current.transcript?.message,
@@ -534,8 +566,8 @@ export const App = (): JSX.Element => {
               setTranscriptResult((current) => ({
                 ...current,
                 message: active
-                  ? 'Recording...'
-                  : 'Recording... Computer audio is not captured.',
+                  ? actionUi('transcript', 'recording').message
+                  : `${actionUi('transcript', 'recording').message} Computer audio is not captured.`,
               }));
             },
           },
@@ -543,7 +575,7 @@ export const App = (): JSX.Element => {
       );
     } catch (error) {
       const message = errorMessage(error);
-      setTranscriptResult({ text: '', status: 'error', message });
+      setTranscriptResult(actionResult('transcript', 'error', { message }));
       showOverlayWarning('transcript', message, 'error');
     }
   };
@@ -556,29 +588,78 @@ export const App = (): JSX.Element => {
     setTranscriptRecorder(null);
     setWaveform(defaultWaveform());
     setIsTranscriptProcessing(true);
-    setTranscriptResult({ text: '', status: 'processing', tone: 'info', message: 'Transcribing transcript...' });
     clearOverlayWarningTimer('transcript');
-    void api.overlay.setState(overlayProcessing('transcript', defaultWaveform().slice(-8), undefined, undefined, {
+    publishOverlayState(overlayProcessing('transcript', defaultWaveform().slice(-8), undefined, undefined, {
       phase: 'transcribing',
     }));
     try {
       const audio = await transcriptRecorder.stop();
-      const nextResult = await api.transcript.start(audio);
-      setTranscriptResult(nextResult);
-      setWhisperRuntime(await api.whisper.runtimeInfo());
-      await refreshHistoryAndModels();
-      if (!nextResult.text) {
-        showOverlayWarning('transcript', nextResult.message);
-        return;
-      }
-      showCompletionOverlay('transcript', nextResult);
+      await transcribeAudio(audio);
     } catch (error) {
       const message = errorMessage(error);
-      setTranscriptResult({ text: '', status: 'error', message });
+      setTranscriptResult(actionResult('transcript', 'error', { message }));
       showOverlayWarning('transcript', message, 'error');
     } finally {
       setIsTranscriptProcessing(false);
     }
+  };
+
+  const importAudio = async (): Promise<void> => {
+    if (!whisperRuntime.runtimeAvailable) {
+      setSection('home');
+      setMode('transcript');
+      setTranscriptResult(actionResult('transcript', 'error', { message: actionMessages.whisperMissing }));
+      showOverlayWarning('transcript', actionMessages.whisperMissing, 'error');
+      return;
+    }
+    if (!whisperModelAvailable) {
+      setSection('home');
+      setMode('transcript');
+      setTranscriptResult(actionResult('transcript', 'error', { message: actionMessages.whisperModelMissing }));
+      showOverlayWarning('transcript', actionMessages.whisperModelMissing, 'error');
+      return;
+    }
+    const blockMessage = actionBlockMessage('transcript', audioLockState);
+    if (blockMessage) {
+      showOverlayWarning('transcript', blockMessage);
+      return;
+    }
+    try {
+      const audio = await api.app.importAudio();
+      if (!audio) {
+        return;
+      }
+      setSection('home');
+      setMode('transcript');
+      setWaveform(defaultWaveform());
+      setIsTranscriptProcessing(true);
+      clearOverlayWarningTimer('transcript');
+      publishOverlayState(overlayProcessing('transcript', defaultWaveform().slice(-8), undefined, undefined, {
+        phase: 'transcribing',
+      }));
+      await transcribeAudio(audio);
+    } catch (error) {
+      const message = errorMessage(error);
+      showToast('error', message);
+      setTranscriptResult(actionResult('transcript', 'error', { message }));
+      showOverlayWarning('transcript', message, 'error');
+    } finally {
+      setIsTranscriptProcessing(false);
+    }
+  };
+
+  const transcribeAudio = async (audio: ArrayBuffer): Promise<void> => {
+    const nextResult = await api.transcript.start(audio);
+    setTranscriptResult(nextResult);
+    if (!nextResult.text) {
+      showOverlayWarning('transcript', nextResult.message);
+      setWhisperRuntime(await api.whisper.runtimeInfo());
+      await refreshHistoryAndModels();
+      return;
+    }
+    showCompletionOverlay('transcript', nextResult);
+    setWhisperRuntime(await api.whisper.runtimeInfo());
+    await refreshHistoryAndModels();
   };
 
   const copy = async (): Promise<void> => {
@@ -667,16 +748,27 @@ export const App = (): JSX.Element => {
   ): void => {
     clearOverlayWarningTimer(overlayMode);
     if (nextResult.status !== 'ready' || !nextResult.text) {
-      void api.overlay.setState(overlayInactive(overlayMode));
+      publishOverlayState(overlayInactive(overlayMode));
       return;
     }
-    void api.overlay.setState(overlayDone(
+    publishOverlayState(overlayDone(
       overlayMode,
-      nextResult.message,
-      nextResult.message === appMessages.copiedToClipboard ? 'info' : 'success',
+      actionUi(overlayMode, 'ready').message,
+      'success',
     ));
     window.setTimeout(() => {
-      void api.overlay.setState(overlayInactive(overlayMode));
+      publishOverlayState(overlayInactive(overlayMode));
+    }, 1800);
+  };
+
+  const showReadyOverlay = (overlayMode: 'speak' | 'improve' | 'transcript'): void => {
+    publishOverlayState(overlayDone(
+      overlayMode,
+      actionUi(overlayMode, 'ready').message,
+      'success',
+    ));
+    window.setTimeout(() => {
+      publishOverlayState(overlayInactive(overlayMode));
     }, 1800);
   };
 
@@ -688,42 +780,42 @@ export const App = (): JSX.Element => {
     overlayNoticeRef.current[overlayMode] = { message, messageType };
     clearOverlayWarningTimer(overlayMode);
     if (overlayMode === 'speak' && recorder) {
-      void api.overlay.setState(overlayRecording('speak', waveform.slice(-8), message, messageType));
+      publishOverlayState(overlayRecording('speak', waveform.slice(-8), message, messageType));
     } else if (overlayMode === 'speak' && isSpeakProcessing) {
-      void api.overlay.setState(overlayProcessing('speak', waveform.slice(-8), message, messageType));
+      publishOverlayState(overlayProcessing('speak', waveform.slice(-8), message, messageType));
     } else if (overlayMode === 'transcript' && transcriptRecorder) {
-      void api.overlay.setState(overlayRecording('transcript', waveform.slice(-8), message, messageType));
+      publishOverlayState(overlayRecording('transcript', waveform.slice(-8), message, messageType));
     } else if (overlayMode === 'transcript' && isTranscriptProcessing) {
-      void api.overlay.setState(overlayProcessing('transcript', waveform.slice(-8), message, messageType));
+      publishOverlayState(overlayProcessing('transcript', waveform.slice(-8), message, messageType));
     } else if (overlayMode === 'improve' && isImproveProcessing) {
-      void api.overlay.setState(overlayProcessing('improve', [], message, messageType));
+      publishOverlayState(overlayProcessing('improve', [], message, messageType));
     } else {
-      void api.overlay.setState(overlayWarning(overlayMode, message, messageType));
+      publishOverlayState(overlayWarning(overlayMode, message, messageType));
     }
     overlayWarningTimerRef.current[overlayMode] = window.setTimeout(() => {
       delete overlayNoticeRef.current[overlayMode];
       delete overlayWarningTimerRef.current[overlayMode];
       if (overlayMode === 'speak' && recorder) {
-        void api.overlay.setState(overlayRecording('speak', waveform.slice(-8)));
+        publishOverlayState(overlayRecording('speak', waveform.slice(-8)));
         return;
       }
       if (overlayMode === 'speak' && isSpeakProcessing) {
-        void api.overlay.setState(overlayProcessing('speak', waveform.slice(-8)));
+        publishOverlayState(overlayProcessing('speak', waveform.slice(-8)));
         return;
       }
       if (overlayMode === 'transcript' && transcriptRecorder) {
-        void api.overlay.setState(overlayRecording('transcript', waveform.slice(-8)));
+        publishOverlayState(overlayRecording('transcript', waveform.slice(-8)));
         return;
       }
       if (overlayMode === 'transcript' && isTranscriptProcessing) {
-        void api.overlay.setState(overlayProcessing('transcript', waveform.slice(-8)));
+        publishOverlayState(overlayProcessing('transcript', waveform.slice(-8)));
         return;
       }
       if (overlayMode === 'improve' && isImproveProcessing) {
-        void api.overlay.setState(overlayProcessing('improve'));
+        publishOverlayState(overlayProcessing('improve'));
         return;
       }
-      void api.overlay.setState(overlayInactive(overlayMode));
+      publishOverlayState(overlayInactive(overlayMode));
     }, 2400);
   };
 
@@ -875,9 +967,11 @@ export const App = (): JSX.Element => {
         onSpeak={() => void (recorder ? stopRecording() : startRecording())}
         onImprove={() => void improve()}
         onTranscript={() => void (transcriptRecorder ? stopTranscript() : startTranscript())}
+        onImportAudio={() => void importAudio()}
         onStopRecording={stopActiveRecording}
         onCancelRecording={cancelActiveRecording}
-        onModelSettings={() => openSettingsFocus(mode === 'improve' ? 'improveAi' : 'speechAi')}
+        onImproveModelSettings={() => openSettingsFocus('improveAi')}
+        onSpeechModelSettings={() => openSettingsFocus('speechAi')}
         onMicrophoneSettings={() => openSettingsFocus('microphone')}
         onShortcutSettings={() => openSettingsFocus('shortcuts')}
         onHistorySettings={() => openSettingsFocus('history')}
@@ -908,6 +1002,7 @@ export const App = (): JSX.Element => {
         settings={settings}
         whisperRuntime={whisperRuntime}
         llmRuntime={llmRuntime}
+        runtimeInfoLoaded={runtimeInfoLoaded}
         whisperModelAvailable={whisperModelAvailable}
         llmModelAvailable={llmModelAvailable}
         history={history}

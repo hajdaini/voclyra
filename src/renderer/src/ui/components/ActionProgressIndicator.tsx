@@ -13,7 +13,11 @@ export const ActionProgressIndicator = ({ state, compact = false }: ActionProgre
 
   return (
     <span className={`action-progress ${compact ? 'compact' : ''}`} aria-label={label}>
-      <ProgressRing progress={progress} size={compact ? 18 : 28} label={label} />
+      {progress === null ? (
+        <span className="status-spinner" role="status" aria-label={label} />
+      ) : (
+        <ProgressRing progress={progress} size={compact ? 18 : 28} label={label} />
+      )}
       {label && <span className="action-progress-label">{label}</span>}
     </span>
   );

@@ -1,4 +1,5 @@
 import type { OverlayState } from '@shared/types';
+import { actionOverlay } from '@shared/action-ui';
 import { inactiveOverlayState } from './appState';
 
 type OverlayMode = OverlayState['mode'];
@@ -10,12 +11,7 @@ export const overlayDone = (
   message?: string,
   messageType: OverlayMessageType = 'success',
 ): OverlayState => ({
-  active: true,
-  mode,
-  status: 'done',
-  waveform: [],
-  message,
-  messageType,
+  ...actionOverlay(mode, 'done', [], { message, messageType }),
 });
 
 export const overlayInactive = (mode: OverlayMode, status: OverlayState['status'] = 'done'): OverlayState => ({
@@ -30,12 +26,7 @@ export const overlayWarning = (
   message: string,
   messageType: OverlayMessageType,
 ): OverlayState => ({
-  active: true,
-  mode,
-  status: 'warning',
-  waveform: [],
-  message,
-  messageType,
+  ...actionOverlay(mode, 'warning', [], { message, messageType }),
 });
 
 export const overlayRecording = (
@@ -45,13 +36,7 @@ export const overlayRecording = (
   messageType?: OverlayMessageType,
   phase: OverlayState['phase'] = 'recording',
 ): OverlayState => ({
-  active: true,
-  mode,
-  status: 'recording',
-  phase,
-  waveform,
-  message,
-  messageType,
+  ...actionOverlay(mode, 'recording', waveform, cleanOverlayOverrides({ phase, message, messageType })),
 });
 
 export const overlayProcessing = (
@@ -61,12 +46,15 @@ export const overlayProcessing = (
   messageType?: OverlayMessageType,
   progress?: OverlayProgress,
 ): OverlayState => ({
-  active: true,
-  mode,
-  status: mode === 'improve' ? 'improving' : 'transcribing',
-  phase: progress?.phase ?? (mode === 'improve' ? 'thinking' : 'transcribing'),
-  waveform,
-  ...progress,
-  message,
-  messageType,
+  ...actionOverlay(mode, 'processing', waveform, cleanOverlayOverrides({
+    ...progress,
+    phase: progress?.phase ?? (mode === 'improve' ? 'thinking' : 'transcribing'),
+    message,
+    messageType,
+  })),
 });
+
+const cleanOverlayOverrides = (overrides: Partial<OverlayState>): Partial<OverlayState> =>
+  Object.fromEntries(
+    Object.entries(overrides).filter(([, value]) => value !== undefined),
+  ) as Partial<OverlayState>;

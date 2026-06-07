@@ -64,12 +64,11 @@ app.on('second-instance', () => {
 });
 
 void app.whenReady().then(async () => {
-  await appStorage.clearDir('tmp').catch(() => {});
-
   registerIpc();
-  await startupLogService.write().catch(() => {});
   createMainWindow();
 
+  void appStorage.clearDir('tmp', 'current').catch(() => {});
+  void startupLogService.write().catch(() => {});
   void settingsService.get().then((settings) => {
     hotkeyService.register(settings, {
       speak: () => sendAppAction('speak'),
