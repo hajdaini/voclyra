@@ -14,11 +14,17 @@ var options = Options.Parse(args);
 if (options is null)
 {
     Console.Error.WriteLine("Usage: audio-capture-helper --mode input|output --out file.wav [--device-id id] [--device-name name]");
+    Console.Error.WriteLine("       audio-capture-helper --list input|output");
     return 2;
 }
 
 try
 {
+    if (options.ListMode != "")
+    {
+        DeviceSelector.List(options.ListMode == "output" ? EDataFlow.eRender : EDataFlow.eCapture);
+        return 0;
+    }
     await WasapiRecorder.Record(options);
     return 0;
 }
@@ -28,11 +34,12 @@ catch (Exception error)
     return 1;
 }
 
-sealed record Options(string Mode, string OutputPath, string DeviceId, string DeviceName)
+sealed record Options(string Mode, string OutputPath, string DeviceId, string DeviceName, string ListMode)
 {
     public static Options? Parse(string[] args)
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var listMode = "";
         for (var index = 0; index < args.Length; index += 1)
         {
             var key = args[index];
@@ -40,8 +47,18 @@ sealed record Options(string Mode, string OutputPath, string DeviceId, string De
             {
                 continue;
             }
+            if (key.Equals("--list", StringComparison.OrdinalIgnoreCase))
+            {
+                listMode = args[index + 1];
+                index += 1;
+                continue;
+            }
             values[key[2..]] = args[index + 1];
             index += 1;
+        }
+        if (listMode == "input" || listMode == "output")
+        {
+            return new Options("", "", "", "", listMode);
         }
         var mode = values.GetValueOrDefault("mode", "");
         var outputPath = values.GetValueOrDefault("out", "");
@@ -53,7 +70,8 @@ sealed record Options(string Mode, string OutputPath, string DeviceId, string De
             mode,
             outputPath,
             values.GetValueOrDefault("device-id", ""),
-            values.GetValueOrDefault("device-name", "")
+            values.GetValueOrDefault("device-name", ""),
+            ""
         );
     }
 }
@@ -160,6 +178,40 @@ static class WasapiRecorder
 [SupportedOSPlatform("windows")]
 static class DeviceSelector
 {
+    public static void List(EDataFlow flow)
+    {
+        var enumerator = (IMMDeviceEnumerator)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("BCDE0395-E52F-467C-8E3D-C4579291692E"))!)!;
+        try
+        {
+            HResult.ThrowIfFailed(enumerator.EnumAudioEndpoints(flow, DeviceState.Active, out var collection));
+            try
+            {
+                HResult.ThrowIfFailed(collection.GetCount(out var count));
+                for (uint index = 0; index < count; index += 1)
+                {
+                    HResult.ThrowIfFailed(collection.Item(index, out var device));
+                    try
+                    {
+                        device.GetId(out var id);
+                        Console.WriteLine($"{id}\t{FriendlyName(device)}");
+                    }
+                    finally
+                    {
+                        Marshal.ReleaseComObject(device);
+                    }
+                }
+            }
+            finally
+            {
+                Marshal.ReleaseComObject(collection);
+            }
+        }
+        finally
+        {
+            Marshal.ReleaseComObject(enumerator);
+        }
+    }
+
     public static IMMDevice Select(EDataFlow flow, string deviceId, string deviceName)
     {
         var enumerator = (IMMDeviceEnumerator)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("BCDE0395-E52F-467C-8E3D-C4579291692E"))!)!;

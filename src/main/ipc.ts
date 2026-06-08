@@ -391,7 +391,7 @@ export const registerIpc = (): void => {
     try {
       const startedAt = performance.now();
       const audioDurationMs = wavDurationMs(audio);
-      const text = await whisperService.transcribe(audio, whisperModel, {
+      const text = await whisperService.transcribeMeeting(audio, whisperModel, {
         timeoutMs: null,
         debugName: 'transcript',
         onProgress: (progress) => {

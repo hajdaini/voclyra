@@ -14,7 +14,14 @@ export class SettingsService {
       return this.save(defaultSettings);
     }
 
-    const settings = parsedSettings.data;
+    const settings =
+      parsedSettings.data.transcriptOutputDeviceId === '' && parsedSettings.data.transcriptOutputDeviceLabel === ''
+        ? {
+            ...parsedSettings.data,
+            transcriptOutputDeviceId: defaultSettings.transcriptOutputDeviceId,
+            transcriptOutputDeviceLabel: defaultSettings.transcriptOutputDeviceLabel,
+          }
+        : parsedSettings.data;
     if (JSON.stringify(settings) !== JSON.stringify(rawSettings)) {
       await this.save(settings);
     }

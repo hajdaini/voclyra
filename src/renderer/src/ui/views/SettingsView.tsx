@@ -241,13 +241,14 @@ export const SettingsView = ({
       const destination = context.createMediaStreamDestination();
       const audio = new Audio();
       const sinkAudio = audio as HTMLAudioElement & { setSinkId?: (sinkId: string) => Promise<void> };
-      if (settings.transcriptOutputDeviceId && !sinkAudio.setSinkId) {
+      const selectedOutputDeviceId = settings.transcriptOutputDeviceId === 'all' ? '' : settings.transcriptOutputDeviceId;
+      if (selectedOutputDeviceId && !sinkAudio.setSinkId) {
         await context.close();
         setOutputTestError('Output selection is not supported on this system.');
         return;
       }
-      if (settings.transcriptOutputDeviceId && sinkAudio.setSinkId) {
-        await sinkAudio.setSinkId(settings.transcriptOutputDeviceId);
+      if (selectedOutputDeviceId && sinkAudio.setSinkId) {
+        await sinkAudio.setSinkId(selectedOutputDeviceId);
       }
       oscillator.frequency.value = 720;
       gain.gain.value = 0.08;
@@ -408,10 +409,16 @@ export const SettingsView = ({
               onChange({
                 ...settings,
                 transcriptOutputDeviceId: event.target.value,
-                transcriptOutputDeviceLabel: device?.label ?? '',
+                transcriptOutputDeviceLabel:
+                  event.target.value === 'all'
+                    ? 'All computer audio'
+                    : event.target.value === ''
+                      ? 'Windows default sound output'
+                      : device?.label ?? '',
               });
             }}
           >
+            <option value="all">All computer audio</option>
             <option value="">Windows default sound output</option>
             {audioOutputs.map((device) => (
               <option key={device.deviceId} value={device.deviceId}>

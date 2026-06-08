@@ -30,8 +30,8 @@ correctionPrompt: [
   startAtStartup: false,
   microphoneDeviceId: '',
   microphoneDeviceLabel: '',
-  transcriptOutputDeviceId: '',
-  transcriptOutputDeviceLabel: '',
+  transcriptOutputDeviceId: 'all',
+  transcriptOutputDeviceLabel: 'All computer audio',
   silenceSensitivity: 'normal',
   maxHistoryItems: 100,
   hotkeys: {

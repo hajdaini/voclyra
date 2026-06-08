@@ -13,6 +13,7 @@
   <img src="https://img.shields.io/badge/AI-local-2ea44f" alt="Local AI">
   <img src="https://img.shields.io/badge/platform-Windows-0078D6" alt="Windows">
   <img src="https://img.shields.io/badge/TypeScript-strict-3178c6" alt="TypeScript">
+  <img src="https://img.shields.io/badge/C%23-audio_helper-512BD4" alt="C#">
   <a href="https://github.com/hajdaini/voclyra/actions/workflows/ci.yml"><img src="https://github.com/hajdaini/voclyra/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 
@@ -48,7 +49,7 @@ Install it like a normal desktop app, then open Voclyra and download the local m
 - [Privacy](#-privacy)
 - [Features](#-features)
 - [Storage](#-storage)
-- [Development](#-development)
+- [Build](#-Build)
 - [Sources](#-sources)
 
 ## ⚡ Why Voclyra
@@ -212,17 +213,86 @@ resources/runtimes
 
 Models are not stored in Git because they can be large. Users can download or place models locally.
 
-## 🛠️ Development
+## 🛠️ Build
+
+Voclyra needs native Windows runtimes before the full app can run locally.
+
+### 1. Prepare runtime folders
+
+Native binaries are expected under:
+
+```text
+resources/runtimes
+```
+
+### 2. Build the audio capture helper
+
+The Windows audio helper is built from the local C# project:
+
+```powershell
+dotnet publish resources/helpers/audio-capture-helper/AudioCaptureHelper.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -o resources/runtimes/audio/win-x64
+```
+
+### 3. Build whisper.cpp with CUDA
+
+Voclyra expects `whisper-server.exe` and its required DLLs here:
+
+```text
+resources/runtimes/whisper/cuda-12/win-x64
+```
+
+Example CUDA build:
+
+```powershell
+git clone https://github.com/ggml-org/whisper.cpp external/whisper.cpp
+cmake -S external/whisper.cpp -B external/whisper.cpp/build -G "Visual Studio 17 2022" -A x64 -DGGML_CUDA=ON
+cmake --build external/whisper.cpp/build --config Release
+```
+
+Copy `whisper-server.exe` and the required runtime DLLs from the build output into `resources/runtimes/whisper/cuda-12/win-x64`.
+
+### 4. Build llama.cpp with CUDA
+
+Voclyra expects `llama-server.exe` and its required DLLs here:
+
+```text
+resources/runtimes/llama/cuda-12/win-x64
+```
+
+Example CUDA build:
+
+```powershell
+git clone https://github.com/ggml-org/llama.cpp external/llama.cpp
+cmake -S external/llama.cpp -B external/llama.cpp/build -G "Visual Studio 17 2022" -A x64 -DGGML_CUDA=ON
+cmake --build external/llama.cpp/build --config Release
+```
+
+Copy `llama-server.exe` and the required runtime DLLs from the build output into `resources/runtimes/llama/cuda-12/win-x64`.
+
+### 5. Install app dependencies
 
 ```powershell
 npm install
+```
+
+### 6. Run the app in Build
+
+```powershell
 npm run dev
 ```
 
-Useful commands:
+### 7. Build the Electron app
 
 ```powershell
-npm run dev            # Start the Electron development app
+npm run build          # Typecheck and build the Electron app
+npm run pack           # Create an unpacked Windows app
+npm run dist           # Create the Windows installer
+```
+
+### Useful commands
+
+```powershell
+npm run dev            # Start the Electron Build app
 npm run start          # Preview the built app locally
 npm run typecheck      # Check TypeScript without emitting files
 npm run lint           # Run ESLint

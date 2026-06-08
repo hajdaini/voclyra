@@ -193,6 +193,8 @@ describe('Settings', () => {
     await setupIpc();
 
     await expect(handlers.get(channels.settingsGet)?.({})).resolves.toMatchObject({
+      transcriptOutputDeviceId: 'all',
+      transcriptOutputDeviceLabel: 'All computer audio',
       hotkeys: {
         speak: 'CommandOrControl+Shift+1',
         improveText: 'CommandOrControl+Shift+2',

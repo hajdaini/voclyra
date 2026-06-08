@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -16,6 +16,11 @@ type CaptureProcess = {
   startedAtMs: number;
 };
 
+type CaptureDevice = {
+  id: string;
+  label: string;
+};
+
 type CaptureSegment = {
   source: CaptureSource;
   outputPath: string;
@@ -28,7 +33,7 @@ type CaptureState = {
   startedAtMs: number;
   settings: Settings;
   onLevel: (level: number) => void;
-  processes: Map<CaptureSource, CaptureProcess>;
+  processes: Map<string, CaptureProcess>;
   segments: CaptureSegment[];
   nextSegmentIndex: number;
   temporaryRoot: string;
@@ -58,7 +63,9 @@ export class AudioCaptureHelperService {
       temporaryRoot,
     };
     for (const source of sources) {
-      state.processes.set(source, this.startProcess(state, source));
+      for (const process of await this.startSourceProcesses(state, source)) {
+        state.processes.set(process.outputPath, process);
+      }
     }
     this.captures.set(mode, state);
     await delay(150);
@@ -74,16 +81,20 @@ export class AudioCaptureHelperService {
       return;
     }
     state.settings = settings;
-    const current = state.processes.get(source);
-    if (current) {
+    const currentProcesses = [...state.processes.entries()].filter(([, process]) => process.source === source);
+    for (const [key, current] of currentProcesses) {
       await this.stopProcess(current, state);
-      state.processes.delete(source);
+      state.processes.delete(key);
     }
-    const nextProcess = this.startProcess(state, source);
-    state.processes.set(source, nextProcess);
+    const nextProcesses = await this.startSourceProcesses(state, source);
+    for (const process of nextProcesses) {
+      state.processes.set(process.outputPath, process);
+    }
     await delay(80);
-    if (nextProcess.child.exitCode !== null) {
-      state.processes.delete(source);
+    if (nextProcesses.some((process) => process.child.exitCode !== null)) {
+      for (const process of nextProcesses) {
+        state.processes.delete(process.outputPath);
+      }
       throw new Error(`${source === 'input' ? 'Microphone' : 'Computer audio'} capture failed.`);
     }
   }
@@ -114,13 +125,21 @@ export class AudioCaptureHelperService {
     });
   }
 
-  private startProcess(
-    state: CaptureState,
-    source: CaptureSource,
-  ): CaptureProcess {
+  private async startSourceProcesses(state: CaptureState, source: CaptureSource): Promise<CaptureProcess[]> {
+    if (source !== 'output' || state.settings.transcriptOutputDeviceId !== 'all') {
+      return [this.startProcess(state, source)];
+    }
+    const devices = await this.listOutputDevices();
+    if (devices.length === 0) {
+      return [this.startProcess(state, source, { id: 'default', label: '' })];
+    }
+    return devices.map((device) => this.startProcess(state, source, device));
+  }
+
+  private startProcess(state: CaptureState, source: CaptureSource, device?: CaptureDevice): CaptureProcess {
     const outputPath = join(state.temporaryRoot, `${state.mode}-${source}-${state.nextSegmentIndex}.wav`);
     state.nextSegmentIndex += 1;
-    const child = spawn(this.executablePath(), this.args(source, outputPath, state.settings), {
+    const child = spawn(this.executablePath(), this.args(source, outputPath, state.settings, device), {
       windowsHide: true,
       shell: false,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -151,17 +170,39 @@ export class AudioCaptureHelperService {
     });
   }
 
-  private args(source: CaptureSource, outputPath: string, settings: Settings): string[] {
+  private args(source: CaptureSource, outputPath: string, settings: Settings, device?: CaptureDevice): string[] {
     const args = ['--mode', source, '--out', outputPath];
-    const deviceId = source === 'input' ? settings.microphoneDeviceId : settings.transcriptOutputDeviceId;
-    const label = source === 'input' ? settings.microphoneDeviceLabel : settings.transcriptOutputDeviceLabel;
-    if (deviceId === 'default' || deviceId === 'communications') {
+    const deviceId = device?.id ?? (source === 'input' ? settings.microphoneDeviceId : settings.transcriptOutputDeviceId);
+    const label = device?.label ?? (source === 'input' ? settings.microphoneDeviceLabel : settings.transcriptOutputDeviceLabel);
+    if (device || deviceId === 'default' || deviceId === 'communications') {
       args.push('--device-id', deviceId);
     }
-    if (label) {
+    if (label && deviceId && deviceId !== 'all') {
       args.push('--device-name', label);
     }
     return args;
+  }
+
+  private async listOutputDevices(): Promise<CaptureDevice[]> {
+    const child = spawn(this.executablePath(), ['--list', 'output'], {
+      windowsHide: true,
+      shell: false,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    let stdout = '';
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString('utf8');
+    });
+    await this.waitForExit(child, 1000).catch(() => {
+      child.kill();
+    });
+    return stdout
+      .split(/\r?\n/)
+      .map((line) => {
+        const [id, label] = line.split('\t');
+        return id && label ? { id, label } : null;
+      })
+      .filter((device): device is CaptureDevice => device !== null);
   }
 
   private executablePath(): string {
@@ -170,7 +211,7 @@ export class AudioCaptureHelperService {
       : join(app.getAppPath(), 'resources', 'runtimes', 'audio', 'win-x64', 'audio-capture-helper.exe');
   }
 
-  private waitForExit(child: ChildProcessWithoutNullStreams, timeoutMs: number): Promise<void> {
+  private waitForExit(child: ChildProcess, timeoutMs: number): Promise<void> {
     if (child.exitCode !== null) {
       return Promise.resolve();
     }
@@ -189,7 +230,6 @@ export class AudioCaptureHelperService {
 }
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-const switchSilenceMs = 250;
 
 const displayLevel = (rawLevel: number): number => {
   const noiseFloor = 0.003;
@@ -201,20 +241,6 @@ const displayLevel = (rawLevel: number): number => {
 };
 
 const mixWavSegments = async (segments: CaptureSegment[], sessionStartedAtMs: number): Promise<Uint8Array> => {
-  const sourceSegments = new Map<CaptureSource, CaptureSegment[]>();
-  for (const segment of segments) {
-    sourceSegments.set(segment.source, [...(sourceSegments.get(segment.source) ?? []), segment]);
-  }
-  const segmentSilence = new Map<CaptureSegment, { startMs: number; endMs: number }>();
-  for (const sourceSegmentList of sourceSegments.values()) {
-    const sorted = [...sourceSegmentList].sort((a, b) => a.startedAtMs - b.startedAtMs);
-    sorted.forEach((segment, index) => {
-      segmentSilence.set(segment, {
-        startMs: index > 0 ? switchSilenceMs : 0,
-        endMs: index < sorted.length - 1 ? switchSilenceMs : 0,
-      });
-    });
-  }
   const files = await Promise.all(
     segments.map(async (segment) => ({
       segment,
@@ -224,13 +250,10 @@ const mixWavSegments = async (segments: CaptureSegment[], sessionStartedAtMs: nu
   const parsed = files
     .map(({ segment, audio }) => {
       const parsedAudio = parsePcm16MonoWav(audio);
-      const silence = segmentSilence.get(segment) ?? { startMs: 0, endMs: 0 };
       return parsedAudio
         ? {
             ...parsedAudio,
             offsetMs: Math.max(0, segment.startedAtMs - sessionStartedAtMs),
-            silenceStartMs: silence.startMs,
-            silenceEndMs: silence.endMs,
           }
         : null;
     })
@@ -255,15 +278,9 @@ const mixWavSegments = async (segments: CaptureSegment[], sessionStartedAtMs: nu
   );
   const mixed = new Int16Array(sampleCount);
   for (const file of parsed) {
-    const silenceStartSamples = Math.min(file.samples.length, Math.round((file.silenceStartMs / 1000) * sampleRate));
-    const silenceEndSamples = Math.min(
-      file.samples.length - silenceStartSamples,
-      Math.round((file.silenceEndMs / 1000) * sampleRate),
-    );
-    const offsetSamples = Math.round((file.offsetMs / 1000) * sampleRate) + silenceStartSamples;
-    const endIndex = file.samples.length - silenceEndSamples;
-    for (let index = silenceStartSamples; index < endIndex; index += 1) {
-      const targetIndex = offsetSamples + index - silenceStartSamples;
+    const offsetSamples = Math.round((file.offsetMs / 1000) * sampleRate);
+    for (let index = 0; index < file.samples.length; index += 1) {
+      const targetIndex = offsetSamples + index;
       mixed[targetIndex] = Math.max(-32768, Math.min(32767, (mixed[targetIndex] ?? 0) + (file.samples[index] ?? 0)));
     }
   }
@@ -275,8 +292,6 @@ type Pcm16MonoWav = {
   sampleRate: number;
   samples: Int16Array;
   offsetMs: number;
-  silenceStartMs: number;
-  silenceEndMs: number;
 };
 
 const parsePcm16MonoWav = (source: Uint8Array): Pcm16MonoWav | null => {
@@ -311,8 +326,6 @@ const parsePcm16MonoWav = (source: Uint8Array): Pcm16MonoWav | null => {
     sampleRate,
     samples: new Int16Array(buffer.buffer, buffer.byteOffset + dataOffset, Math.floor(dataSize / 2)),
     offsetMs: 0,
-    silenceStartMs: 0,
-    silenceEndMs: 0,
   };
 };
 

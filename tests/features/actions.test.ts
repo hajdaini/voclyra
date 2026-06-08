@@ -58,6 +58,7 @@ const whisperModelMock = {
 };
 const whisperMock = {
   transcribe: vi.fn(async () => 'Transcribed text.'),
+  transcribeMeeting: vi.fn(async () => 'Transcript text.'),
   listModels: vi.fn(async () => []),
   runtimeInfo: vi.fn(async () => ({ runtimeAvailable: true })),
   warmup: vi.fn(async () => {}),
@@ -191,6 +192,7 @@ vi.mock('@services/whisper-model-service', () => ({
 vi.mock('@services/whisper-service', () => ({
   WhisperService: class {
     transcribe = whisperMock.transcribe;
+    transcribeMeeting = whisperMock.transcribeMeeting;
     listModels = whisperMock.listModels;
     runtimeInfo = whisperMock.runtimeInfo;
     warmup = whisperMock.warmup;
@@ -314,12 +316,12 @@ describe('App actions', () => {
   });
 
   it('runs Transcript and saves audio', async () => {
-    whisperMock.transcribe.mockResolvedValueOnce('Transcript text.');
+    whisperMock.transcribeMeeting.mockResolvedValueOnce('Transcript text.');
 
     const result = await handlers.get(channels.transcriptStart)?.({}, wavBuffer());
 
     expect(result).toMatchObject({ status: 'ready', text: 'Transcript text.', message: 'Transcript generated.' });
-    expect(whisperMock.transcribe).toHaveBeenCalledWith(
+    expect(whisperMock.transcribeMeeting).toHaveBeenCalledWith(
       expect.any(Uint8Array),
       'ggml-large-v3.bin',
       expect.objectContaining({ debugName: 'transcript', timeoutMs: null }),
