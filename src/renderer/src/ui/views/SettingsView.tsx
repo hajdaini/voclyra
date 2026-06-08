@@ -27,6 +27,8 @@ import type {
   WhisperAvailableModel,
   WhisperModelId,
 } from '@shared/types';
+import { api } from '../../api';
+import { defaultWaveform, nextVisualWaveform, settingsWaveformSize } from '../waveform';
 import { ProgressRing } from '../components/ProgressRing';
 
 type AudioInputDevice = {
@@ -39,18 +41,14 @@ type AudioOutputDevice = {
   label: string;
 };
 
-type MicrophoneTest = {
-  stream: MediaStream;
-  context: AudioContext;
-  source: MediaStreamAudioSourceNode;
-  processor: ScriptProcessorNode;
-};
-
-type OutputTest = {
-  context: AudioContext;
-  oscillator: OscillatorNode;
-  audio: HTMLAudioElement;
+type AudioCaptureTest = {
+  mode: 'speak' | 'transcript';
   timer: number;
+  tickTimer: number;
+  removeLevelListener: () => void;
+  context?: AudioContext;
+  oscillator?: OscillatorNode;
+  audio?: HTMLAudioElement;
 };
 
 export type SettingsViewProps = {
@@ -98,13 +96,15 @@ export const SettingsView = ({
   const microphoneRef = useRef<HTMLElement>(null);
   const historyRef = useRef<HTMLElement>(null);
   const speakShortcutRef = useRef<HTMLButtonElement>(null);
-  const microphoneTestRef = useRef<MicrophoneTest | null>(null);
-  const outputTestRef = useRef<OutputTest | null>(null);
+  const microphoneTestRef = useRef<AudioCaptureTest | null>(null);
+  const outputTestRef = useRef<AudioCaptureTest | null>(null);
   const [audioInputs, setAudioInputs] = useState<AudioInputDevice[]>([]);
   const [audioOutputs, setAudioOutputs] = useState<AudioOutputDevice[]>([]);
   const [isMicrophoneTesting, setIsMicrophoneTesting] = useState(false);
   const [isOutputTesting, setIsOutputTesting] = useState(false);
-  const [microphoneTestLevels, setMicrophoneTestLevels] = useState<number[]>(Array.from({ length: 16 }, () => 0.08));
+  const [microphoneTestLevels, setMicrophoneTestLevels] = useState<number[]>(defaultWaveform(settingsWaveformSize));
+  const [microphoneTestRemaining, setMicrophoneTestRemaining] = useState(0);
+  const [outputTestRemaining, setOutputTestRemaining] = useState(0);
   const [microphoneTestError, setMicrophoneTestError] = useState('');
   const [outputTestError, setOutputTestError] = useState('');
 
@@ -167,55 +167,71 @@ export const SettingsView = ({
   }, []);
 
   useEffect(() => () => {
-    stopMicrophoneTest(microphoneTestRef.current);
-    stopOutputTest(outputTestRef.current);
+    stopAudioCaptureTest(microphoneTestRef.current);
+    stopAudioCaptureTest(outputTestRef.current);
   }, []);
 
   const toggleMicrophoneTest = async (): Promise<void> => {
     if (microphoneTestRef.current) {
-      stopMicrophoneTest(microphoneTestRef.current);
+      stopAudioCaptureTest(microphoneTestRef.current);
       microphoneTestRef.current = null;
       setIsMicrophoneTesting(false);
+      setMicrophoneTestRemaining(0);
       return;
     }
 
+    stopAudioCaptureTest(outputTestRef.current);
+    outputTestRef.current = null;
+    setIsOutputTesting(false);
+    setOutputTestRemaining(0);
+
     try {
       setMicrophoneTestError('');
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          echoCancellation: settings.microphoneEchoCancellation,
-          noiseSuppression: settings.microphoneNoiseSuppression,
-          autoGainControl: settings.microphoneAutoGainControl,
-          ...(settings.microphoneDeviceId ? { deviceId: { exact: settings.microphoneDeviceId } } : {}),
-        },
-      });
-      const context = new AudioContext();
-      const source = context.createMediaStreamSource(stream);
-      const processor = context.createScriptProcessor(1024, 1, 1);
-      processor.onaudioprocess = (event) => {
-        const input = event.inputBuffer.getChannelData(0);
-        let sum = 0;
-        for (const sample of input) {
-          sum += sample * sample;
+      setMicrophoneTestRemaining(5);
+      const startedAt = Date.now();
+      const removeLevelListener = api.audioCapture.onLevel((event) => {
+        if (event.mode === 'speak') {
+          setMicrophoneTestLevels((current) => nextVisualWaveform(current, event.level));
         }
-        const level = Math.min(1, Math.sqrt(sum / input.length) * 8);
-        setMicrophoneTestLevels((current) => [...current.slice(1), Math.max(0.08, level)]);
-      };
-      source.connect(processor);
-      processor.connect(context.destination);
-      microphoneTestRef.current = { stream, context, source, processor };
+      });
+      const tickTimer = window.setInterval(() => {
+        setMicrophoneTestRemaining(Math.max(0, 5 - Math.floor((Date.now() - startedAt) / 1000)));
+      }, 250);
+      const timer = window.setTimeout(() => {
+        stopAudioCaptureTest(microphoneTestRef.current);
+        microphoneTestRef.current = null;
+        setIsMicrophoneTesting(false);
+        setMicrophoneTestRemaining(0);
+      }, 5000);
+      microphoneTestRef.current = { mode: 'speak', timer, tickTimer, removeLevelListener };
+      await api.audioCapture.start('speak');
+      if (!microphoneTestRef.current) {
+        await api.audioCapture.cancel('speak');
+        return;
+      }
       setIsMicrophoneTesting(true);
     } catch {
+      stopAudioCaptureTest(microphoneTestRef.current);
+      microphoneTestRef.current = null;
       setMicrophoneTestError('Microphone test failed.');
       setIsMicrophoneTesting(false);
+      setMicrophoneTestRemaining(0);
     }
   };
 
   const playOutputTest = async (): Promise<void> => {
-    stopOutputTest(outputTestRef.current);
-    outputTestRef.current = null;
-    setIsOutputTesting(false);
+    if (outputTestRef.current) {
+      stopAudioCaptureTest(outputTestRef.current);
+      outputTestRef.current = null;
+      setIsOutputTesting(false);
+      setOutputTestRemaining(0);
+      return;
+    }
+
+    stopAudioCaptureTest(microphoneTestRef.current);
+    microphoneTestRef.current = null;
+    setIsMicrophoneTesting(false);
+    setMicrophoneTestRemaining(0);
     setOutputTestError('');
 
     try {
@@ -238,18 +254,37 @@ export const SettingsView = ({
       oscillator.connect(gain);
       gain.connect(destination);
       audio.srcObject = destination.stream;
+      setOutputTestRemaining(5);
+      const startedAt = Date.now();
+      const removeLevelListener = api.audioCapture.onLevel((event) => {
+        if (event.mode === 'transcript') {
+          setMicrophoneTestLevels((current) => nextVisualWaveform(current, event.level));
+        }
+      });
+      const tickTimer = window.setInterval(() => {
+        setOutputTestRemaining(Math.max(0, 5 - Math.floor((Date.now() - startedAt) / 1000)));
+      }, 250);
+      const timer = window.setTimeout(() => {
+        stopAudioCaptureTest(outputTestRef.current);
+        outputTestRef.current = null;
+        setIsOutputTesting(false);
+        setOutputTestRemaining(0);
+      }, 5000);
+      outputTestRef.current = { mode: 'transcript', timer, tickTimer, removeLevelListener, context, oscillator, audio };
+      await api.audioCapture.start('transcript');
+      if (!outputTestRef.current) {
+        await api.audioCapture.cancel('transcript');
+        return;
+      }
       await audio.play();
       oscillator.start();
       setIsOutputTesting(true);
-      const timer = window.setTimeout(() => {
-        stopOutputTest(outputTestRef.current);
-        outputTestRef.current = null;
-        setIsOutputTesting(false);
-      }, 900);
-      outputTestRef.current = { context, oscillator, audio, timer };
     } catch {
+      stopAudioCaptureTest(outputTestRef.current);
+      outputTestRef.current = null;
       setOutputTestError('Output test failed.');
       setIsOutputTesting(false);
+      setOutputTestRemaining(0);
     }
   };
 
@@ -342,39 +377,6 @@ export const SettingsView = ({
             ))}
           </select>
         </label>
-        <label className="settings-checkbox">
-          <input
-            type="checkbox"
-            checked={settings.microphoneEchoCancellation}
-            onChange={(event) => onChange({ ...settings, microphoneEchoCancellation: event.target.checked })}
-          />
-          <span className="settings-option-label">
-            Echo cancellation
-            <HelpHint text="Reduces audio echo on the microphone stream. Useful with speakers, but can slightly alter the captured voice." />
-          </span>
-        </label>
-        <label className="settings-checkbox">
-          <input
-            type="checkbox"
-            checked={settings.microphoneNoiseSuppression}
-            onChange={(event) => onChange({ ...settings, microphoneNoiseSuppression: event.target.checked })}
-          />
-          <span className="settings-option-label">
-            Noise suppression
-            <HelpHint text="Reduces background noise on the microphone stream. It can improve clarity, but may remove very quiet speech." />
-          </span>
-        </label>
-        <label className="settings-checkbox">
-          <input
-            type="checkbox"
-            checked={settings.microphoneAutoGainControl}
-            onChange={(event) => onChange({ ...settings, microphoneAutoGainControl: event.target.checked })}
-          />
-          <span className="settings-option-label">
-            Auto gain control
-            <HelpHint text="Automatically adjusts microphone volume. It helps with low input levels, but can change volume during recording." />
-          </span>
-        </label>
         <div className="microphone-test">
           <div className="field-label">
             Microphone test
@@ -390,6 +392,7 @@ export const SettingsView = ({
                 <span key={index} style={{ height: `${Math.round(5 + level * 28)}px` }} />
               ))}
             </div>
+            {isMicrophoneTesting && <span className="microphone-test-timer">{microphoneTestRemaining}s</span>}
           </div>
           {microphoneTestError && <span className="microphone-test-error">{microphoneTestError}</span>}
         </div>
@@ -425,13 +428,14 @@ export const SettingsView = ({
           <div className="microphone-test-row">
             <button type="button" onClick={() => void playOutputTest()}>
               <Volume2 size={16} />
-              <span>{isOutputTesting ? 'Playing sound' : 'Play sound'}</span>
+              <span>{isOutputTesting ? 'Stop test' : 'Play sound'}</span>
             </button>
             <div className={`microphone-test-wave ${isOutputTesting ? 'active' : ''}`} aria-hidden="true">
               {microphoneTestLevels.map((level, index) => (
-                <span key={index} style={{ height: `${Math.round(5 + (isOutputTesting ? 0.6 : level) * 28)}px` }} />
+                <span key={index} style={{ height: `${Math.round(5 + level * 28)}px` }} />
               ))}
             </div>
+            {isOutputTesting && <span className="microphone-test-timer">{outputTestRemaining}s</span>}
           </div>
           {outputTestError && <span className="microphone-test-error">{outputTestError}</span>}
         </div>
@@ -896,29 +900,24 @@ const vramStatus = (
 const formatGb = (value: number): string => `${Number.isInteger(value) ? value : value.toFixed(1)} GB`;
 const formatGbValue = (value: number): string => `${Number.isInteger(value) ? value : value.toFixed(1)}`;
 
-const stopMicrophoneTest = (test: MicrophoneTest | null): void => {
-  if (!test) {
-    return;
-  }
-  test.processor.disconnect();
-  test.source.disconnect();
-  test.stream.getTracks().forEach((track) => track.stop());
-  void test.context.close();
-};
-
-const stopOutputTest = (test: OutputTest | null): void => {
+const stopAudioCaptureTest = (test: AudioCaptureTest | null): void => {
   if (!test) {
     return;
   }
   window.clearTimeout(test.timer);
+  window.clearInterval(test.tickTimer);
+  test.removeLevelListener();
+  void api.audioCapture.cancel(test.mode);
   try {
-    test.oscillator.stop();
+    test.oscillator?.stop();
   } catch {
   }
-  test.oscillator.disconnect();
-  test.audio.pause();
-  test.audio.srcObject = null;
-  void test.context.close();
+  test.oscillator?.disconnect();
+  test.audio?.pause();
+  if (test.audio) {
+    test.audio.srcObject = null;
+  }
+  void test.context?.close();
 };
 
 const modelStateIcon = {

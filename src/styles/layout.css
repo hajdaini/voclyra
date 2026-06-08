@@ -607,17 +607,20 @@ body:has(.overlay) {
 .overlay-wave {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   height: 26px;
   min-width: 0;
+  max-width: 86px;
+  overflow: hidden;
 }
 
 .overlay-wave span {
-  width: 4px;
+  width: 3px;
+  flex: 0 0 3px;
   min-height: 8px;
   border-radius: 999px;
   background: var(--overlay-accent);
-  transition: height 90ms linear;
+  transition: height 70ms linear;
 }
 
 .overlay button {

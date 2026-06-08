@@ -30,6 +30,13 @@ const fallbackApi: AppApi = {
   transcript: {
     start: () => Promise.resolve(bridgeMissing()),
   },
+  audioCapture: {
+    start: () => Promise.resolve(),
+    switch: () => Promise.resolve(),
+    stop: () => Promise.resolve(new ArrayBuffer(0)),
+    cancel: () => Promise.resolve(),
+    onLevel: () => () => {},
+  },
   text: {
     improve: (text) => Promise.resolve(bridgeMissing(text)),
     replaceActive: () => Promise.resolve(),
@@ -121,4 +128,4 @@ const fallbackApi: AppApi = {
   },
 };
 
-export const api = window.voclyra ?? fallbackApi;
+export const api = typeof window === 'undefined' ? fallbackApi : window.voclyra ?? fallbackApi;

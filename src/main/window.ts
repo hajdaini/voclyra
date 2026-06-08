@@ -7,7 +7,6 @@ import { ErrorLogService } from '@services/error-log-service';
 import { applyWindowSecurity } from './security';
 
 let mainWindow: BrowserWindow | null = null;
-let backgroundActionFocusTimer: NodeJS.Timeout | null = null;
 const errorLogService = new ErrorLogService();
 type OverlayMode = OverlayState['mode'];
 
@@ -119,7 +118,6 @@ export const showMainWindow = (): void => {
     window.restore();
   }
   window.showInactive();
-  window.focus();
 };
 
 export const openSection = (section: string): void => {
@@ -138,18 +136,10 @@ export const sendAppAction = (action: 'speak' | 'improveText' | 'transcript'): v
 };
 
 export const sendBackgroundAppAction = (action: 'speak' | 'transcript'): void => {
-  const window = mainWindow ?? createMainWindow();
-  window.setFocusable(false);
-  sendAppAction(action);
-  if (backgroundActionFocusTimer) {
-    clearTimeout(backgroundActionFocusTimer);
+  if (!mainWindow) {
+    createMainWindow();
   }
-  backgroundActionFocusTimer = setTimeout(() => {
-    backgroundActionFocusTimer = null;
-    if (!window.isDestroyed()) {
-      window.setFocusable(true);
-    }
-  }, 1200);
+  sendAppAction(action);
 };
 
 export const sendImproveResult = (result: ResultState): void => {

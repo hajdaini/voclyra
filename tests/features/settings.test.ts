@@ -4,7 +4,6 @@ import { channels } from '@shared/channels';
 import { defaultSettings } from '@shared/defaults';
 import { settingsSchema } from '@shared/schemas';
 import { syncModelSettings } from '@renderer/ui/modelSettingsSync';
-import { shouldConfirmTranscriptOutputChange } from '@renderer/ui/settingsChangeGuards';
 import { shortcutFromKey, shortcutKey } from '@renderer/ui/views/SettingsView';
 
 type Store = Record<string, unknown>;
@@ -180,18 +179,6 @@ describe('Settings', () => {
     })).toMatchObject({ llmModel: 'old.gguf', whisperModel: 'old.bin' });
   });
 
-  it('requires confirmation before changing Transcript output while recording', () => {
-    const nextSettings = {
-      ...defaultSettings,
-      transcriptOutputDeviceId: 'out-1',
-      transcriptOutputDeviceLabel: 'Headphones',
-    };
-
-    expect(shouldConfirmTranscriptOutputChange(defaultSettings, nextSettings, true)).toBe(true);
-    expect(shouldConfirmTranscriptOutputChange(defaultSettings, nextSettings, false)).toBe(false);
-    expect(shouldConfirmTranscriptOutputChange(defaultSettings, defaultSettings, true)).toBe(false);
-  });
-
   it('keeps numpad shortcut keys distinct from top row digits', () => {
     expect(shortcutKey('1', 'Digit1')).toBe('1');
     expect(shortcutKey('1', 'Numpad1')).toBe('num1');
@@ -223,9 +210,6 @@ describe('Settings', () => {
       microphoneDeviceLabel: 'Studio Mic',
       transcriptOutputDeviceId: 'out-1',
       transcriptOutputDeviceLabel: 'Studio Headphones',
-      microphoneEchoCancellation: false,
-      microphoneNoiseSuppression: false,
-      microphoneAutoGainControl: false,
       silenceSensitivity: 'high' as const,
       maxHistoryItems: 25,
       llmModel: 'model.gguf',

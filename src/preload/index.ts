@@ -27,6 +27,30 @@ const api: AppApi = {
     start: (audio) =>
       ipcRenderer.invoke(channels.transcriptStart, audio) as ReturnType<AppApi['transcript']['start']>,
   },
+  audioCapture: {
+    start: (mode) => ipcRenderer.invoke(channels.audioCaptureStart, mode) as Promise<void>,
+    switch: (mode, source) => ipcRenderer.invoke(channels.audioCaptureSwitch, { mode, source }) as Promise<void>,
+    stop: (mode) => ipcRenderer.invoke(channels.audioCaptureStop, mode) as Promise<ArrayBuffer>,
+    cancel: (mode) => ipcRenderer.invoke(channels.audioCaptureCancel, mode) as Promise<void>,
+    onLevel: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, value: unknown): void => {
+        if (
+          value &&
+          typeof value === 'object' &&
+          'mode' in value &&
+          'level' in value &&
+          (value.mode === 'speak' || value.mode === 'transcript') &&
+          typeof value.level === 'number'
+        ) {
+          callback({ mode: value.mode, level: value.level });
+        }
+      };
+      ipcRenderer.on(channels.audioCaptureLevel, listener);
+      return () => {
+        ipcRenderer.removeListener(channels.audioCaptureLevel, listener);
+      };
+    },
+  },
   text: {
     improve: (text) => ipcRenderer.invoke(channels.textImprove, text) as ReturnType<AppApi['text']['improve']>,
     replaceActive: (text) => ipcRenderer.invoke(channels.textReplaceActive, text) as Promise<void>,

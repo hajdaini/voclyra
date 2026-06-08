@@ -106,7 +106,7 @@ Useful settings include:
 - automatic paste after dictation or improvement;
 - selected-text improvement;
 - multilingual transcription and correction;
-- microphone and noise options;
+- microphone and computer audio selection;
 - custom shortcuts;
 - Whisper and LLM model selection;
 - history size control;

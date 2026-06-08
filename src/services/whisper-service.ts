@@ -34,13 +34,6 @@ type SpeechRange = {
   endFrame: number;
 };
 
-const exactTranscriptionPrompt = [
-  'Transcribe exactly what is spoken.',
-  'Do not translate.',
-  'Keep the original spoken language for every sentence.',
-  'If speakers switch language, keep each part in its original language.',
-].join(' ');
-
 export class WhisperService {
   private readonly storage = new AppStorage();
   private readonly logger = new ProcessLogService();
@@ -71,7 +64,6 @@ export class WhisperService {
       language: whisperLanguage(settings.whisperLanguage),
       threads: whisperThreadCount(),
       qualityArgs: whisperQualityArgs(settings.whisperQualityMode),
-      prompt: exactTranscriptionPrompt,
     });
   }
 
@@ -145,7 +137,7 @@ export class WhisperService {
         });
         return '';
       }
-      if (segments.length > 1) {
+      if (segments.length > 0) {
         const texts: string[] = [];
         for (let index = 0; index < segments.length; index += 1) {
           const segment = segments[index];
@@ -159,7 +151,6 @@ export class WhisperService {
             modelPath,
             segment,
             options.timeoutMs,
-            exactTranscriptionPrompt,
           );
           serverDiagnostics.push(result.diagnostics);
           const text = result.text;
@@ -185,29 +176,7 @@ export class WhisperService {
         });
         return text;
       }
-      const result = await this.transcribeWithServer(
-        modelPath,
-        audio,
-        options.timeoutMs,
-        exactTranscriptionPrompt,
-      );
-      serverDiagnostics.push(result.diagnostics);
-      this.writeWhisperLog({
-        fileName: this.logFileName(options.debugName),
-        actionType: this.actionType(options.debugName),
-        status: 'success',
-        startedAt,
-        durationMs: Math.max(1, Date.now() - startedAt),
-        modelPath,
-        audio,
-        wavInfo,
-        settings,
-        segments,
-        serverDiagnostics,
-        serverCalled: true,
-        outputText: result.text,
-      });
-      return result.text;
+      return '';
     } catch (error) {
       const diagnostics = whisperServerDiagnosticsFromError(error);
       if (diagnostics) {
@@ -247,16 +216,6 @@ export class WhisperService {
       if (segments.length === 0) {
         return '';
       }
-      if (segments.length <= 1) {
-        const result = await this.transcribeWithServer(
-          modelPath,
-          audio,
-          options.timeoutMs,
-          exactTranscriptionPrompt,
-        );
-        return result.text;
-      }
-
       const texts: string[] = [];
       for (let index = 0; index < segments.length; index += 1) {
         const segment = segments[index];
@@ -270,7 +229,6 @@ export class WhisperService {
           modelPath,
           segment,
           options.timeoutMs,
-          exactTranscriptionPrompt,
         );
         const text = result.text;
         if (text) {
@@ -316,7 +274,6 @@ export class WhisperService {
       modelPath,
       audio,
       timeoutMs,
-      exactTranscriptionPrompt,
     );
     return result.text;
   }
@@ -325,7 +282,6 @@ export class WhisperService {
     modelPath: string,
     audio: Uint8Array,
     timeoutMs: number | null | undefined,
-    prompt?: string,
   ): Promise<WhisperServerResult> {
     const executable = await this.executablePath();
     const settings = await this.settingsService.get();
@@ -333,7 +289,6 @@ export class WhisperService {
       language: whisperLanguage(settings.whisperLanguage),
       threads: whisperThreadCount(),
       qualityArgs: whisperQualityArgs(settings.whisperQualityMode),
-      prompt,
       timeoutMs,
     });
   }
@@ -518,8 +473,8 @@ export class WhisperService {
   }
 
   private splitLongRange(range: SpeechRange, info: WavInfo): SpeechRange[] {
-    const maxFrames = info.sampleRate * 30;
-    const overlapFrames = Math.round(info.sampleRate * 0.8);
+    const maxFrames = info.sampleRate * 4;
+    const overlapFrames = Math.round(info.sampleRate * 0.25);
     if (range.endFrame - range.startFrame <= maxFrames) {
       return [range];
     }
@@ -735,7 +690,7 @@ const wavDurationWeight = (audio: Uint8Array): number => {
     offset += 8 + chunkSize + (chunkSize % 2);
   }
   return channels > 0 && sampleRate > 0 && dataSize > 0
-    ? dataSize / channels / sampleRate
+    ? (dataSize / (channels * 2) / sampleRate) * 1000
     : audio.byteLength;
 };
 

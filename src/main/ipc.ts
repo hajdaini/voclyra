@@ -11,6 +11,7 @@ import { historyTitleUpdateSchema, idSchema, llmModelIdSchema, overlayStateSchem
 import { whisperModelIdSchema } from '@shared/schemas';
 import type { HomeMode, OverlayState, ResultState, Settings } from '@shared/types';
 import { ActivePasteService } from '@services/active-paste-service';
+import { AudioCaptureHelperService } from '@services/audio-capture-helper-service';
 import { HistoryService } from '@services/history-service';
 import { HardwareService } from '@services/hardware-service';
 import { LlamaService } from '@services/llama-service';
@@ -36,6 +37,7 @@ import { updateTray } from './tray';
 
 let settings: Settings = defaultSettings;
 const activePasteService = new ActivePasteService();
+const audioCaptureHelperService = new AudioCaptureHelperService();
 const historyService = new HistoryService();
 const hardwareService = new HardwareService();
 const llamaService = new LlamaService();
@@ -334,6 +336,45 @@ export const registerIpc = (): void => {
   });
 
   ipcMain.handle(channels.dictationStop, () => ready('', 'Dictation stopped.'));
+
+  ipcMain.handle(channels.audioCaptureStart, async (event, value: unknown) => {
+    if (value !== 'speak' && value !== 'transcript') {
+      throw new Error('Invalid audio capture mode.');
+    }
+    settings = await settingsService.get();
+    await audioCaptureHelperService.start(value, settings, (level) => {
+      event.sender.send(channels.audioCaptureLevel, { mode: value, level });
+    });
+  });
+
+  ipcMain.handle(channels.audioCaptureSwitch, async (_event, value: unknown) => {
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      !('mode' in value) ||
+      !('source' in value) ||
+      (value.mode !== 'speak' && value.mode !== 'transcript') ||
+      (value.source !== 'input' && value.source !== 'output')
+    ) {
+      throw new Error('Invalid audio capture switch.');
+    }
+    settings = await settingsService.get();
+    await audioCaptureHelperService.switchSource(value.mode, value.source, settings);
+  });
+
+  ipcMain.handle(channels.audioCaptureStop, async (_event, value: unknown) => {
+    if (value !== 'speak' && value !== 'transcript') {
+      throw new Error('Invalid audio capture mode.');
+    }
+    const audio = await audioCaptureHelperService.stop(value);
+    return audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength);
+  });
+
+  ipcMain.handle(channels.audioCaptureCancel, async (_event, value: unknown) => {
+    if (value === 'speak' || value === 'transcript') {
+      await audioCaptureHelperService.cancel(value);
+    }
+  });
 
   ipcMain.handle(channels.transcriptStart, async (_event, value: unknown) => {
     const audio = value instanceof ArrayBuffer ? new Uint8Array(value) : null;

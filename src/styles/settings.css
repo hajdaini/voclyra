@@ -216,7 +216,7 @@
 .microphone-test-wave {
   display: inline-flex;
   height: 34px;
-  min-width: 128px;
+  min-width: 184px;
   align-items: center;
   gap: 3px;
   opacity: 0.45;
@@ -230,6 +230,13 @@
   width: 4px;
   border-radius: 999px;
   background: var(--primary);
+}
+
+.microphone-test-timer {
+  min-width: 24px;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .microphone-test-error {

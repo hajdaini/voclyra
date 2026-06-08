@@ -301,7 +301,7 @@
 }
 
 .speak-task.recording {
-  grid-template-columns: 136px 84px minmax(0, 1fr);
+  grid-template-columns: 136px 70px minmax(132px, 1fr);
   gap: 8px;
   border-color: rgba(255, 156, 77, 0.72);
   background: rgba(255, 156, 77, 0.08);
@@ -404,7 +404,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  width: 84px;
+  width: 70px;
   height: 44px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -424,17 +424,19 @@
   align-items: center;
   gap: 3px;
   height: 38px;
-  min-width: 0;
+  min-width: 132px;
   overflow: hidden;
   padding: 0 2px;
 }
 
 .waveform span {
   width: 3px;
-  min-height: 8px;
+  flex: 0 0 3px;
+  min-height: 3px;
   border-radius: 3px;
   background: #546170;
   transition:
+    height 70ms linear,
     background 120ms var(--ease),
     opacity 120ms var(--ease);
 }

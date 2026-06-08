@@ -24,6 +24,8 @@ models/
 .env.*
 !.env.example
 resources/runtimes/
+resources/helpers/audio-capture-helper/bin/
+resources/helpers/audio-capture-helper/obj/
 AGENTS.md
 TODO.md
 .codex

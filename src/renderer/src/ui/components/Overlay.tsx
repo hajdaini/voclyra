@@ -101,10 +101,10 @@ export const Overlay = (): JSX.Element => {
           <>
             <span className={`overlay-message ${overlayState.messageType ?? 'info'}`}>{statusMessage}</span>
             <div className="overlay-wave" aria-hidden="true">
-              {Array.from({ length: 8 }, (_, index) => (
+              {Array.from({ length: 12 }, (_, index) => (
                 <span
                   key={index}
-                  style={{ height: `${Math.round(8 + (overlayState.waveform[index] ?? 0.08) * 24)}px` }}
+                  style={{ height: `${Math.round(3 + (overlayState.waveform[index] ?? 0.04) * 31)}px` }}
                 />
               ))}
             </div>

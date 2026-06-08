@@ -35,9 +35,7 @@ import {
   speakFallbackResult,
   transcriptFallbackResult,
 } from './appState';
-import { shouldConfirmTranscriptOutputChange } from './settingsChangeGuards';
-
-const defaultWaveform = (): number[] => Array.from({ length: 28 }, () => 0.08);
+import { defaultWaveform, nextVisualWaveform, overlayWaveformSize } from './waveform';
 
 export const App = (): JSX.Element => {
   const overlayMode = new URLSearchParams(window.location.search).get('overlay');
@@ -120,6 +118,7 @@ export const App = (): JSX.Element => {
   const overlayWarningTimerRef = useRef<Partial<Record<OverlayMode, number>>>({});
   const overlayHideTimerRef = useRef<Partial<Record<OverlayMode, number>>>({});
   const microphoneSettingsKeyRef = useRef('');
+  const transcriptOutputSettingsKeyRef = useRef('');
   const recordingActiveRef = useRef<Record<'speak' | 'transcript', boolean>>({
     speak: false,
     transcript: false,
@@ -268,9 +267,6 @@ export const App = (): JSX.Element => {
     const microphoneSettingsKey = [
       settings.microphoneDeviceId,
       settings.microphoneDeviceLabel,
-      settings.microphoneEchoCancellation,
-      settings.microphoneNoiseSuppression,
-      settings.microphoneAutoGainControl,
     ].join('\n');
     if (microphoneSettingsKeyRef.current === microphoneSettingsKey) {
       return;
@@ -284,24 +280,38 @@ export const App = (): JSX.Element => {
       id: settings.microphoneDeviceId,
       label: settings.microphoneDeviceLabel,
     };
-    const options = {
-      echoCancellation: settings.microphoneEchoCancellation,
-      noiseSuppression: settings.microphoneNoiseSuppression,
-      autoGainControl: settings.microphoneAutoGainControl,
-    };
-    void recorder?.updateMicrophone?.(device, options).catch(() => {
+    void recorder?.updateMicrophone?.(device).catch(() => {
       showOverlayWarning('speak', 'Selected microphone is not available.', 'error');
     });
-    void transcriptRecorder?.updateMicrophone?.(device, options).catch(() => {
+    void transcriptRecorder?.updateMicrophone?.(device).catch(() => {
       showOverlayWarning('transcript', 'Selected microphone is not available.', 'error');
     });
   }, [
     settings.microphoneDeviceId,
     settings.microphoneDeviceLabel,
-    settings.microphoneEchoCancellation,
-    settings.microphoneNoiseSuppression,
-    settings.microphoneAutoGainControl,
     recorder,
+    transcriptRecorder,
+  ]);
+
+  useEffect(() => {
+    const outputSettingsKey = [
+      settings.transcriptOutputDeviceId,
+      settings.transcriptOutputDeviceLabel,
+    ].join('\n');
+    if (transcriptOutputSettingsKeyRef.current === outputSettingsKey) {
+      return;
+    }
+    transcriptOutputSettingsKeyRef.current = outputSettingsKey;
+    if (!transcriptRecorder) {
+      return;
+    }
+    showToast('info', 'Transcript audio switched.');
+    void transcriptRecorder.updateOutput?.().catch(() => {
+      showOverlayWarning('transcript', 'Selected computer audio is not available.', 'error');
+    });
+  }, [
+    settings.transcriptOutputDeviceId,
+    settings.transcriptOutputDeviceLabel,
     transcriptRecorder,
   ]);
 
@@ -466,7 +476,7 @@ export const App = (): JSX.Element => {
     setMode('speak');
     recordingActiveRef.current.speak = true;
     startAudioWarningTimer('speakMic', 'No microphone audio. Check settings.');
-    publishOverlayState(overlayRecording('speak', defaultWaveform().slice(-8)));
+    publishOverlayState(overlayRecording('speak', defaultWaveform().slice(-overlayWaveformSize)));
     try {
       setRecorder(
         await startWavRecorder(
@@ -478,10 +488,10 @@ export const App = (): JSX.Element => {
               if (level > 0.1) {
                 markAudioDetected('speakMic');
               }
-              const nextWaveform = [...current.slice(1), Math.max(0.08, level)];
+              const nextWaveform = nextVisualWaveform(current, level);
               publishOverlayState(overlayRecording(
                 'speak',
-                nextWaveform.slice(-8),
+                nextWaveform.slice(-overlayWaveformSize),
                 overlayNoticeRef.current.speak?.message,
                 overlayNoticeRef.current.speak?.messageType,
               ));
@@ -491,11 +501,6 @@ export const App = (): JSX.Element => {
           {
             id: settings.microphoneDeviceId,
             label: settings.microphoneDeviceLabel,
-          },
-          {
-            echoCancellation: settings.microphoneEchoCancellation,
-            noiseSuppression: settings.microphoneNoiseSuppression,
-            autoGainControl: settings.microphoneAutoGainControl,
           },
         ),
       );
@@ -517,7 +522,7 @@ export const App = (): JSX.Element => {
     setWaveform(defaultWaveform());
     setIsSpeakProcessing(true);
     clearOverlayWarningTimer('speak');
-    publishOverlayState(overlayProcessing('speak', defaultWaveform().slice(-8), undefined, undefined, {
+    publishOverlayState(overlayProcessing('speak', defaultWaveform().slice(-overlayWaveformSize), undefined, undefined, {
       phase: 'transcribing',
     }));
     try {
@@ -663,9 +668,8 @@ export const App = (): JSX.Element => {
     setSection('home');
     setMode('transcript');
     recordingActiveRef.current.transcript = true;
-    startAudioWarningTimer('transcriptMic', 'No microphone audio. Check settings.');
     startAudioWarningTimer('transcriptSystem', 'No computer audio. Check settings.');
-    publishOverlayState(overlayRecording('transcript', defaultWaveform().slice(-8)));
+    publishOverlayState(overlayRecording('transcript', defaultWaveform().slice(-overlayWaveformSize)));
     try {
       setTranscriptRecorder(
         await startTranscriptRecorder(
@@ -674,10 +678,10 @@ export const App = (): JSX.Element => {
               if (!recordingActiveRef.current.transcript) {
                 return current;
               }
-              const nextWaveform = [...current.slice(1), Math.max(0.08, level)];
+              const nextWaveform = nextVisualWaveform(current, level);
               publishOverlayState(overlayRecording(
                 'transcript',
-                nextWaveform.slice(-8),
+                nextWaveform.slice(-overlayWaveformSize),
                 overlayNoticeRef.current.transcript?.message,
                 overlayNoticeRef.current.transcript?.messageType,
               ));
@@ -688,11 +692,6 @@ export const App = (): JSX.Element => {
             microphoneDevice: {
               id: settings.microphoneDeviceId,
               label: settings.microphoneDeviceLabel,
-            },
-            microphoneOptions: {
-              echoCancellation: settings.microphoneEchoCancellation,
-              noiseSuppression: settings.microphoneNoiseSuppression,
-              autoGainControl: settings.microphoneAutoGainControl,
             },
             onMicrophoneLevel: (level) => {
               if (recordingActiveRef.current.transcript && level > 0.1) {
@@ -737,7 +736,7 @@ export const App = (): JSX.Element => {
     setWaveform(defaultWaveform());
     setIsTranscriptProcessing(true);
     clearOverlayWarningTimer('transcript');
-    publishOverlayState(overlayProcessing('transcript', defaultWaveform().slice(-8), undefined, undefined, {
+    publishOverlayState(overlayProcessing('transcript', defaultWaveform().slice(-overlayWaveformSize), undefined, undefined, {
       phase: 'transcribing',
     }));
     try {
@@ -782,7 +781,7 @@ export const App = (): JSX.Element => {
       setWaveform(defaultWaveform());
       setIsTranscriptProcessing(true);
       clearOverlayWarningTimer('transcript');
-      publishOverlayState(overlayProcessing('transcript', defaultWaveform().slice(-8), undefined, undefined, {
+      publishOverlayState(overlayProcessing('transcript', defaultWaveform().slice(-overlayWaveformSize), undefined, undefined, {
         phase: 'transcribing',
       }));
       await transcribeAudio(audio);
@@ -888,14 +887,6 @@ export const App = (): JSX.Element => {
   };
 
   const changeSettings = async (nextSettings: SettingsType): Promise<void> => {
-    if (shouldConfirmTranscriptOutputChange(settingsRef.current, nextSettings, Boolean(transcriptRecorder))) {
-      if (!window.confirm('Changing Transcript output will cancel the current recording. Continue?')) {
-        return;
-      }
-      void cancelRecording('transcript');
-    }
-    settingsRef.current = nextSettings;
-    setSettings(nextSettings);
     await saveSettings(nextSettings);
   };
 
@@ -929,7 +920,7 @@ export const App = (): JSX.Element => {
       audioWarningShownRef.current[key] = true;
       showSettingsToast('warning', message);
       showAdditionalInfoOverlay(message);
-    }, 15000);
+    }, 30000);
   };
 
   const clearAudioWarningTimer = (key: 'speakMic' | 'transcriptMic' | 'transcriptSystem'): void => {
@@ -1007,13 +998,13 @@ export const App = (): JSX.Element => {
     overlayNoticeRef.current[overlayMode] = { message, messageType };
     clearOverlayWarningTimer(overlayMode);
     if (overlayMode === 'speak' && recordingActiveRef.current.speak) {
-      publishOverlayState(overlayRecording('speak', waveform.slice(-8), message, messageType));
+      publishOverlayState(overlayRecording('speak', waveform.slice(-overlayWaveformSize), message, messageType));
     } else if (overlayMode === 'speak' && isSpeakProcessing) {
-      publishOverlayState(overlayProcessing('speak', waveform.slice(-8), message, messageType));
+      publishOverlayState(overlayProcessing('speak', waveform.slice(-overlayWaveformSize), message, messageType));
     } else if (overlayMode === 'transcript' && recordingActiveRef.current.transcript) {
-      publishOverlayState(overlayRecording('transcript', waveform.slice(-8), message, messageType));
+      publishOverlayState(overlayRecording('transcript', waveform.slice(-overlayWaveformSize), message, messageType));
     } else if (overlayMode === 'transcript' && isTranscriptProcessing) {
-      publishOverlayState(overlayProcessing('transcript', waveform.slice(-8), message, messageType));
+      publishOverlayState(overlayProcessing('transcript', waveform.slice(-overlayWaveformSize), message, messageType));
     } else if (overlayMode === 'improve' && isImproveProcessing) {
       publishOverlayState(overlayProcessing('improve', [], message, messageType));
     } else {
@@ -1023,19 +1014,19 @@ export const App = (): JSX.Element => {
       delete overlayNoticeRef.current[overlayMode];
       delete overlayWarningTimerRef.current[overlayMode];
       if (overlayMode === 'speak' && recordingActiveRef.current.speak) {
-        publishOverlayState(overlayRecording('speak', waveform.slice(-8)));
+        publishOverlayState(overlayRecording('speak', waveform.slice(-overlayWaveformSize)));
         return;
       }
       if (overlayMode === 'speak' && isSpeakProcessing) {
-        publishOverlayState(overlayProcessing('speak', waveform.slice(-8)));
+        publishOverlayState(overlayProcessing('speak', waveform.slice(-overlayWaveformSize)));
         return;
       }
       if (overlayMode === 'transcript' && recordingActiveRef.current.transcript) {
-        publishOverlayState(overlayRecording('transcript', waveform.slice(-8)));
+        publishOverlayState(overlayRecording('transcript', waveform.slice(-overlayWaveformSize)));
         return;
       }
       if (overlayMode === 'transcript' && isTranscriptProcessing) {
-        publishOverlayState(overlayProcessing('transcript', waveform.slice(-8)));
+        publishOverlayState(overlayProcessing('transcript', waveform.slice(-overlayWaveformSize)));
         return;
       }
       if (overlayMode === 'improve' && isImproveProcessing) {
@@ -1299,9 +1290,6 @@ const settingsAreEqual = (left: SettingsType, right: SettingsType): boolean =>
   left.microphoneDeviceLabel === right.microphoneDeviceLabel &&
   left.transcriptOutputDeviceId === right.transcriptOutputDeviceId &&
   left.transcriptOutputDeviceLabel === right.transcriptOutputDeviceLabel &&
-  left.microphoneEchoCancellation === right.microphoneEchoCancellation &&
-  left.microphoneNoiseSuppression === right.microphoneNoiseSuppression &&
-  left.microphoneAutoGainControl === right.microphoneAutoGainControl &&
   left.silenceSensitivity === right.silenceSensitivity &&
   left.maxHistoryItems === right.maxHistoryItems &&
   left.hotkeys.speak === right.hotkeys.speak &&

@@ -32,9 +32,6 @@ correctionPrompt: [
   microphoneDeviceLabel: '',
   transcriptOutputDeviceId: '',
   transcriptOutputDeviceLabel: '',
-  microphoneEchoCancellation: true,
-  microphoneNoiseSuppression: true,
-  microphoneAutoGainControl: true,
   silenceSensitivity: 'normal',
   maxHistoryItems: 100,
   hotkeys: {

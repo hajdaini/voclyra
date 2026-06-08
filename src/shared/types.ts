@@ -34,9 +34,6 @@ export type Settings = {
   microphoneDeviceLabel: string;
   transcriptOutputDeviceId: string;
   transcriptOutputDeviceLabel: string;
-  microphoneEchoCancellation: boolean;
-  microphoneNoiseSuppression: boolean;
-  microphoneAutoGainControl: boolean;
   silenceSensitivity: SilenceSensitivity;
   maxHistoryItems: number;
   hotkeys: Hotkeys;
@@ -180,6 +177,13 @@ export type AppApi = {
   };
   transcript: {
     start: (audio: ArrayBuffer) => Promise<ResultState>;
+  };
+  audioCapture: {
+    start: (mode: 'speak' | 'transcript') => Promise<void>;
+    switch: (mode: 'speak' | 'transcript', source: 'input' | 'output') => Promise<void>;
+    stop: (mode: 'speak' | 'transcript') => Promise<ArrayBuffer>;
+    cancel: (mode: 'speak' | 'transcript') => Promise<void>;
+    onLevel: (callback: (event: { mode: 'speak' | 'transcript'; level: number }) => void) => () => void;
   };
   text: {
     improve: (text: string) => Promise<ResultState>;

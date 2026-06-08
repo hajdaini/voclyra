@@ -1,7 +1,10 @@
+import { api } from '../api';
+
 export type WavRecorder = {
   stop: () => Promise<ArrayBuffer>;
   cancel: () => Promise<void>;
   updateMicrophone?: (device?: MicrophoneDevice, options?: MicrophoneOptions) => Promise<void>;
+  updateOutput?: () => Promise<void>;
 };
 
 type TranscriptRecorderOptions = {
@@ -24,6 +27,35 @@ export type MicrophoneOptions = {
 };
 
 export const startWavRecorder = async (
+  onLevel: (level: number) => void,
+  microphoneDevice?: MicrophoneDevice,
+  microphoneOptions?: MicrophoneOptions,
+): Promise<WavRecorder> => {
+  const removeLevelListener = api.audioCapture.onLevel((event) => {
+    if (event.mode === 'speak') {
+      onLevel(event.level);
+    }
+  });
+  try {
+    await api.audioCapture.start('speak');
+    return {
+      updateMicrophone: async () => api.audioCapture.switch('speak', 'input'),
+      stop: async () => {
+        removeLevelListener();
+        return api.audioCapture.stop('speak');
+      },
+      cancel: async () => {
+        removeLevelListener();
+        await api.audioCapture.cancel('speak');
+      },
+    };
+  } catch {
+    removeLevelListener();
+    return startBrowserWavRecorder(onLevel, microphoneDevice, microphoneOptions);
+  }
+};
+
+const startBrowserWavRecorder = async (
   onLevel: (level: number) => void,
   microphoneDevice?: MicrophoneDevice,
   microphoneOptions?: MicrophoneOptions,
@@ -160,6 +192,37 @@ const isLikelyMicrophone = (label: string): boolean => {
 };
 
 export const startTranscriptRecorder = async (
+  onLevel: (level: number) => void,
+  options: TranscriptRecorderOptions = {},
+): Promise<WavRecorder> => {
+  const removeLevelListener = api.audioCapture.onLevel((event) => {
+    if (event.mode === 'transcript') {
+      onLevel(event.level);
+      options.onSystemAudioLevel?.(event.level);
+    }
+  });
+  try {
+    await api.audioCapture.start('transcript');
+    options.onSystemAudioChange?.(true);
+    return {
+      updateMicrophone: async () => api.audioCapture.switch('transcript', 'input'),
+      updateOutput: async () => api.audioCapture.switch('transcript', 'output'),
+      stop: async () => {
+        removeLevelListener();
+        return api.audioCapture.stop('transcript');
+      },
+      cancel: async () => {
+        removeLevelListener();
+        await api.audioCapture.cancel('transcript');
+      },
+    };
+  } catch {
+    removeLevelListener();
+    return startBrowserTranscriptRecorder(onLevel, options);
+  }
+};
+
+const startBrowserTranscriptRecorder = async (
   onLevel: (level: number) => void,
   options: TranscriptRecorderOptions = {},
 ): Promise<WavRecorder> => {
