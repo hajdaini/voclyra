@@ -64,10 +64,16 @@ describe('Local runtime', () => {
   beforeAll(async () => {
     const { SettingsService } = await import('@services/settings-service');
     const { LlmModelService } = await import('@services/llm-model-service');
+    const { WhisperModelService } = await import('@services/whisper-model-service');
     settings = await new SettingsService().get();
-    requireValue(settings.whisperModel, 'Whisper model');
-    requireValue(settings.llmModel, 'LLM model');
-    llmModelPath = new LlmModelService().modelPath(settings.llmModel);
+    const llmModelService = new LlmModelService();
+    const whisperModelService = new WhisperModelService();
+    const whisperModel = settings.whisperModel || (await whisperModelService.downloadedModelNames())[0] || '';
+    const llmModel = settings.llmModel || (await llmModelService.downloadedModelNames())[0] || '';
+    requireValue(whisperModel, 'Whisper model');
+    requireValue(llmModel, 'LLM model');
+    settings = { ...settings, whisperModel, llmModel };
+    llmModelPath = llmModelService.modelPath(settings.llmModel);
     await requireFile(llmModelPath, 'LLM model file');
   });
 

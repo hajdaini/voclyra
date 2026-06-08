@@ -165,6 +165,7 @@ export const improveClipboardFromHotkey = async (): Promise<void> => {
 export const registerIpc = (): void => {
   ipcMain.handle(channels.settingsGet, async () => {
     settings = await settingsService.get();
+    settings = { ...settings, startAtStartup: startupService.enabled() };
     return settings;
   });
 

@@ -72,13 +72,17 @@ void app.whenReady().then(async () => {
   void appStorage.clearDir('tmp', 'current').catch(() => {});
   void startupLogService.write().catch(() => {});
   void settingsService.get().then((settings) => {
-    startupService.apply(settings.startAtStartup);
-    hotkeyService.register(settings, {
+    const startupEnabled = startupService.enabled();
+    if (startupEnabled) {
+      startupService.apply(true);
+    }
+    const runtimeSettings = { ...settings, startAtStartup: startupEnabled };
+    hotkeyService.register(runtimeSettings, {
       speak: () => sendBackgroundAppAction('speak'),
       improveText: () => void improveClipboardFromHotkey(),
       transcript: () => sendBackgroundAppAction('transcript'),
     });
-    createTray(settings);
+    createTray(runtimeSettings);
   });
 });
 

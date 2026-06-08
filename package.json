@@ -1,6 +1,6 @@
 {
   "name": "voclyra",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local Windows dictation and text improvement app.",
   "main": "./out/main/index.js",
   "author": "timtim",
@@ -81,7 +81,8 @@
     "nsis": {
       "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "include": "build/installer.nsh"
     }
   }
 }

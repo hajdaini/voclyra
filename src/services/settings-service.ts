@@ -8,7 +8,8 @@ export class SettingsService {
 
   async get(): Promise<Settings> {
     const rawSettings = await this.storage.readJson<unknown>('settings.json', defaultSettings);
-    const parsedSettings = settingsSchema.safeParse(rawSettings);
+    const settingsInput = isSettingsObject(rawSettings) ? { ...defaultSettings, ...withoutStartupSetting(rawSettings) } : rawSettings;
+    const parsedSettings = settingsSchema.safeParse(settingsInput);
 
     if (!parsedSettings.success) {
       return this.save(defaultSettings);
@@ -30,6 +31,14 @@ export class SettingsService {
   }
 
   save(settings: Settings): Promise<Settings> {
-    return this.storage.writeJson('settings.json', settings);
+    return this.storage.writeJson('settings.json', withoutStartupSetting(settings)).then(() => settings);
   }
 }
+
+const isSettingsObject = (value: unknown): value is Partial<Settings> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const withoutStartupSetting = (settings: Partial<Settings>): Omit<Partial<Settings>, 'startAtStartup'> => {
+  const { startAtStartup: _startAtStartup, ...rest } = settings;
+  return rest;
+};

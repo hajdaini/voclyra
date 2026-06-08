@@ -23,7 +23,7 @@ No cloud transcription. No hosted correction API. Your data stays on your machin
 
 https://github.com/user-attachments/assets/c29cba30-747c-47c4-8a58-f04f971fd74a
 
-## 📦 Download
+## 📥 Download
 
 Download the latest Windows installer from the [latest release](https://github.com/hajdaini/voclyra/releases/latest).
 
@@ -31,18 +31,18 @@ Install it like a normal desktop app, then open Voclyra and download the local m
 
 ## 📚 Table Of Contents
 
-- [Download](#-download)
-- [Why Voclyra](#-why-voclyra)
-- [Core Modes](#-core-modes)
-- [What You Get](#-what-you-get)
-- [How To Use It](#-how-to-use-it)
-- [Options](#-options)
-- [Local AI Stack](#-local-ai-stack)
-- [Privacy](#-privacy)
-- [Features](#-features)
-- [Storage](#-storage)
-- [Build](#-Build)
-- [Sources](#-sources)
+- [Download](#download)
+- [Why Voclyra](#why-voclyra)
+- [Core Modes](#core-modes)
+- [What You Get](#what-you-get)
+- [How To Use It](#how-to-use-it)
+- [Options](#options)
+- [Local AI Stack](#local-ai-stack)
+- [Privacy](#privacy)
+- [Features](#features)
+- [Storage](#storage)
+- [Build](#build)
+- [Sources](#sources)
 
 ## ⚡ Why Voclyra
 
@@ -113,6 +113,7 @@ There are more settings available, but the goal stays simple: make the app match
 
 - **Electron** desktop app.
 - **React + TypeScript** interface.
+- **C# audio helper** for microphone and computer audio capture.
 - **whisper.cpp** for local speech-to-text.
 - **llama.cpp** for local text improvement.
 - **CUDA** support when you have GPU
@@ -161,22 +162,18 @@ Your voice, text, history, models, settings, and audio stay local.
 
 ## ✅ Features
 
-- Speak dictation
-- Local text improvement
-- Transcript recording
-- Audio file import
-- Clipboard copy and paste workflow
-- Searchable history
-- Audio replay for Speak and Transcript
-- Text export
-- Favorites and title editing
-- Batch delete
-- Model settings
-- Microphone settings
-- Shortcut settings
-- Hardware and GPU info
-- Local logs for debugging
-- Windows installer build
+- Fast local dictation from anywhere with global shortcuts
+- One-shortcut text cleanup for grammar, punctuation, and rough phrasing
+- Local meeting and video transcription with saved audio replay
+- Audio import for existing recordings
+- Multilingual speech-to-text without cloud transcription
+- Private local AI workflow powered by Whisper and llama.cpp
+- Searchable history with favorites, titles, audio replay, and text export
+- Flexible microphone and computer audio capture, including all active Windows outputs
+- Compact overlay feedback so you can keep working outside the app
+- Custom shortcuts, tray mode, and launch-at-startup support
+- Guided local model setup with GPU/runtime status
+- Windows installer with optional user-data removal on uninstall
 
 ## 🗂️ Storage
 

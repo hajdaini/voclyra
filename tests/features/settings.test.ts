@@ -14,6 +14,7 @@ let store: Store = {};
 const handlers = new Map<string, IpcHandler>();
 let hotkeyResult = { speak: true, improveText: true, transcript: true };
 let lastHotkeyHandlers: HotkeyHandlers | null = null;
+let startupEnabled = false;
 
 const readJson = vi.fn(async <T>(name: string, fallback: T): Promise<T> => {
   if (!(name in store)) {
@@ -25,6 +26,10 @@ const writeJson = vi.fn(async <T>(name: string, value: T): Promise<T> => {
   store[name] = value;
   return value;
 });
+const withoutStartup = (settings: typeof defaultSettings): Omit<typeof defaultSettings, 'startAtStartup'> => {
+  const { startAtStartup: _startAtStartup, ...rest } = settings;
+  return rest;
+};
 
 vi.mock('electron', () => ({
   BrowserWindow: {
@@ -33,7 +38,7 @@ vi.mock('electron', () => ({
   app: {
     isQuitting: false,
     quit: vi.fn(),
-    getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
+    getLoginItemSettings: vi.fn(() => ({ openAtLogin: startupEnabled })),
     setLoginItemSettings: vi.fn(),
   },
   clipboard: {
@@ -98,6 +103,7 @@ const setupIpc = async (): Promise<void> => {
   vi.clearAllMocks();
   hotkeyResult = { speak: true, improveText: true, transcript: true };
   lastHotkeyHandlers = null;
+  startupEnabled = false;
   const { registerIpc } = await import('@main/ipc');
   registerIpc();
   await handlers.get(channels.settingsGet)?.({});
@@ -134,7 +140,7 @@ describe('Settings', () => {
 
     store['settings.json'] = { ...defaultSettings, whisperLanguage: 'invalid' };
     await expect(service.get()).resolves.toEqual(defaultSettings);
-    expect(writeJson).toHaveBeenCalledWith('settings.json', defaultSettings);
+    expect(writeJson).toHaveBeenCalledWith('settings.json', withoutStartup(defaultSettings));
 
     const validSettings = { ...defaultSettings, whisperModel: 'ggml-large-v3.bin', llmModel: 'gemma.gguf' };
     store['settings.json'] = validSettings;
@@ -146,6 +152,11 @@ describe('Settings', () => {
     const normalized = await service.get();
     expect(normalized).toEqual(defaultSettings);
     expect(normalized).not.toHaveProperty('unknownSetting');
+
+    store['settings.json'] = { startAtStartup: true };
+    const partialSettings = await service.get();
+    expect(partialSettings).toEqual(defaultSettings);
+    expect(writeJson).toHaveBeenCalledWith('settings.json', withoutStartup(defaultSettings));
 
     const savedSettings = { ...defaultSettings, pasteAfterDictation: true };
     await expect(service.save(savedSettings)).resolves.toEqual(savedSettings);
@@ -202,6 +213,11 @@ describe('Settings', () => {
       },
     });
 
+    startupEnabled = true;
+    await expect(handlers.get(channels.settingsGet)?.({})).resolves.toMatchObject({
+      startAtStartup: true,
+    });
+
     const nextSettings = {
       ...defaultSettings,
       pasteAfterDictation: true,
@@ -227,7 +243,7 @@ describe('Settings', () => {
       },
     };
     await expect(handlers.get(channels.settingsSave)?.({}, nextSettings)).resolves.toEqual(nextSettings);
-    expect(store['settings.json']).toEqual(nextSettings);
+    expect(store['settings.json']).toEqual(withoutStartup(nextSettings));
     const windowApi = await import('@main/window');
     lastHotkeyHandlers?.speak();
     lastHotkeyHandlers?.transcript();
@@ -246,12 +262,12 @@ describe('Settings', () => {
         improveText: 'Alt+I',
       },
     });
-    expect(store['settings.json']).toEqual(nextSettings);
+    expect(store['settings.json']).toEqual(withoutStartup(nextSettings));
 
     await expect(handlers.get(channels.settingsSave)?.({}, {
       ...defaultSettings,
       hotkeys: { ...defaultSettings.hotkeys, speak: '' },
     })).rejects.toThrow();
-    expect(store['settings.json']).toEqual(nextSettings);
+    expect(store['settings.json']).toEqual(withoutStartup(nextSettings));
   });
 });
