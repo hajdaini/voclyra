@@ -30,7 +30,6 @@ export type HomeViewProps = {
   improveInput: string;
   isRecording: boolean;
   actionBlockMessage: string | null;
-  waveform: number[];
   whisperModel: string;
   llmModel: string;
   hotkeys: Hotkeys;
@@ -67,7 +66,6 @@ export const HomeView = ({
   improveInput,
   isRecording,
   actionBlockMessage,
-  waveform,
   whisperModel,
   llmModel,
   hotkeys,
@@ -254,11 +252,6 @@ export const HomeView = ({
               </button>
             )}
 
-            <div className={`waveform ${isRecording ? 'recording' : ''}`} aria-hidden="true">
-              {waveform.map((level, index) => (
-                <span key={index} style={{ height: `${Math.round(8 + level * 54)}px` }} />
-              ))}
-            </div>
           </div>
         )}
 

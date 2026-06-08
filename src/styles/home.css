@@ -1,7 +1,7 @@
 .home-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  height: 100%;
+  min-height: 0;
   justify-content: start;
 }
 
@@ -14,6 +14,7 @@
     "result";
   grid-template-rows: auto auto auto minmax(0, 1fr);
   min-width: 0;
+  min-height: 0;
 }
 
 .home-heading {
@@ -419,37 +420,10 @@
   background: rgba(255, 107, 122, 0.08);
 }
 
-.waveform {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  height: 38px;
-  min-width: 132px;
-  overflow: hidden;
-  padding: 0 2px;
-}
-
-.waveform span {
-  width: 3px;
-  flex: 0 0 3px;
-  min-height: 3px;
-  border-radius: 3px;
-  background: #546170;
-  transition:
-    height 70ms linear,
-    background 120ms var(--ease),
-    opacity 120ms var(--ease);
-}
-
-.waveform.recording span {
-  background: var(--primary);
-  box-shadow: 0 0 12px rgba(255, 156, 77, 0.28);
-}
-
 .improve-input {
   display: grid;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 0;
   min-height: 0;
   color: var(--muted);
   font-size: 14px;
@@ -457,6 +431,7 @@
 
 .improve-task {
   display: flex;
+  gap: 16px;
   min-height: 0;
   overflow: hidden;
   flex-direction: column;
@@ -465,7 +440,7 @@
 .improve-input textarea {
   box-sizing: border-box;
   width: 100%;
-  height: clamp(120px, 28vh, 240px);
+  height: clamp(112px, 22vh, 204px);
   min-height: 0;
   resize: none;
   overflow: auto;
@@ -486,6 +461,10 @@
 .primary-action {
   align-self: flex-start;
   flex: 0 0 auto;
+}
+
+.improve-task > .primary-action {
+  margin-top: 5px;
 }
 
 .result-title {
@@ -662,7 +641,7 @@
 .result-output {
   width: 100%;
   flex: 1 1 auto;
-  min-height: 260px;
+  min-height: 140px;
   padding: 10px 44px 12px 12px;
   overflow: auto;
   white-space: pre-wrap;
@@ -717,7 +696,7 @@
     grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
     grid-template-rows: auto auto minmax(0, 1fr);
     gap: 8px 12px;
-    height: calc(100vh - 66px);
+    height: 100%;
     min-height: 0;
   }
 

@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import { Bot, Cpu, Headphones, Info, Mic, ShieldCheck, UserRound, Wand2, Zap } from 'lucide-react';
+import { Bot, Headphones, Info, Mic, ShieldCheck, Wand2, Zap } from 'lucide-react';
 import { packageInfo } from '@shared/GlobalVars';
 
 export const AboutView = (): JSX.Element => (
@@ -77,29 +77,5 @@ export const AboutView = (): JSX.Element => (
         </p>
       </article>
     </div>
-
-    <dl className="about-list">
-      <div>
-        <dt>
-          <UserRound size={17} />
-          Creator
-        </dt>
-        <dd>{packageInfo.author}</dd>
-      </div>
-      <div>
-        <dt>
-          <Cpu size={17} />
-          Version
-        </dt>
-        <dd>{packageInfo.version}</dd>
-      </div>
-      <div>
-        <dt>
-          <ShieldCheck size={17} />
-          Processing
-        </dt>
-        <dd>Local Whisper, Transcript, and llama.cpp</dd>
-      </div>
-    </dl>
   </section>
 );

@@ -1,40 +1,46 @@
 import { app } from 'electron';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { packageInfo } from '@shared/GlobalVars';
 
 const runKey = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 const runValueName = packageInfo.productName;
 
 export class StartupService {
-  apply(startAtStartup: boolean): void {
-    this.deleteLegacyRunEntry();
+  async apply(startAtStartup: boolean): Promise<void> {
+    await this.deleteLegacyRunEntry();
     app.setLoginItemSettings({
       openAtLogin: startAtStartup,
       openAsHidden: false,
     });
   }
 
-  enabled(): boolean {
-    return app.getLoginItemSettings().openAtLogin || this.hasLegacyRunEntry();
+  async enabled(): Promise<boolean> {
+    return app.getLoginItemSettings().openAtLogin || await this.hasLegacyRunEntry();
   }
 
-  private hasLegacyRunEntry(): boolean {
+  private async hasLegacyRunEntry(): Promise<boolean> {
     if (process.platform !== 'win32') {
       return false;
     }
-    return spawnSync('reg', ['query', runKey, '/v', runValueName], {
-      windowsHide: true,
-      stdio: 'ignore',
-    }).status === 0;
+    return this.runReg(['query', runKey, '/v', runValueName]);
   }
 
-  private deleteLegacyRunEntry(): void {
+  private async deleteLegacyRunEntry(): Promise<void> {
     if (process.platform !== 'win32') {
       return;
     }
-    spawnSync('reg', ['delete', runKey, '/v', runValueName, '/f'], {
-      windowsHide: true,
-      stdio: 'ignore',
+    await this.runReg(['delete', runKey, '/v', runValueName, '/f']);
+  }
+
+  private runReg(args: string[]): Promise<boolean> {
+    return new Promise((resolve) => {
+      const child = spawn('reg', args, {
+        windowsHide: true,
+        shell: false,
+        stdio: 'ignore',
+      });
+      child.on('error', () => resolve(false));
+      child.on('close', (code) => resolve(code === 0));
     });
   }
 }

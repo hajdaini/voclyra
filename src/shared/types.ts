@@ -67,7 +67,7 @@ export type ResultState = {
   tokensPerSecond?: number;
 };
 
-export type WhisperModelId = 'tiny' | 'base' | 'small' | 'medium' | 'large';
+export type WhisperModelId = string;
 
 export type WhisperModelState = 'ready' | 'missing' | 'downloading';
 
@@ -111,12 +111,7 @@ export type GpuUsage = {
   utilizationPercent: number | null;
 };
 
-export type LlmModelId =
-  | 'gemma4:e2b-it-qat'
-  | 'gemma4:e4b-it-qat'
-  | 'gemma4:12b-it-qat'
-  | 'gemma4:26b-a4b-it-qat'
-  | 'gemma4:31b-it-qat';
+export type LlmModelId = string;
 
 export type LlmModelState = 'ready' | 'missing' | 'downloading';
 
@@ -148,6 +143,8 @@ export type OverlayState = {
   phase?: 'recording' | 'stopping' | 'preparing' | 'loading' | 'transcribing' | 'thinking' | 'generating' | 'finalizing';
   actionPhase?: 'ready' | 'loading' | 'recording' | 'processing' | 'done' | 'warning' | 'error';
   waveform: number[];
+  microphoneWaveform?: number[];
+  systemAudioWaveform?: number[];
   progress?: number;
   tokensGenerated?: number;
   progressLabel?: string;
@@ -183,7 +180,7 @@ export type AppApi = {
     switch: (mode: 'speak' | 'transcript', source: 'input' | 'output') => Promise<void>;
     stop: (mode: 'speak' | 'transcript') => Promise<ArrayBuffer>;
     cancel: (mode: 'speak' | 'transcript') => Promise<void>;
-    onLevel: (callback: (event: { mode: 'speak' | 'transcript'; level: number }) => void) => () => void;
+    onLevel: (callback: (event: { mode: 'speak' | 'transcript'; source?: 'input' | 'output'; level: number }) => void) => () => void;
   };
   text: {
     improve: (text: string) => Promise<ResultState>;
@@ -214,6 +211,7 @@ export type AppApi = {
   llm: {
     availableModels: () => Promise<LlmAvailableModel[]>;
     downloadModel: (id: LlmModelId) => Promise<LlmAvailableModel[]>;
+    downloadCustomModel: (url: string) => Promise<LlmAvailableModel[]>;
     deleteModel: (id: LlmModelId) => Promise<LlmAvailableModel[]>;
     runtimeInfo: () => Promise<LlmRuntimeInfo>;
     warmup: (model: string) => Promise<void>;
@@ -236,6 +234,7 @@ export type AppApi = {
     getState: (mode?: OverlayState['mode']) => Promise<OverlayState>;
     stopSpeak: (mode?: OverlayState['mode']) => Promise<void>;
     cancelRecording: (mode: 'speak' | 'transcript') => Promise<void>;
+    openSettings: () => Promise<void>;
     dismiss: (mode?: OverlayState['mode']) => Promise<void>;
     setContentSize: (mode: OverlayState['mode'], size: { width: number; height: number }) => Promise<void>;
     onState: (callback: (state: OverlayState) => void) => () => void;

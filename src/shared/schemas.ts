@@ -49,6 +49,8 @@ export const historyTitleUpdateSchema = z.object({
 
 export const whisperModelIdSchema = z.enum(['tiny', 'base', 'small', 'medium', 'large']);
 
+export const customModelUrlSchema = z.string().trim().min(1).max(2048).url();
+
 export const llmModelIdSchema = z.enum([
   'gemma4:e2b-it-qat',
   'gemma4:e4b-it-qat',
@@ -64,6 +66,8 @@ export const overlayStateSchema = z.object({
   phase: z.enum(['recording', 'stopping', 'preparing', 'loading', 'transcribing', 'thinking', 'generating', 'finalizing']).optional(),
   actionPhase: z.enum(['ready', 'loading', 'recording', 'processing', 'done', 'warning', 'error']).optional(),
   waveform: z.array(z.number().min(0).max(1)).max(16),
+  microphoneWaveform: z.array(z.number().min(0).max(1)).max(16).optional(),
+  systemAudioWaveform: z.array(z.number().min(0).max(1)).max(16).optional(),
   progress: z.number().min(0).max(100).optional(),
   tokensGenerated: z.number().int().min(0).max(1000000).optional(),
   progressLabel: z.string().max(80).optional(),

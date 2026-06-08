@@ -143,7 +143,7 @@ describe('Settings', () => {
     expect(writeJson).toHaveBeenCalledWith('settings.json', withoutStartup(defaultSettings));
 
     const validSettings = { ...defaultSettings, whisperModel: 'ggml-large-v3.bin', llmModel: 'gemma.gguf' };
-    store['settings.json'] = validSettings;
+    store['settings.json'] = withoutStartup(validSettings);
     writeJson.mockClear();
     await expect(service.get()).resolves.toEqual(validSettings);
     expect(writeJson).not.toHaveBeenCalled();

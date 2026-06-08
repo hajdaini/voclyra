@@ -40,9 +40,17 @@ const api: AppApi = {
           'mode' in value &&
           'level' in value &&
           (value.mode === 'speak' || value.mode === 'transcript') &&
+          (!('source' in value) || value.source === 'input' || value.source === 'output') &&
           typeof value.level === 'number'
         ) {
-          callback({ mode: value.mode, level: value.level });
+          const source = 'source' in value && (value.source === 'input' || value.source === 'output')
+            ? value.source
+            : undefined;
+          callback({
+            mode: value.mode,
+            source,
+            level: value.level,
+          });
         }
       };
       ipcRenderer.on(channels.audioCaptureLevel, listener);
@@ -97,6 +105,8 @@ const api: AppApi = {
       ipcRenderer.invoke(channels.llmAvailableModels) as ReturnType<AppApi['llm']['availableModels']>,
     downloadModel: (id) =>
       ipcRenderer.invoke(channels.llmDownloadModel, id) as ReturnType<AppApi['llm']['downloadModel']>,
+    downloadCustomModel: (url) =>
+      ipcRenderer.invoke(channels.llmDownloadCustomModel, url) as ReturnType<AppApi['llm']['downloadCustomModel']>,
     deleteModel: (id) =>
       ipcRenderer.invoke(channels.llmDeleteModel, id) as ReturnType<AppApi['llm']['deleteModel']>,
     runtimeInfo: () =>
@@ -186,6 +196,7 @@ const api: AppApi = {
     getState: (mode) => ipcRenderer.invoke(channels.overlayGetState, mode) as Promise<OverlayState>,
     stopSpeak: (mode) => ipcRenderer.invoke(channels.overlayStopSpeak, mode) as Promise<void>,
     cancelRecording: (mode) => ipcRenderer.invoke(channels.overlayCancelRecording, mode) as Promise<void>,
+    openSettings: () => ipcRenderer.invoke(channels.overlayOpenSettings) as Promise<void>,
     dismiss: (mode) => ipcRenderer.invoke(channels.overlayDismiss, mode) as Promise<void>,
     setContentSize: (mode, size) => ipcRenderer.invoke(channels.overlayContentSize, { mode, size }) as Promise<void>,
     onState: (callback) => {

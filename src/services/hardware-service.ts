@@ -12,6 +12,7 @@ type GpuInfo = {
 };
 
 type CheckStatus = 'ok' | 'missing' | 'timeout';
+type GpuInfoStatus = { status: CheckStatus; items: GpuInfo[] };
 
 export type HardwareCheckResult = {
   status: CheckStatus;
@@ -28,13 +29,18 @@ export type HardwareDiagnostics = {
   gpuCuda: HardwareCheckResult;
 };
 
+let nvidiaSmiCheck: Promise<HardwareCheckResult> | null = null;
+let gpuInfoCheck: Promise<GpuInfoStatus> | null = null;
+let physicalCpuCoresCheck: Promise<HardwareCheckResult> | null = null;
+
 export class HardwareService {
   nvidiaSmi(): Promise<HardwareCheckResult> {
     if (process.platform !== 'win32') {
       return Promise.resolve({ status: 'missing', value: 'unknown' });
     }
 
-    return this.commandText('nvidia-smi', [], 3000);
+    nvidiaSmiCheck ??= this.commandText('nvidia-smi', [], 3000);
+    return nvidiaSmiCheck;
   }
 
   async info(): Promise<HardwareInfo> {
@@ -127,6 +133,11 @@ export class HardwareService {
       return { status: 'missing', value: 'unknown' };
     }
 
+    physicalCpuCoresCheck ??= this.readPhysicalCpuCores();
+    return physicalCpuCoresCheck;
+  }
+
+  private async readPhysicalCpuCores(): Promise<HardwareCheckResult> {
     const result = await this.powerShellJson(
       '(Get-CimInstance Win32_Processor | Measure-Object -Property NumberOfCores -Sum).Sum | ConvertTo-Json -Compress',
       3000,
@@ -169,11 +180,16 @@ export class HardwareService {
       .filter((gpu): gpu is GpuUsage => Boolean(gpu));
   }
 
-  private async gpuInfoWithStatus(): Promise<{ status: CheckStatus; items: GpuInfo[] }> {
+  private async gpuInfoWithStatus(): Promise<GpuInfoStatus> {
     if (process.platform !== 'win32') {
       return { status: 'missing', items: [] };
     }
 
+    gpuInfoCheck ??= this.readGpuInfoWithStatus();
+    return gpuInfoCheck;
+  }
+
+  private async readGpuInfoWithStatus(): Promise<GpuInfoStatus> {
     const [query, summary] = await Promise.all([
       this.commandText(
         'nvidia-smi',

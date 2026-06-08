@@ -26,7 +26,6 @@ type AppContentProps = {
   improveInput: string;
   isRecording: boolean;
   actionBlockMessage: string | null;
-  waveform: number[];
   settings: Settings;
   whisperRuntime: WhisperRuntimeInfo;
   llmRuntime: LlmRuntimeInfo;
@@ -56,6 +55,7 @@ type AppContentProps = {
   onDownloadWhisperModel: (id: WhisperModelId) => void;
   onDeleteWhisperModel: (id: WhisperModelId) => void;
   onDownloadLlmModel: (id: LlmAvailableModel['id']) => void;
+  onDownloadCustomLlmModel: (url: string) => void;
   onDeleteLlmModel: (id: LlmAvailableModel['id']) => void;
   onFocusHandled: () => void;
   onShortcutUnavailable: () => void;
@@ -77,7 +77,6 @@ export const AppContent = ({
   improveInput,
   isRecording,
   actionBlockMessage,
-  waveform,
   settings,
   whisperRuntime,
   llmRuntime,
@@ -107,6 +106,7 @@ export const AppContent = ({
   onDownloadWhisperModel,
   onDeleteWhisperModel,
   onDownloadLlmModel,
+  onDownloadCustomLlmModel,
   onDeleteLlmModel,
   onFocusHandled,
   onShortcutUnavailable,
@@ -128,7 +128,6 @@ export const AppContent = ({
         improveInput={improveInput}
         isRecording={isRecording}
         actionBlockMessage={actionBlockMessage}
-        waveform={waveform}
         settings={settings}
         whisperRuntime={whisperRuntime}
         llmRuntime={llmRuntime}
@@ -163,6 +162,7 @@ export const AppContent = ({
         onDownloadWhisperModel={onDownloadWhisperModel}
         onDeleteWhisperModel={onDeleteWhisperModel}
         onDownloadLlmModel={onDownloadLlmModel}
+        onDownloadCustomLlmModel={onDownloadCustomLlmModel}
         onDeleteLlmModel={onDeleteLlmModel}
         onFocusHandled={onFocusHandled}
         onShortcutUnavailable={onShortcutUnavailable}

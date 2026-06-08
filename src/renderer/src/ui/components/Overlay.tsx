@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type JSX } from 'react';
-import { AlertTriangle, CheckCircle2, Headphones, LoaderCircle, Mic, Wand2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Headphones, LoaderCircle, Mic, Volume2, Wand2 } from 'lucide-react';
 import type { OverlayState } from '@shared/types';
 import { defaultSettings } from '@shared/defaults';
 import { api } from '../../api';
 import { inactiveOverlayState } from '../appState';
+import { AudioLevelIcon } from './AudioLevelIcon';
 
 export const Overlay = (): JSX.Element => {
   const lastContentSizeRef = useRef<{ width: number; height: number } | null>(null);
@@ -100,13 +101,37 @@ export const Overlay = (): JSX.Element => {
         {overlayState.status === 'recording' && overlayState.waveform.length > 0 ? (
           <>
             <span className={`overlay-message ${overlayState.messageType ?? 'info'}`}>{statusMessage}</span>
-            <div className="overlay-wave" aria-hidden="true">
-              {Array.from({ length: 12 }, (_, index) => (
-                <span
-                  key={index}
-                  style={{ height: `${Math.round(3 + (overlayState.waveform[index] ?? 0.04) * 31)}px` }}
+            <div className="audio-level-group compact">
+              {overlayState.mode === 'transcript' && (
+                <button
+                  className="overlay-audio-button"
+                  type="button"
+                  title="Open microphone settings"
+                  onClick={() => void api.overlay.openSettings()}
+                >
+                  <AudioLevelIcon
+                    icon={Mic}
+                    levels={overlayState.microphoneWaveform ?? []}
+                    active={overlayState.status === 'recording'}
+                    label="Microphone level"
+                    size={19}
+                  />
+                </button>
+              )}
+              <button
+                className="overlay-audio-button"
+                type="button"
+                title={overlayState.mode === 'transcript' ? 'Open computer audio settings' : 'Open microphone settings'}
+                onClick={() => void api.overlay.openSettings()}
+              >
+                <AudioLevelIcon
+                  icon={overlayState.mode === 'transcript' ? Volume2 : Mic}
+                  levels={overlayState.mode === 'transcript' ? overlayState.systemAudioWaveform ?? overlayState.waveform : overlayState.waveform}
+                  active={overlayState.status === 'recording'}
+                  label={overlayState.mode === 'transcript' ? 'Computer audio level' : 'Microphone level'}
+                  size={19}
                 />
-              ))}
+              </button>
             </div>
           </>
         ) : (

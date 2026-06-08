@@ -7,7 +7,8 @@ import { appMessages } from '@shared/GlobalVars';
 import { actionMessages } from '@shared/action-messages';
 import { actionBlockMessage } from '@shared/action-locks';
 import { actionOverlay, actionUi } from '@shared/action-ui';
-import { historyTitleUpdateSchema, idSchema, llmModelIdSchema, overlayStateSchema, settingsSchema, textSchema } from '@shared/schemas';
+import { customLlmModelUrlError } from '@shared/custom-models';
+import { customModelUrlSchema, historyTitleUpdateSchema, idSchema, llmModelIdSchema, overlayStateSchema, settingsSchema, textSchema } from '@shared/schemas';
 import { whisperModelIdSchema } from '@shared/schemas';
 import type { HomeMode, OverlayState, ResultState, Settings } from '@shared/types';
 import { ActivePasteService } from '@services/active-paste-service';
@@ -27,6 +28,7 @@ import {
   cancelRecordingFromOverlay,
   dismissOverlay,
   getOverlayState,
+  openSection,
   resizeOverlayToContent,
   sendBackgroundAppAction,
   sendImproveResult,
@@ -165,7 +167,7 @@ export const improveClipboardFromHotkey = async (): Promise<void> => {
 export const registerIpc = (): void => {
   ipcMain.handle(channels.settingsGet, async () => {
     settings = await settingsService.get();
-    settings = { ...settings, startAtStartup: startupService.enabled() };
+    settings = { ...settings, startAtStartup: await startupService.enabled() };
     return settings;
   });
 
@@ -184,7 +186,7 @@ export const registerIpc = (): void => {
     }
     const savedSettings = await settingsService.save(nextSettings);
     settings = savedSettings;
-    startupService.apply(savedSettings.startAtStartup);
+    await startupService.apply(savedSettings.startAtStartup);
     updateTray(savedSettings);
     return savedSettings;
   });
@@ -283,6 +285,17 @@ export const registerIpc = (): void => {
     });
   });
 
+  ipcMain.handle(channels.llmDownloadCustomModel, (event, value: unknown) => {
+    const parsed = customModelUrlSchema.safeParse(value);
+    if (!parsed.success || customLlmModelUrlError(parsed.data)) {
+      return llmModelService.availableModels();
+    }
+    const url = parsed.data;
+    return llmModelService.downloadCustomModel(url, (progress) => {
+      event.sender.send(channels.llmDownloadProgress, progress);
+    });
+  });
+
   ipcMain.handle(channels.llmDeleteModel, (_event, value: unknown) => {
     const id = llmModelIdSchema.parse(value);
     return llmModelService.deleteModel(id);
@@ -343,8 +356,8 @@ export const registerIpc = (): void => {
       throw new Error('Invalid audio capture mode.');
     }
     settings = await settingsService.get();
-    await audioCaptureHelperService.start(value, settings, (level) => {
-      event.sender.send(channels.audioCaptureLevel, { mode: value, level });
+    await audioCaptureHelperService.start(value, settings, (source, level) => {
+      event.sender.send(channels.audioCaptureLevel, { mode: value, source, level });
     });
   });
 
@@ -549,6 +562,10 @@ export const registerIpc = (): void => {
     if (value === 'speak' || value === 'transcript') {
       cancelRecordingFromOverlay(value);
     }
+  });
+
+  ipcMain.handle(channels.overlayOpenSettings, () => {
+    openSection('settings');
   });
 
   ipcMain.handle(channels.overlayDismiss, (_event, value: unknown) => {

@@ -183,15 +183,15 @@ Voclyra stores user data locally:
 %USERPROFILE%\.voclyra
 ```
 
-Typical folders:
+Content:
 
 ```text
-audio       Saved Speak and Transcript audio
-history     Previous results
-logs        Debug logs
-models      Whisper and LLM models
-settings    App settings
-tmp         Temporary current processing files
+audio           Saved Speak and Transcript audio
+logs            Debug logs
+models          Whisper and LLM models
+tmp             Temporary current processing files
+settings.json   App settings
+history.json    Previous results
 ```
 
 Runtime binaries are expected in:

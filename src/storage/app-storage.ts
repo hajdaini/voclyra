@@ -4,6 +4,8 @@ import { dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { appStorageConfig } from '@shared/GlobalVars';
 
+let rootHidden = false;
+
 export class AppStorage {
   readonly root = join(homedir(), appStorageConfig.directoryName);
 
@@ -41,9 +43,10 @@ export class AppStorage {
   }
 
   private hideRoot(): void {
-    if (process.platform !== 'win32') {
+    if (process.platform !== 'win32' || rootHidden) {
       return;
     }
+    rootHidden = true;
 
     const child = spawn('attrib', ['+h', this.root], {
       windowsHide: true,

@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from 'react';
 import { CircleHelp, FileUp } from 'lucide-react';
-import type { GpuUsage, Hotkeys } from '@shared/types';
+import type { Hotkeys } from '@shared/types';
 import { packageInfo } from '@shared/GlobalVars';
 import logoUrl from '@assets/logo.svg';
 import { WindowControls } from './WindowControls';
 
 type AppTopbarProps = {
   hotkeys: Hotkeys;
-  gpuUsage: GpuUsage;
   hasRecording: boolean;
   isImproveProcessing: boolean;
   onOpenLogsFolder: () => void;
@@ -34,7 +33,6 @@ type OpenMenu = 'file' | 'actions' | 'edit' | null;
 
 export const AppTopbar = ({
   hotkeys,
-  gpuUsage,
   hasRecording,
   isImproveProcessing,
   onOpenLogsFolder,
@@ -187,41 +185,9 @@ export const AppTopbar = ({
         </button>
       </nav>
       <div className={`topbar-spacer ${openMenu ? 'menu-open' : ''}`} onMouseDown={() => setOpenMenu(null)} />
-      <GpuUsageBadge usage={gpuUsage} />
       <WindowControls onMinimize={onMinimize} onMaximize={onMaximize} onClose={onClose} />
     </header>
   );
 };
 
 const formatShortcut = (shortcut: string): string => shortcut.replace('CommandOrControl', 'Ctrl');
-
-const GpuUsageBadge = ({ usage }: { usage: GpuUsage }): JSX.Element | null => {
-  if (!usage.available || usage.memoryUsedGb === null || usage.memoryTotalGb === null) {
-    return null;
-  }
-
-  const tone = gpuUsageTone(usage.memoryUsagePercent);
-  const title = `${usage.name} VRAM ${usage.memoryUsagePercent ?? '?'}%, GPU ${usage.utilizationPercent ?? '?'}%`;
-  return (
-    <div className={`topbar-gpu-usage ${tone}`} title={title} aria-label={title}>
-      <span>VRAM</span>
-      <strong>{`${formatGb(usage.memoryUsedGb)} / ${formatGb(usage.memoryTotalGb)}`}</strong>
-      <em>{`${usage.memoryUsagePercent ?? 0}%`}</em>
-    </div>
-  );
-};
-
-const gpuUsageTone = (percent: number | null): 'low' | 'medium' | 'high' => {
-  if (percent === null) {
-    return 'low';
-  }
-  if (percent >= 90) {
-    return 'high';
-  }
-  if (percent >= 80) {
-    return 'medium';
-  }
-  return 'low';
-};
-
-const formatGb = (value: number): string => `${Number.isInteger(value) ? value : value.toFixed(1)} GB`;

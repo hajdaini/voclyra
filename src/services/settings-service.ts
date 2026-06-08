@@ -8,6 +8,7 @@ export class SettingsService {
 
   async get(): Promise<Settings> {
     const rawSettings = await this.storage.readJson<unknown>('settings.json', defaultSettings);
+    const isFallbackSettings = rawSettings === defaultSettings;
     const settingsInput = isSettingsObject(rawSettings) ? { ...defaultSettings, ...withoutStartupSetting(rawSettings) } : rawSettings;
     const parsedSettings = settingsSchema.safeParse(settingsInput);
 
@@ -15,16 +16,10 @@ export class SettingsService {
       return this.save(defaultSettings);
     }
 
-    const settings =
-      parsedSettings.data.transcriptOutputDeviceId === '' && parsedSettings.data.transcriptOutputDeviceLabel === ''
-        ? {
-            ...parsedSettings.data,
-            transcriptOutputDeviceId: defaultSettings.transcriptOutputDeviceId,
-            transcriptOutputDeviceLabel: defaultSettings.transcriptOutputDeviceLabel,
-          }
-        : parsedSettings.data;
-    if (JSON.stringify(settings) !== JSON.stringify(rawSettings)) {
-      await this.save(settings);
+    const settings = parsedSettings.data;
+    const storedSettings = withoutStartupSetting(settings);
+    if (!isFallbackSettings && JSON.stringify(storedSettings) !== JSON.stringify(rawSettings)) {
+      await this.storage.writeJson('settings.json', storedSettings);
     }
 
     return settings;

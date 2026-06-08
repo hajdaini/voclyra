@@ -29,6 +29,7 @@ import type {
 } from '@shared/types';
 import { api } from '../../api';
 import { defaultWaveform, nextVisualWaveform, settingsWaveformSize } from '../waveform';
+import { AudioLevelIcon } from '../components/AudioLevelIcon';
 import { ProgressRing } from '../components/ProgressRing';
 
 type AudioInputDevice = {
@@ -63,6 +64,7 @@ export type SettingsViewProps = {
   onDownloadWhisperModel: (id: WhisperModelId) => void;
   onDeleteWhisperModel: (id: WhisperModelId) => void;
   onDownloadLlmModel: (id: LlmAvailableModel['id']) => void;
+  onDownloadCustomLlmModel: (url: string) => void;
   onDeleteLlmModel: (id: LlmAvailableModel['id']) => void;
   focusSection: 'improveAi' | 'speechAi' | 'microphone' | 'history' | 'shortcuts' | null;
   onFocusHandled: () => void;
@@ -83,6 +85,7 @@ export const SettingsView = ({
   onDownloadWhisperModel,
   onDeleteWhisperModel,
   onDownloadLlmModel,
+  onDownloadCustomLlmModel,
   onDeleteLlmModel,
   focusSection,
   onFocusHandled,
@@ -107,6 +110,7 @@ export const SettingsView = ({
   const [outputTestRemaining, setOutputTestRemaining] = useState(0);
   const [microphoneTestError, setMicrophoneTestError] = useState('');
   const [outputTestError, setOutputTestError] = useState('');
+  const [customLlmUrl, setCustomLlmUrl] = useState('');
 
   useEffect(() => {
     if (!focusSection) {
@@ -388,11 +392,13 @@ export const SettingsView = ({
               {isMicrophoneTesting ? <Square size={15} /> : <Mic size={16} />}
               <span>{isMicrophoneTesting ? 'Stop test' : 'Start test'}</span>
             </button>
-            <div className={`microphone-test-wave ${isMicrophoneTesting ? 'active' : ''}`} aria-hidden="true">
-              {microphoneTestLevels.map((level, index) => (
-                <span key={index} style={{ height: `${Math.round(5 + level * 28)}px` }} />
-              ))}
-            </div>
+            <AudioLevelIcon
+              icon={Mic}
+              levels={microphoneTestLevels}
+              active={isMicrophoneTesting}
+              label="Microphone level"
+              size={22}
+            />
             {isMicrophoneTesting && <span className="microphone-test-timer">{microphoneTestRemaining}s</span>}
           </div>
           {microphoneTestError && <span className="microphone-test-error">{microphoneTestError}</span>}
@@ -437,11 +443,13 @@ export const SettingsView = ({
               <Volume2 size={16} />
               <span>{isOutputTesting ? 'Stop test' : 'Play sound'}</span>
             </button>
-            <div className={`microphone-test-wave ${isOutputTesting ? 'active' : ''}`} aria-hidden="true">
-              {microphoneTestLevels.map((level, index) => (
-                <span key={index} style={{ height: `${Math.round(5 + level * 28)}px` }} />
-              ))}
-            </div>
+            <AudioLevelIcon
+              icon={Volume2}
+              levels={microphoneTestLevels}
+              active={isOutputTesting}
+              label="Computer audio level"
+              size={22}
+            />
             {isOutputTesting && <span className="microphone-test-timer">{outputTestRemaining}s</span>}
           </div>
           {outputTestError && <span className="microphone-test-error">{outputTestError}</span>}
@@ -521,6 +529,28 @@ export const SettingsView = ({
           <div className="inline-download-heading">
             <Download size={16} />
             <span>Download local AI models</span>
+            <HelpHint text="Paste a direct Hugging Face .gguf file URL. Voclyra downloads it locally, verifies the host and file type, then adds it to the Model list." />
+          </div>
+          <div className="custom-model-download">
+            <input
+              type="url"
+              value={customLlmUrl}
+              onChange={(event) => setCustomLlmUrl(event.target.value)}
+              placeholder="https://huggingface.co/.../resolve/.../model.gguf"
+              aria-label="Custom local AI model URL"
+            />
+            <button
+              type="button"
+              title="Download custom local AI model"
+              disabled={!customLlmUrl.trim()}
+              onClick={() => {
+                onDownloadCustomLlmModel(customLlmUrl);
+                setCustomLlmUrl('');
+              }}
+            >
+              <Download size={16} />
+              <span>Download custom</span>
+            </button>
           </div>
           <GpuSummary hardwareInfo={hardwareInfo} />
           <div className="model-download-list compact-list">
@@ -705,6 +735,7 @@ export const SettingsView = ({
           <div className="inline-download-heading">
             <Download size={16} />
             <span>Download Whisper models</span>
+            <HelpHint text="Download one of the bundled compatible Whisper models. Custom Whisper model downloads are not available because this list is already validated for Voclyra." />
           </div>
           <GpuSummary hardwareInfo={hardwareInfo} />
           <div className="model-download-list compact-list">

@@ -20,12 +20,14 @@ import { appMessages } from '@shared/GlobalVars';
 import { actionMessages } from '@shared/action-messages';
 import { actionBlockMessage } from '@shared/action-locks';
 import { actionOverlay, actionResult, actionUi } from '@shared/action-ui';
+import { customLlmModelUrlError } from '@shared/custom-models';
 import { api } from '../api';
 import { startTranscriptRecorder, startWavRecorder, type WavRecorder } from '../audio/wav-recorder';
 import { AppContent } from './components/AppContent';
 import { AppToast, type Toast, type ToastType } from './components/AppToast';
 import { AppSidebar } from './components/AppSidebar';
 import { AppTopbar } from './components/AppTopbar';
+import { AppFooter } from './components/AppFooter';
 import { Overlay } from './components/Overlay';
 import { syncModelSettings } from './modelSettingsSync';
 import { overlayDone, overlayInactive, overlayProcessing, overlayRecording, overlayWarning } from './overlayStates';
@@ -92,6 +94,8 @@ export const App = (): JSX.Element => {
   const [isWhisperLoading, setIsWhisperLoading] = useState(false);
   const [isLlmLoading, setIsLlmLoading] = useState(false);
   const [waveform, setWaveform] = useState<number[]>(defaultWaveform);
+  const [transcriptMicrophoneWaveform, setTranscriptMicrophoneWaveform] = useState<number[]>(defaultWaveform);
+  const [transcriptSystemAudioWaveform, setTranscriptSystemAudioWaveform] = useState<number[]>(defaultWaveform);
   const [settingsFocus, setSettingsFocus] = useState<'improveAi' | 'speechAi' | 'microphone' | 'history' | 'shortcuts' | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [isShortcutEditing, setIsShortcutEditing] = useState(false);
@@ -129,6 +133,8 @@ export const App = (): JSX.Element => {
     transcriptMic: false,
     transcriptSystem: false,
   });
+  const transcriptMicrophoneWaveformRef = useRef<number[]>(defaultWaveform());
+  const transcriptSystemAudioWaveformRef = useRef<number[]>(defaultWaveform());
   const result =
     mode === 'speak' ? speakResult : mode === 'improve' ? improveResult : transcriptResult;
   const audioLockState = {
@@ -192,17 +198,34 @@ export const App = (): JSX.Element => {
   };
 
   useEffect(() => {
+    let active = true;
+    let cancelInitialLoad: (() => void) | null = null;
     void api.settings.get().then((nextSettings) => {
+      if (!active) {
+        return;
+      }
       settingsRef.current = nextSettings;
       setSettings(nextSettings);
-      void loadModels(nextSettings);
-    });
-    void api.history.list().then(setHistory);
-    void api.hardware.info().then((nextHardwareInfo) => {
-      setHardwareInfo(nextHardwareInfo);
-      if (!nextHardwareInfo.gpuAvailable) {
-        setGpuUsage((current) => ({ ...current, available: false }));
-      }
+      cancelInitialLoad = scheduleAfterFirstPaint(() => {
+        if (!active) {
+          return;
+        }
+        void loadModels(nextSettings);
+        void api.history.list().then((nextHistory) => {
+          if (active) {
+            setHistory(nextHistory);
+          }
+        });
+        void api.hardware.info().then((nextHardwareInfo) => {
+          if (!active) {
+            return;
+          }
+          setHardwareInfo(nextHardwareInfo);
+          if (!nextHardwareInfo.gpuAvailable) {
+            setGpuUsage((current) => ({ ...current, available: false }));
+          }
+        });
+      });
     });
     const removeWhisperDownloadListener = api.whisper.onDownloadProgress((progress) => {
       setAvailableWhisperModels((models) =>
@@ -214,13 +237,28 @@ export const App = (): JSX.Element => {
       );
     });
     const removeLlmDownloadListener = api.llm.onDownloadProgress((progress) => {
-      setAvailableLlmModels((models) =>
-        models.map((model) =>
+      setAvailableLlmModels((models) => {
+        if (!models.some((model) => model.id === progress.id)) {
+          return [
+            ...models,
+            {
+              id: progress.id,
+              label: progress.id,
+              fileName: progress.id,
+              disk: 'Downloading',
+              memory: 'Custom GGUF model',
+              vramGb: 0,
+              state: progress.state,
+              progress: progress.progress,
+            },
+          ];
+        }
+        return models.map((model) =>
           model.id === progress.id
             ? { ...model, state: progress.state, progress: progress.progress }
             : model,
-        ),
-      );
+        );
+      });
     });
     const removeOverlayListener = api.overlay.onState((state) => {
       setOverlayStateByMode((current) => ({
@@ -229,6 +267,8 @@ export const App = (): JSX.Element => {
       }));
     });
     return () => {
+      active = false;
+      cancelInitialLoad?.();
       removeWhisperDownloadListener();
       removeLlmDownloadListener();
       removeOverlayListener();
@@ -446,6 +486,22 @@ export const App = (): JSX.Element => {
     await loadModels();
   };
 
+  const downloadCustomLlmModel = async (url: string): Promise<void> => {
+    const validationError = customLlmModelUrlError(url);
+    if (validationError) {
+      showToast('error', validationError);
+      return;
+    }
+    try {
+      const nextAvailableLlmModels = await api.llm.downloadCustomModel(url);
+      setAvailableLlmModels(nextAvailableLlmModels);
+      await loadModels();
+      showToast('success', 'Custom local AI model downloaded.');
+    } catch (error) {
+      showToast('error', errorMessage(error));
+    }
+  };
+
   const deleteLlmModel = async (id: LlmAvailableModel['id']): Promise<void> => {
     const nextAvailableLlmModels = await api.llm.deleteModel(id);
     setAvailableLlmModels(nextAvailableLlmModels);
@@ -567,6 +623,9 @@ export const App = (): JSX.Element => {
     }
     delete overlayNoticeRef.current[recordingMode];
     setWaveform(defaultWaveform());
+    if (recordingMode === 'transcript') {
+      resetTranscriptAudioLevels();
+    }
     publishOverlayState(overlayInactive(recordingMode));
     window.setTimeout(() => {
       void activeRecorder.cancel();
@@ -642,6 +701,34 @@ export const App = (): JSX.Element => {
     }
   };
 
+  const resetTranscriptAudioLevels = (): void => {
+    const nextMicrophoneWaveform = defaultWaveform();
+    const nextSystemAudioWaveform = defaultWaveform();
+    transcriptMicrophoneWaveformRef.current = nextMicrophoneWaveform;
+    transcriptSystemAudioWaveformRef.current = nextSystemAudioWaveform;
+    setTranscriptMicrophoneWaveform(nextMicrophoneWaveform);
+    setTranscriptSystemAudioWaveform(nextSystemAudioWaveform);
+  };
+
+  const publishTranscriptRecordingOverlay = (
+    systemAudioWaveform: number[],
+    microphoneWaveform: number[],
+    message = overlayNoticeRef.current.transcript?.message,
+    messageType = overlayNoticeRef.current.transcript?.messageType,
+  ): void => {
+    publishOverlayState(overlayRecording(
+      'transcript',
+      systemAudioWaveform.slice(-overlayWaveformSize),
+      message,
+      messageType,
+      'recording',
+      {
+        microphoneWaveform: microphoneWaveform.slice(-overlayWaveformSize),
+        systemAudioWaveform: systemAudioWaveform.slice(-overlayWaveformSize),
+      },
+    ));
+  };
+
   const startTranscript = async (): Promise<void> => {
     if (!whisperRuntime.runtimeAvailable) {
       setSection('home');
@@ -668,8 +755,12 @@ export const App = (): JSX.Element => {
     setSection('home');
     setMode('transcript');
     recordingActiveRef.current.transcript = true;
+    resetTranscriptAudioLevels();
     startAudioWarningTimer('transcriptSystem', 'No computer audio. Check settings.');
-    publishOverlayState(overlayRecording('transcript', defaultWaveform().slice(-overlayWaveformSize)));
+    publishTranscriptRecordingOverlay(
+      transcriptSystemAudioWaveformRef.current,
+      transcriptMicrophoneWaveformRef.current,
+    );
     try {
       setTranscriptRecorder(
         await startTranscriptRecorder(
@@ -679,12 +770,6 @@ export const App = (): JSX.Element => {
                 return current;
               }
               const nextWaveform = nextVisualWaveform(current, level);
-              publishOverlayState(overlayRecording(
-                'transcript',
-                nextWaveform.slice(-overlayWaveformSize),
-                overlayNoticeRef.current.transcript?.message,
-                overlayNoticeRef.current.transcript?.messageType,
-              ));
               return nextWaveform;
             });
           },
@@ -694,9 +779,18 @@ export const App = (): JSX.Element => {
               label: settings.microphoneDeviceLabel,
             },
             onMicrophoneLevel: (level) => {
-              if (recordingActiveRef.current.transcript && level > 0.1) {
+              if (!recordingActiveRef.current.transcript) {
+                return;
+              }
+              if (level > 0.1) {
                 markAudioDetected('transcriptMic');
               }
+              setTranscriptMicrophoneWaveform((current) => {
+                const nextWaveform = nextVisualWaveform(current, level);
+                transcriptMicrophoneWaveformRef.current = nextWaveform;
+                publishTranscriptRecordingOverlay(transcriptSystemAudioWaveformRef.current, nextWaveform);
+                return nextWaveform;
+              });
             },
             onSystemAudioChange: (active) => {
               if (!recordingActiveRef.current.transcript) {
@@ -710,9 +804,18 @@ export const App = (): JSX.Element => {
               }));
             },
             onSystemAudioLevel: (level) => {
-              if (recordingActiveRef.current.transcript && level > 0.1) {
+              if (!recordingActiveRef.current.transcript) {
+                return;
+              }
+              if (level > 0.1) {
                 markAudioDetected('transcriptSystem');
               }
+              setTranscriptSystemAudioWaveform((current) => {
+                const nextWaveform = nextVisualWaveform(current, level);
+                transcriptSystemAudioWaveformRef.current = nextWaveform;
+                publishTranscriptRecordingOverlay(nextWaveform, transcriptMicrophoneWaveformRef.current);
+                return nextWaveform;
+              });
             },
           },
         ),
@@ -734,6 +837,7 @@ export const App = (): JSX.Element => {
     clearAudioWarningTimer('transcriptMic');
     clearAudioWarningTimer('transcriptSystem');
     setWaveform(defaultWaveform());
+    resetTranscriptAudioLevels();
     setIsTranscriptProcessing(true);
     clearOverlayWarningTimer('transcript');
     publishOverlayState(overlayProcessing('transcript', defaultWaveform().slice(-overlayWaveformSize), undefined, undefined, {
@@ -779,6 +883,7 @@ export const App = (): JSX.Element => {
       setSection('home');
       setMode('transcript');
       setWaveform(defaultWaveform());
+      resetTranscriptAudioLevels();
       setIsTranscriptProcessing(true);
       clearOverlayWarningTimer('transcript');
       publishOverlayState(overlayProcessing('transcript', defaultWaveform().slice(-overlayWaveformSize), undefined, undefined, {
@@ -1002,7 +1107,12 @@ export const App = (): JSX.Element => {
     } else if (overlayMode === 'speak' && isSpeakProcessing) {
       publishOverlayState(overlayProcessing('speak', waveform.slice(-overlayWaveformSize), message, messageType));
     } else if (overlayMode === 'transcript' && recordingActiveRef.current.transcript) {
-      publishOverlayState(overlayRecording('transcript', waveform.slice(-overlayWaveformSize), message, messageType));
+      publishTranscriptRecordingOverlay(
+        transcriptSystemAudioWaveformRef.current,
+        transcriptMicrophoneWaveformRef.current,
+        message,
+        messageType,
+      );
     } else if (overlayMode === 'transcript' && isTranscriptProcessing) {
       publishOverlayState(overlayProcessing('transcript', waveform.slice(-overlayWaveformSize), message, messageType));
     } else if (overlayMode === 'improve' && isImproveProcessing) {
@@ -1022,7 +1132,10 @@ export const App = (): JSX.Element => {
         return;
       }
       if (overlayMode === 'transcript' && recordingActiveRef.current.transcript) {
-        publishOverlayState(overlayRecording('transcript', waveform.slice(-overlayWaveformSize)));
+        publishTranscriptRecordingOverlay(
+          transcriptSystemAudioWaveformRef.current,
+          transcriptMicrophoneWaveformRef.current,
+        );
         return;
       }
       if (overlayMode === 'transcript' && isTranscriptProcessing) {
@@ -1178,7 +1291,6 @@ export const App = (): JSX.Element => {
     <main className="app-shell">
       <AppTopbar
         hotkeys={settings.hotkeys}
-        gpuUsage={gpuUsage}
         hasRecording={Boolean(recorder || transcriptRecorder)}
         isImproveProcessing={isImproveProcessing}
         onOpenLogsFolder={() => void api.app.openLogsFolder()}
@@ -1222,7 +1334,6 @@ export const App = (): JSX.Element => {
         improveInput={improveInput}
         isRecording={mode === 'transcript' ? Boolean(transcriptRecorder) : Boolean(recorder)}
         actionBlockMessage={currentActionBlockMessage}
-        waveform={waveform}
         settings={settings}
         whisperRuntime={whisperRuntime}
         llmRuntime={llmRuntime}
@@ -1254,6 +1365,7 @@ export const App = (): JSX.Element => {
         onDownloadWhisperModel={(id) => void downloadWhisperModel(id)}
         onDeleteWhisperModel={(id) => void deleteWhisperModel(id)}
         onDownloadLlmModel={(id) => void downloadLlmModel(id)}
+        onDownloadCustomLlmModel={(url) => void downloadCustomLlmModel(url)}
         onDeleteLlmModel={(id) => void deleteLlmModel(id)}
         onFocusHandled={() => setSettingsFocus(null)}
         onShortcutUnavailable={() => showToast('error', 'This shortcut cannot be used.')}
@@ -1268,6 +1380,15 @@ export const App = (): JSX.Element => {
         onHistoryDelete={(id) => void deleteEntry(id)}
         onHistoryDeleteSelected={(ids) => void deleteSelectedEntries(ids)}
         onHistoryClear={() => void clearHistory()}
+      />
+      <AppFooter
+        gpuUsage={gpuUsage}
+        microphoneLevels={mode === 'transcript' ? transcriptMicrophoneWaveform : waveform}
+        systemAudioLevels={transcriptSystemAudioWaveform}
+        microphoneActive={Boolean(recorder) || Boolean(transcriptRecorder)}
+        systemAudioActive={Boolean(transcriptRecorder)}
+        onMicrophoneSettings={() => openSettingsFocus('microphone')}
+        onAudioSettings={() => openSettingsFocus('microphone')}
       />
       {toast && <AppToast key={toast.id} toast={toast} onClose={() => setToast(null)} />}
     </main>
@@ -1295,6 +1416,35 @@ const settingsAreEqual = (left: SettingsType, right: SettingsType): boolean =>
   left.hotkeys.speak === right.hotkeys.speak &&
   left.hotkeys.improveText === right.hotkeys.improveText &&
   left.hotkeys.transcript === right.hotkeys.transcript;
+
+const scheduleAfterFirstPaint = (callback: () => void): (() => void) => {
+  let cancelled = false;
+  let firstFrame = 0;
+  let secondFrame = 0;
+  const run = (): void => {
+    if (!cancelled) {
+      callback();
+    }
+  };
+
+  if (typeof window.requestAnimationFrame !== 'function') {
+    const timer = window.setTimeout(run, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }
+
+  firstFrame = window.requestAnimationFrame(() => {
+    secondFrame = window.requestAnimationFrame(run);
+  });
+
+  return () => {
+    cancelled = true;
+    window.cancelAnimationFrame(firstFrame);
+    window.cancelAnimationFrame(secondFrame);
+  };
+};
 
 const llmWarmupKey = (model: string, contextSize: SettingsType['llmContextSize']): string =>
   `${model}:${contextSize}`;

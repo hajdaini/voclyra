@@ -45,8 +45,9 @@ export const overlayRecording = (
   message?: string,
   messageType?: OverlayMessageType,
   phase: OverlayState['phase'] = 'recording',
+  overrides: Partial<OverlayState> = {},
 ): OverlayState => ({
-  ...actionOverlay(mode, 'recording', waveform, cleanOverlayOverrides({ phase, message, messageType })),
+  ...actionOverlay(mode, 'recording', waveform, cleanOverlayOverrides({ phase, message, messageType, ...overrides })),
 });
 
 export const overlayProcessing = (

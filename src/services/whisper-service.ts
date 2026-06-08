@@ -68,17 +68,7 @@ export class WhisperService {
   }
 
   private modelRoots(): string[] {
-    const home = homedir();
-    const localAppData = process.env.LOCALAPPDATA;
-    return [
-      join(home, appStorageConfig.directoryName, 'models', 'whisper'),
-      join(process.cwd(), 'models', 'whisper'),
-      join(process.cwd(), 'whisper.cpp', 'models'),
-      join(home, 'whisper.cpp', 'models'),
-      join(home, '.cache', 'whisper'),
-      join(home, '.cache', 'huggingface', 'hub'),
-      ...(localAppData ? [join(localAppData, 'whisper.cpp', 'models')] : []),
-    ];
+    return [join(homedir(), appStorageConfig.directoryName, 'models', 'whisper')];
   }
 
   private async findModelFiles(root: string, depth: number): Promise<string[]> {

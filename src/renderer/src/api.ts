@@ -69,6 +69,7 @@ const fallbackApi: AppApi = {
   llm: {
     availableModels: () => Promise.resolve([]),
     downloadModel: () => Promise.resolve([]),
+    downloadCustomModel: () => Promise.resolve([]),
     deleteModel: () => Promise.resolve([]),
     runtimeInfo: () =>
       Promise.resolve({
@@ -114,9 +115,10 @@ const fallbackApi: AppApi = {
         mode: 'speak',
         status: 'recording',
         waveform: [],
-      }),
+    }),
     stopSpeak: () => Promise.resolve(),
     cancelRecording: () => Promise.resolve(),
+    openSettings: () => Promise.resolve(),
     dismiss: () => Promise.resolve(),
     setContentSize: () => Promise.resolve(),
     onState: () => () => {},

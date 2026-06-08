@@ -15,6 +15,7 @@ type AppSettingsProps = {
   onDownloadWhisperModel: (id: WhisperModelId) => void;
   onDeleteWhisperModel: (id: WhisperModelId) => void;
   onDownloadLlmModel: (id: LlmAvailableModel['id']) => void;
+  onDownloadCustomLlmModel: (url: string) => void;
   onDeleteLlmModel: (id: LlmAvailableModel['id']) => void;
   onFocusHandled: () => void;
   onShortcutUnavailable: () => void;
@@ -35,6 +36,7 @@ export const AppSettings = ({
   onDownloadWhisperModel,
   onDeleteWhisperModel,
   onDownloadLlmModel,
+  onDownloadCustomLlmModel,
   onDeleteLlmModel,
   onFocusHandled,
   onShortcutUnavailable,
@@ -53,6 +55,7 @@ export const AppSettings = ({
     onDownloadWhisperModel={onDownloadWhisperModel}
     onDeleteWhisperModel={onDeleteWhisperModel}
     onDownloadLlmModel={onDownloadLlmModel}
+    onDownloadCustomLlmModel={onDownloadCustomLlmModel}
     onDeleteLlmModel={onDeleteLlmModel}
     focusSection={settingsFocus}
     onFocusHandled={onFocusHandled}

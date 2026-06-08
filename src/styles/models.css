@@ -27,6 +27,35 @@
   font-weight: 700;
 }
 
+.custom-model-download {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.custom-model-download input {
+  margin: 0;
+}
+
+.custom-model-download button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #2d2d30;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.custom-model-download button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 .model-download-list {
   display: grid;
   width: 100%;

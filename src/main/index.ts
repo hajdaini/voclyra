@@ -69,13 +69,13 @@ void app.whenReady().then(async () => {
   registerIpc();
   createMainWindow();
 
-  void appStorage.clearDir('tmp', 'current').catch(() => {});
-  void startupLogService.write().catch(() => {});
-  void settingsService.get().then((settings) => {
-    const startupEnabled = startupService.enabled();
-    if (startupEnabled) {
-      startupService.apply(true);
-    }
+  setTimeout(() => {
+    void appStorage.clearDir('tmp', 'current').catch(() => {});
+    void startupLogService.write().catch(() => {});
+  }, 1500);
+
+  void settingsService.get().then(async (settings) => {
+    const startupEnabled = await startupService.enabled();
     const runtimeSettings = { ...settings, startAtStartup: startupEnabled };
     hotkeyService.register(runtimeSettings, {
       speak: () => sendBackgroundAppAction('speak'),

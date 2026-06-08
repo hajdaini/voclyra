@@ -14,6 +14,7 @@ import type {
 import { whisperModelCatalog, whisperModelIds } from '@shared/whisper-models';
 
 type ProgressCallback = (progress: WhisperDownloadProgress) => void;
+let rootHidden = false;
 
 export class WhisperModelService {
   private readonly root = join(homedir(), appStorageConfig.directoryName);
@@ -39,6 +40,9 @@ export class WhisperModelService {
     }
 
     const model = whisperModelCatalog[id];
+    if (!model) {
+      throw new Error('Unknown Whisper model.');
+    }
     await this.ensureModelRoot();
 
     if (await this.exists(this.modelPath(model.fileName))) {
@@ -67,12 +71,18 @@ export class WhisperModelService {
       return this.availableModels();
     }
     const model = whisperModelCatalog[id];
+    if (!model) {
+      return this.availableModels();
+    }
     await rm(this.modelPath(model.fileName), { force: true });
     return this.availableModels();
   }
 
   private async toAvailableModel(id: WhisperModelId, progress: number): Promise<WhisperAvailableModel> {
     const model = whisperModelCatalog[id];
+    if (!model) {
+      throw new Error('Unknown Whisper model.');
+    }
     const state = await this.modelState(id);
     return {
       id,
@@ -92,6 +102,9 @@ export class WhisperModelService {
     }
 
     const model = whisperModelCatalog[id];
+    if (!model) {
+      return 'missing';
+    }
     return (await this.exists(this.modelPath(model.fileName))) ? 'ready' : 'missing';
   }
 
@@ -101,9 +114,10 @@ export class WhisperModelService {
   }
 
   private hideRoot(): void {
-    if (process.platform !== 'win32') {
+    if (process.platform !== 'win32' || rootHidden) {
       return;
     }
+    rootHidden = true;
 
     const child = spawn('attrib', ['+h', this.root], {
       windowsHide: true,
@@ -151,7 +165,9 @@ export class WhisperModelService {
     onProgress: (progress: number) => void,
   ): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const request = get(url, (response) => {
+      const parsedUrl = new URL(url);
+      this.validateDownloadHost(parsedUrl.hostname);
+      const request = get(parsedUrl, (response) => {
         if ([301, 302, 303, 307, 308].includes(response.statusCode ?? 0)) {
           const location = response.headers.location;
           response.resume();
@@ -159,7 +175,7 @@ export class WhisperModelService {
             reject(new Error('Model download redirected without location.'));
             return;
           }
-          this.downloadToTemporary(new URL(location, url).toString(), temporary, onProgress)
+          this.downloadToTemporary(new URL(location, parsedUrl).toString(), temporary, onProgress)
             .then(resolve)
             .catch(reject);
           return;
@@ -195,4 +211,17 @@ export class WhisperModelService {
       });
     });
   }
+
+  private validateDownloadHost(hostname: string): void {
+    if (
+      hostname === 'huggingface.co' ||
+      hostname.endsWith('.huggingface.co') ||
+      hostname === 'hf.co' ||
+      hostname.endsWith('.hf.co')
+    ) {
+      return;
+    }
+    throw new Error('Model download host is not allowed.');
+  }
+
 }

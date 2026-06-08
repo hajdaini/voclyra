@@ -197,6 +197,10 @@ export const startTranscriptRecorder = async (
 ): Promise<WavRecorder> => {
   const removeLevelListener = api.audioCapture.onLevel((event) => {
     if (event.mode === 'transcript') {
+      if (event.source === 'input') {
+        options.onMicrophoneLevel?.(event.level);
+        return;
+      }
       onLevel(event.level);
       options.onSystemAudioLevel?.(event.level);
     }

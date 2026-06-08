@@ -1,5 +1,5 @@
 import { createWriteStream } from 'node:fs';
-import { access, mkdir, rename, rm, stat } from 'node:fs/promises';
+import { access, mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
 import { get } from 'node:https';
 import { dirname, join } from 'node:path';
 import type {
@@ -17,10 +17,13 @@ export class LlmModelService {
   private readonly storage = new AppStorage();
   private readonly modelRoot = this.storage.path('models', 'llm');
   private readonly downloads = new Set<LlmModelId>();
+  private readonly customDownloads = new Map<LlmModelId, number>();
 
   async availableModels(): Promise<LlmAvailableModel[]> {
     await this.ensureModelRoot();
-    return Promise.all(llmModelIds.map((id) => this.toAvailableModel(id, 0)));
+    const catalogModels = await Promise.all(llmModelIds.map((id) => this.toAvailableModel(id, 0)));
+    const customModels = await this.customAvailableModels();
+    return [...catalogModels, ...customModels];
   }
 
   async downloadedModelNames(): Promise<string[]> {
@@ -37,6 +40,9 @@ export class LlmModelService {
     }
 
     const model = llmModelCatalog[id];
+    if (!model) {
+      throw new Error('Unknown local AI model.');
+    }
     await this.ensureModelRoot();
 
     if (await this.exists(this.modelPath(model.fileName))) {
@@ -60,13 +66,42 @@ export class LlmModelService {
     }
   }
 
+  async downloadCustomModel(url: string, onProgress: ProgressCallback): Promise<LlmAvailableModel[]> {
+    const parsedUrl = new URL(url);
+    this.validateDownloadHost(parsedUrl.hostname);
+    const fileName = this.customFileName(parsedUrl, '.gguf');
+    const id = fileName;
+    if (this.downloads.has(id)) {
+      return this.availableModels();
+    }
+    await this.ensureModelRoot();
+    this.downloads.add(id);
+    this.customDownloads.set(id, 0);
+    onProgress({ id, state: 'downloading', progress: 0 });
+    try {
+      await this.downloadFile(parsedUrl.toString(), this.modelPath(fileName), (progress) => {
+        this.customDownloads.set(id, progress);
+        onProgress({ id, state: 'downloading', progress });
+      });
+      this.customDownloads.set(id, 100);
+      onProgress({ id, state: 'ready', progress: 100 });
+      return this.availableModels();
+    } catch (error) {
+      onProgress({ id, state: 'missing', progress: 0 });
+      throw error;
+    } finally {
+      this.downloads.delete(id);
+      this.customDownloads.delete(id);
+    }
+  }
+
   async deleteModel(id: LlmModelId): Promise<LlmAvailableModel[]> {
     if (this.downloads.has(id)) {
       return this.availableModels();
     }
 
     const model = llmModelCatalog[id];
-    await rm(this.modelPath(model.fileName), { force: true });
+    await rm(this.modelPath(model?.fileName ?? this.safeCustomModelFileName(id, '.gguf')), { force: true });
     return this.availableModels();
   }
 
@@ -79,6 +114,9 @@ export class LlmModelService {
 
   private async toAvailableModel(id: LlmModelId, progress: number): Promise<LlmAvailableModel> {
     const model = llmModelCatalog[id];
+    if (!model) {
+      throw new Error('Unknown local AI model.');
+    }
     const state = await this.modelState(id);
     return {
       id,
@@ -98,7 +136,45 @@ export class LlmModelService {
     }
 
     const model = llmModelCatalog[id];
+    if (!model) {
+      return (await this.exists(this.modelPath(this.safeCustomModelFileName(id, '.gguf')))) ? 'ready' : 'missing';
+    }
     return (await this.exists(this.modelPath(model.fileName))) ? 'ready' : 'missing';
+  }
+
+  private async customAvailableModels(): Promise<LlmAvailableModel[]> {
+    const catalogFiles = new Set(Object.values(llmModelCatalog).map((model) => model.fileName));
+    const entries = await readdir(this.modelRoot, { withFileTypes: true }).catch(() => []);
+    const models = await Promise.all(
+      entries
+        .filter((entry) => entry.isFile() && entry.name.endsWith('.gguf') && !catalogFiles.has(entry.name))
+        .map(async (entry) => {
+          const size = (await stat(this.modelPath(entry.name))).size;
+          return {
+            id: entry.name,
+            label: entry.name,
+            fileName: entry.name,
+            disk: formatBytes(size),
+            memory: 'Custom GGUF model',
+            vramGb: estimateCustomLlmVramGb(size),
+            state: this.downloads.has(entry.name) ? 'downloading' as const : 'ready' as const,
+            progress: this.downloads.has(entry.name) ? 0 : 100,
+          };
+        }),
+    );
+    const downloadingModels = [...this.customDownloads.entries()]
+      .filter(([id]) => !models.some((model) => model.id === id))
+      .map(([id, progress]) => ({
+        id,
+        label: id,
+        fileName: id,
+        disk: 'Downloading',
+        memory: 'Custom GGUF model',
+        vramGb: 0,
+        state: 'downloading' as const,
+        progress,
+      }));
+    return [...models, ...downloadingModels].sort((a, b) => a.label.localeCompare(b.label));
   }
 
   private async ensureModelRoot(): Promise<void> {
@@ -140,10 +216,7 @@ export class LlmModelService {
   ): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const parsedUrl = new URL(url);
-      if (!this.isAllowedDownloadHost(parsedUrl.hostname)) {
-        reject(new Error('Model download host is not allowed.'));
-        return;
-      }
+      this.validateDownloadHost(parsedUrl.hostname);
 
       const request = get(parsedUrl, (response) => {
         if ([301, 302, 303, 307, 308].includes(response.statusCode ?? 0)) {
@@ -167,12 +240,19 @@ export class LlmModelService {
 
         const total = Number(response.headers['content-length'] ?? 0);
         let downloaded = 0;
+        let estimatedProgress = 0;
         const file = createWriteStream(temporary, { flags: 'wx' });
 
         response.on('data', (chunk: Buffer) => {
           downloaded += chunk.length;
           if (total > 0) {
             onProgress(Math.min(99, Math.round((downloaded / total) * 100)));
+            return;
+          }
+          const nextEstimatedProgress = Math.min(95, Math.max(1, Math.floor(downloaded / (64 * 1024 * 1024))));
+          if (nextEstimatedProgress > estimatedProgress) {
+            estimatedProgress = nextEstimatedProgress;
+            onProgress(estimatedProgress);
           }
         });
 
@@ -190,12 +270,38 @@ export class LlmModelService {
     });
   }
 
-  private isAllowedDownloadHost(hostname: string): boolean {
-    return (
+  private validateDownloadHost(hostname: string): void {
+    if (
       hostname === 'huggingface.co' ||
       hostname.endsWith('.huggingface.co') ||
       hostname === 'hf.co' ||
       hostname.endsWith('.hf.co')
-    );
+    ) {
+      return;
+    }
+    throw new Error('Model download host is not allowed.');
+  }
+
+  private customFileName(url: URL, extension: '.gguf'): string {
+    return this.safeCustomModelFileName(decodeURIComponent(url.pathname.split('/').pop() ?? ''), extension);
+  }
+
+  private safeCustomModelFileName(fileName: string, extension: '.gguf'): string {
+    if (!/^[\w.-]+$/.test(fileName) || !fileName.endsWith(extension)) {
+      throw new Error('Custom local AI model must be a Hugging Face .gguf file.');
+    }
+    return fileName;
   }
 }
+
+const formatBytes = (bytes: number): string => {
+  if (bytes >= 1024 ** 3) {
+    return `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
+  }
+  return `${Math.max(1, Math.round(bytes / 1024 ** 2))} MiB`;
+};
+
+const estimateCustomLlmVramGb = (bytes: number): number => {
+  const gb = bytes / 1024 ** 3;
+  return Math.ceil((gb + 1.5) * 2) / 2;
+};

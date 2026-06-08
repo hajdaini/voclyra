@@ -32,7 +32,7 @@ type CaptureState = {
   mode: CaptureMode;
   startedAtMs: number;
   settings: Settings;
-  onLevel: (level: number) => void;
+  onLevel: (source: CaptureSource, level: number) => void;
   processes: Map<string, CaptureProcess>;
   segments: CaptureSegment[];
   nextSegmentIndex: number;
@@ -46,7 +46,7 @@ export class AudioCaptureHelperService {
   async start(
     mode: CaptureMode,
     settings: Settings,
-    onLevel: (level: number) => void,
+    onLevel: (source: CaptureSource, level: number) => void,
   ): Promise<void> {
     await this.cancel(mode);
     const id = randomUUID();
@@ -149,7 +149,7 @@ export class AudioCaptureHelperService {
         const match = /^LEVEL\s+([0-9]+(?:[.,][0-9]+)?)$/i.exec(line.trim());
         const rawLevel = match?.[1];
         if (rawLevel) {
-          state.onLevel(displayLevel(Number(rawLevel.replace(',', '.'))));
+          state.onLevel(source, displayLevel(Number(rawLevel.replace(',', '.'))));
         }
       }
     });

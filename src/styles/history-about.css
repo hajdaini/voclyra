@@ -1,7 +1,6 @@
 .history-page {
   display: flex;
   flex-direction: column;
-  height: 100%;
   min-height: 0;
   overflow: hidden;
   padding-bottom: 0;
@@ -443,6 +442,7 @@
 
 .about-page {
   width: 100%;
+  min-height: 0;
   padding-bottom: 0;
 }
 

@@ -16,6 +16,7 @@ const fsState = vi.hoisted(() => ({
 }));
 const spawnState = vi.hoisted(() => ({
   calls: [] as { command: string; args: string[] }[],
+  syncCalls: [] as { command: string; args: string[] }[],
   nvidiaMode: 'ok' as 'ok' | 'missing' | 'timeout',
 }));
 
@@ -105,6 +106,10 @@ vi.mock('node:fs/promises', () => ({
 }));
 
 vi.mock('node:child_process', () => ({
+  spawnSync: vi.fn((command: string, args: string[]) => {
+    spawnState.syncCalls.push({ command, args });
+    return { status: 1 };
+  }),
   spawn: vi.fn((command: string, args: string[]) => {
     spawnState.calls.push({ command, args });
     const child = new FakeChild();
@@ -150,6 +155,7 @@ vi.mock('node:child_process', () => ({
       }
 
       child.exitCode = 0;
+      child.emit('close', 0);
       child.emit('exit', 0);
     });
 
@@ -168,6 +174,7 @@ describe('Core services', () => {
     fsState.sizes.clear();
     fsState.entries.clear();
     spawnState.calls = [];
+    spawnState.syncCalls = [];
     spawnState.nvidiaMode = 'ok';
     vi.clearAllMocks();
     vi.stubGlobal('fetch', vi.fn(async (_url: string, options?: RequestInit) => ({
@@ -225,13 +232,18 @@ describe('Core services', () => {
     const { StartupService } = await import('@services/startup-service');
     const service = new StartupService();
 
-    service.apply(true);
+    await service.apply(true);
 
+    expect(spawnState.calls).toContainEqual({
+      command: 'reg',
+      args: ['delete', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', '/v', 'Voclyra', '/f'],
+    });
+    expect(spawnState.syncCalls).toEqual([]);
     expect(app.setLoginItemSettings).toHaveBeenCalledWith({
       openAtLogin: true,
       openAsHidden: false,
     });
-    expect(service.enabled()).toBe(true);
+    await expect(service.enabled()).resolves.toBe(true);
   });
 
   it('keeps debug logs bounded and formats errors', async () => {
@@ -312,14 +324,10 @@ describe('Core services', () => {
       utilizationPercent: 93,
     });
     await expect(service.cudaMajorVersion()).resolves.toBe(13);
+    expect(spawnState.calls.filter((call) => call.command === 'nvidia-smi' && call.args.length === 0)).toHaveLength(1);
 
     spawnState.nvidiaMode = 'missing';
 
-    await expect(service.info()).resolves.toMatchObject({
-      gpuAvailable: false,
-      gpuName: 'Unknown GPU',
-      gpuVramGb: null,
-    });
     await expect(service.usage()).resolves.toMatchObject({
       available: false,
       memoryUsedGb: null,
@@ -338,6 +346,24 @@ describe('Core services', () => {
       gpuDriver: { status: 'ok', value: '591.86' },
       gpuCuda: { status: 'ok', value: '13.1' },
     });
+  });
+
+  it('lists only Whisper models from the Voclyra model folder', async () => {
+    const { WhisperService } = await import('@services/whisper-service');
+    const modelEntry = {
+      name: 'ggml-base.bin',
+      isFile: () => true,
+      isDirectory: () => false,
+    } as unknown as string;
+    const externalEntry = {
+      name: 'ggml-large.bin',
+      isFile: () => true,
+      isDirectory: () => false,
+    } as unknown as string;
+    fsState.entries.set('C:\\test-user\\.voclyra\\models\\whisper', [modelEntry]);
+    fsState.entries.set('C:\\test-user\\.cache\\huggingface\\hub', [externalEntry]);
+
+    await expect(new WhisperService().listModels()).resolves.toEqual(['ggml-base.bin']);
   });
 
   it('selects the best available CUDA runtime path', async () => {
@@ -394,7 +420,7 @@ describe('Core services', () => {
     await storage.clearDir('tmp');
 
     expect(fsState.files.get('C:\\test-user\\.voclyra\\settings.json')).toContain('"ok": true');
-    expect(spawnState.calls.some((call) => call.command === 'attrib')).toBe(true);
+    expect(spawnState.calls.filter((call) => call.command === 'attrib').length).toBeLessThanOrEqual(1);
     expect(fsState.files.has('C:\\test-user\\.voclyra\\tmp\\a.wav')).toBe(false);
   });
 

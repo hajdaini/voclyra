@@ -9,7 +9,6 @@ type AppHomeProps = {
   improveInput: string;
   isRecording: boolean;
   actionBlockMessage: string | null;
-  waveform: number[];
   settings: Settings;
   whisperRuntime: WhisperRuntimeInfo;
   llmRuntime: LlmRuntimeInfo;
@@ -37,7 +36,6 @@ export const AppHome = ({
   improveInput,
   isRecording,
   actionBlockMessage,
-  waveform,
   settings,
   whisperRuntime,
   llmRuntime,
@@ -64,7 +62,6 @@ export const AppHome = ({
     improveInput={improveInput}
     isRecording={isRecording}
     actionBlockMessage={actionBlockMessage}
-    waveform={waveform}
     whisperModel={settings.whisperModel}
     llmModel={settings.llmModel}
     hotkeys={settings.hotkeys}

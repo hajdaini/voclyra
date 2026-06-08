@@ -53,6 +53,7 @@ vi.mock('node:fs/promises', () => ({
     }
   }),
   mkdir: vi.fn(async () => {}),
+  readdir: vi.fn(async () => []),
   rename: vi.fn(async (from: string, to: string) => {
     files.delete(from);
     files.add(to);
