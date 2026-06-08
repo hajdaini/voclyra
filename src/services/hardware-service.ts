@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { cpus } from 'node:os';
 import type { GpuUsage, HardwareInfo } from '@shared/types';
+import { SystemCacheService } from '@services/system-cache-service';
 
 type GpuInfo = {
   name: string;
@@ -32,8 +33,13 @@ export type HardwareDiagnostics = {
 let nvidiaSmiCheck: Promise<HardwareCheckResult> | null = null;
 let gpuInfoCheck: Promise<GpuInfoStatus> | null = null;
 let physicalCpuCoresCheck: Promise<HardwareCheckResult> | null = null;
+let cachedHardwareInfo: HardwareInfo | null = null;
+let cacheLoad: Promise<void> | null = null;
+let refreshHardware: Promise<HardwareInfo> | null = null;
 
 export class HardwareService {
+  private readonly cache = new SystemCacheService();
+
   nvidiaSmi(): Promise<HardwareCheckResult> {
     if (process.platform !== 'win32') {
       return Promise.resolve({ status: 'missing', value: 'unknown' });
@@ -44,6 +50,65 @@ export class HardwareService {
   }
 
   async info(): Promise<HardwareInfo> {
+    await this.loadCache();
+    if (cachedHardwareInfo) {
+      void this.refreshInfo().catch(() => {});
+      return cachedHardwareInfo;
+    }
+    return this.refreshInfo();
+  }
+
+  async usage(): Promise<GpuUsage> {
+    return this.readUsage();
+  }
+
+  async diagnostics(): Promise<HardwareDiagnostics> {
+    const cpuList = cpus();
+    const logicalThreads = cpuList.length;
+    const physicalCores = await this.physicalCpuCores();
+    const gpus = await this.gpuInfoWithStatus();
+
+    return this.toDiagnostics(cpuList[0]?.model ?? 'unknown', logicalThreads, physicalCores, gpus);
+  }
+
+  async cudaMajorVersion(): Promise<number | null> {
+    const result = await this.nvidiaSmi();
+    if (result.status !== 'ok') {
+      return null;
+    }
+
+    const major = Number(this.cudaVersion(result.value).split('.')[0]);
+    return Number.isFinite(major) && major > 0 ? major : null;
+  }
+
+  private async loadCache(): Promise<void> {
+    cacheLoad ??= this.cache.readHardware().then((cache) => {
+      if (!cache) {
+        return;
+      }
+      cachedHardwareInfo = cache.hardwareInfo;
+    });
+    await cacheLoad;
+  }
+
+  private async refreshInfo(): Promise<HardwareInfo> {
+    refreshHardware ??= this.refreshHardwareCache().then((result) => result.hardwareInfo).finally(() => {
+      refreshHardware = null;
+    });
+    return refreshHardware;
+  }
+
+  private async refreshHardwareCache(): Promise<{ hardwareInfo: HardwareInfo }> {
+    const [hardwareInfo, diagnostics] = await Promise.all([
+      this.readInfo(),
+      this.diagnostics(),
+    ]);
+    cachedHardwareInfo = hardwareInfo;
+    await this.cache.writeHardware(diagnostics, hardwareInfo).catch(() => {});
+    return { hardwareInfo };
+  }
+
+  private async readInfo(): Promise<HardwareInfo> {
     const gpus = await this.gpuInfo();
     const bestGpu = gpus.sort((left, right) => right.vramGb - left.vramGb)[0];
     return {
@@ -57,7 +122,7 @@ export class HardwareService {
     };
   }
 
-  async usage(): Promise<GpuUsage> {
+  private async readUsage(): Promise<GpuUsage> {
     const gpus = await this.gpuUsage();
     const bestGpu = gpus.sort((left, right) => (right.memoryTotalGb ?? 0) - (left.memoryTotalGb ?? 0))[0];
     return bestGpu ?? {
@@ -70,16 +135,16 @@ export class HardwareService {
     };
   }
 
-  async diagnostics(): Promise<HardwareDiagnostics> {
-    const cpuList = cpus();
-    const logicalThreads = cpuList.length;
-    const physicalCores = await this.physicalCpuCores();
-    const gpus = await this.gpuInfoWithStatus();
-
+  private toDiagnostics(
+    cpuModel: string,
+    logicalThreads: number,
+    physicalCores: HardwareCheckResult,
+    gpus: GpuInfoStatus,
+  ): HardwareDiagnostics {
     return {
       cpu: {
-        status: cpuList[0]?.model ? 'ok' : 'missing',
-        value: cpuList[0]?.model ?? 'unknown',
+        status: cpuModel !== 'unknown' ? 'ok' : 'missing',
+        value: cpuModel,
       },
       cpuCores: {
         status: physicalCores.status,
@@ -116,16 +181,6 @@ export class HardwareService {
         value: gpus.items.map((gpu) => gpu.cudaVersion).join(' | ') || 'unknown',
       },
     };
-  }
-
-  async cudaMajorVersion(): Promise<number | null> {
-    const result = await this.nvidiaSmi();
-    if (result.status !== 'ok') {
-      return null;
-    }
-
-    const major = Number(this.cudaVersion(result.value).split('.')[0]);
-    return Number.isFinite(major) && major > 0 ? major : null;
   }
 
   private async physicalCpuCores(): Promise<HardwareCheckResult> {

@@ -335,6 +335,51 @@ describe('Core services', () => {
     });
   });
 
+  it('writes and invalidates the system hardware cache by app version', async () => {
+    const { SystemCacheService } = await import('@services/system-cache-service');
+    const service = new SystemCacheService();
+
+    await service.writeHardware(
+      {
+        cpu: { status: 'ok', value: 'AMD Ryzen 7 5800X 8-Core Processor' },
+        cpuCores: { status: 'ok', value: '8 physical / 16 logical' },
+        cpuThreads: { status: 'ok', value: '16' },
+        gpu: { status: 'ok', value: 'NVIDIA GeForce RTX 5060 Ti' },
+        gpuVram: { status: 'ok', value: 'NVIDIA GeForce RTX 5060 Ti: 1.3 GB used / 16 GB total' },
+        gpuDriver: { status: 'ok', value: '591.86' },
+        gpuCuda: { status: 'ok', value: '13.1' },
+      },
+      {
+        gpuAvailable: true,
+        gpuName: 'NVIDIA GeForce RTX 5060 Ti',
+        gpuVramGb: 16,
+        gpuDriverVersion: '591.86',
+        gpuCudaVersion: '13.1',
+        gpuMemoryUsedGb: 1.3,
+        gpuMemoryFreeGb: 14.7,
+      },
+    );
+
+    expect(fsState.files.get('C:\\test-user\\.voclyra\\cache\\system.json')).toContain('"version": "0.1.2"');
+    expect(fsState.files.get('C:\\test-user\\.voclyra\\cache\\system.json')).toContain('"gpu": "NVIDIA GeForce RTX 5060 Ti"');
+    expect(fsState.files.get('C:\\test-user\\.voclyra\\cache\\system.json')).toContain('"gpuVram": "NVIDIA GeForce RTX 5060 Ti: 16 GB total"');
+    expect(fsState.files.get('C:\\test-user\\.voclyra\\cache\\system.json')).not.toContain('"gpuUsage"');
+    expect(fsState.files.get('C:\\test-user\\.voclyra\\cache\\system.json')).toContain('"gpuMemoryUsedGb": null');
+
+    fsState.files.set('C:\\test-user\\.voclyra\\cache\\system.json', JSON.stringify({
+      appVersion: '0.0.1',
+      updatedAt: new Date().toISOString(),
+      systemInfo: {},
+      cpuInfo: {},
+      gpuInfo: {},
+      hardwareInfo: { gpuName: 'old', gpuAvailable: true },
+      gpuUsage: { available: true, name: 'old' },
+    }));
+
+    await expect(service.readHardware()).resolves.toBeNull();
+    expect(fsState.files.has('C:\\test-user\\.voclyra\\cache\\system.json')).toBe(false);
+  });
+
   it('creates hardware diagnostics from CPU and GPU checks', async () => {
     const { HardwareService } = await import('@services/hardware-service');
 

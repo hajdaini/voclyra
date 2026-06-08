@@ -21,6 +21,14 @@ Voclyra is an open-source Windows desktop app for fast dictation, transcription,
 
 No cloud transcription. No hosted correction API. Your data stays on your machine.
 
+Highlights:
+
+- download guided Whisper and LLM models from Settings;
+- use your own Hugging Face `.gguf` LLM models locally;
+- dictate, transcribe microphone + computer audio, improve text, and import audio files;
+- see live microphone, computer audio, and VRAM status in the app footer;
+- keep local AI servers warm for faster repeated actions.
+
 https://github.com/user-attachments/assets/c29cba30-747c-47c4-8a58-f04f971fd74a
 
 ## 📥 Download
@@ -87,8 +95,9 @@ Pick an audio file from the toolbar or File menu and transcribe it with the same
 
 1. Open **Settings**.
 2. Download one **Whisper** model and one **LLM** model.
-3. Choose your shortcuts.
-4. Use **Speak**, **Improve**, **Transcript**, or **Import audio**.
+3. Optionally add your own Hugging Face `.gguf` LLM model.
+4. Choose your shortcuts.
+5. Use **Speak**, **Improve**, **Transcript**, or **Import audio**.
 
 Voclyra runs local Whisper and llama.cpp servers, so models can stay warm and responses feel fast after startup.
 
@@ -102,6 +111,7 @@ Useful settings include:
 - microphone and computer audio selection;
 - custom shortcuts;
 - Whisper and LLM model selection;
+- custom Hugging Face `.gguf` LLM downloads;
 - history size control;
 - local audio replay;
 - text export;
@@ -144,7 +154,7 @@ Voclyra currently ships with guided downloads for these local models:
 
 Smaller models are faster. Larger models can improve quality, but need more VRAM and may run slower.
 
-In a future version, Voclyra will let you use your own local models directly.
+You can also download your own Hugging Face `.gguf` LLM model from **Settings**. Custom model downloads are limited to local AI text models; Whisper uses the built-in compatible model list.
 
 ## 🔒 Privacy
 
@@ -168,8 +178,11 @@ Your voice, text, history, models, settings, and audio stay local.
 - Audio import for existing recordings
 - Multilingual speech-to-text without cloud transcription
 - Private local AI workflow powered by Whisper and llama.cpp
+- Custom Hugging Face `.gguf` LLM model downloads
 - Searchable history with favorites, titles, audio replay, and text export
 - Flexible microphone and computer audio capture, including all active Windows outputs
+- Live microphone, computer audio, and VRAM status in the footer
+- Faster startup with cached stable hardware information
 - Compact overlay feedback so you can keep working outside the app
 - Custom shortcuts, tray mode, and launch-at-startup support
 - Guided local model setup with GPU/runtime status
@@ -190,6 +203,7 @@ audio           Saved Speak and Transcript audio
 logs            Debug logs
 models          Whisper and LLM models
 tmp             Temporary current processing files
+cache           Cache folder
 settings.json   App settings
 history.json    Previous results
 ```
