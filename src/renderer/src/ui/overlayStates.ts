@@ -1,4 +1,4 @@
-import type { OverlayState } from '@shared/types';
+import type { HomeMode, OverlayState } from '@shared/types';
 import { actionOverlay } from '@shared/action-ui';
 import { inactiveOverlayState } from './appState';
 
@@ -7,7 +7,7 @@ type OverlayMessageType = NonNullable<OverlayState['messageType']>;
 type OverlayProgress = Pick<OverlayState, 'phase' | 'progress' | 'tokensGenerated' | 'progressLabel'>;
 
 export const overlayDone = (
-  mode: OverlayMode,
+  mode: HomeMode,
   message?: string,
   messageType: OverlayMessageType = 'success',
 ): OverlayState => ({
@@ -26,7 +26,17 @@ export const overlayWarning = (
   message: string,
   messageType: OverlayMessageType,
 ): OverlayState => ({
-  ...actionOverlay(mode, 'warning', [], { message, messageType }),
+  ...(mode === 'additional-info'
+    ? {
+        active: true,
+        mode,
+        status: 'warning' as const,
+        actionPhase: messageType === 'error' ? 'error' as const : 'warning' as const,
+        waveform: [],
+        message,
+        messageType,
+      }
+    : actionOverlay(mode, 'warning', [], { message, messageType })),
 });
 
 export const overlayRecording = (
@@ -40,7 +50,7 @@ export const overlayRecording = (
 });
 
 export const overlayProcessing = (
-  mode: OverlayMode,
+  mode: HomeMode,
   waveform: number[] = [],
   message?: string,
   messageType?: OverlayMessageType,

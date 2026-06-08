@@ -4,13 +4,17 @@ import { channels } from '@shared/channels';
 import { defaultSettings } from '@shared/defaults';
 import { settingsSchema } from '@shared/schemas';
 import { syncModelSettings } from '@renderer/ui/modelSettingsSync';
+import { shouldConfirmTranscriptOutputChange } from '@renderer/ui/settingsChangeGuards';
+import { shortcutFromKey, shortcutKey } from '@renderer/ui/views/SettingsView';
 
 type Store = Record<string, unknown>;
 type IpcHandler = (event: unknown, value?: unknown) => unknown;
+type HotkeyHandlers = { speak: () => void; improveText: () => void; transcript: () => void };
 
 let store: Store = {};
 const handlers = new Map<string, IpcHandler>();
 let hotkeyResult = { speak: true, improveText: true, transcript: true };
+let lastHotkeyHandlers: HotkeyHandlers | null = null;
 
 const readJson = vi.fn(async <T>(name: string, fallback: T): Promise<T> => {
   if (!(name in store)) {
@@ -61,7 +65,10 @@ vi.mock('@storage/app-storage', () => ({
 
 vi.mock('@services/hotkey-service', () => ({
   HotkeyService: class {
-    register = vi.fn(() => hotkeyResult);
+    register = vi.fn((_settings: unknown, handlers: HotkeyHandlers) => {
+      lastHotkeyHandlers = handlers;
+      return hotkeyResult;
+    });
   },
 }));
 
@@ -79,6 +86,7 @@ vi.mock('@main/window', () => ({
   getOverlayState: vi.fn(),
   resizeOverlayToContent: vi.fn(),
   sendAppAction: vi.fn(),
+  sendBackgroundAppAction: vi.fn(),
   sendImproveResult: vi.fn(),
   setOverlayState: vi.fn(),
   stopFromOverlay: vi.fn(),
@@ -90,6 +98,7 @@ const setupIpc = async (): Promise<void> => {
   handlers.clear();
   vi.clearAllMocks();
   hotkeyResult = { speak: true, improveText: true, transcript: true };
+  lastHotkeyHandlers = null;
   const { registerIpc } = await import('@main/ipc');
   registerIpc();
   await handlers.get(channels.settingsGet)?.({});
@@ -171,14 +180,36 @@ describe('Settings', () => {
     })).toMatchObject({ llmModel: 'old.gguf', whisperModel: 'old.bin' });
   });
 
+  it('requires confirmation before changing Transcript output while recording', () => {
+    const nextSettings = {
+      ...defaultSettings,
+      transcriptOutputDeviceId: 'out-1',
+      transcriptOutputDeviceLabel: 'Headphones',
+    };
+
+    expect(shouldConfirmTranscriptOutputChange(defaultSettings, nextSettings, true)).toBe(true);
+    expect(shouldConfirmTranscriptOutputChange(defaultSettings, nextSettings, false)).toBe(false);
+    expect(shouldConfirmTranscriptOutputChange(defaultSettings, defaultSettings, true)).toBe(false);
+  });
+
+  it('keeps numpad shortcut keys distinct from top row digits', () => {
+    expect(shortcutKey('1', 'Digit1')).toBe('1');
+    expect(shortcutKey('1', 'Numpad1')).toBe('num1');
+    expect(shortcutFromKey('1', 'Numpad1', {
+      commandOrControl: true,
+      alt: false,
+      shift: true,
+    })).toBe('CommandOrControl+Shift+num1');
+  });
+
   it('loads saves and rejects shortcut settings through IPC', async () => {
     await setupIpc();
 
     await expect(handlers.get(channels.settingsGet)?.({})).resolves.toMatchObject({
       hotkeys: {
-        speak: 'Alt+A',
-        improveText: 'Alt+Z',
-        transcript: 'Alt+T',
+        speak: 'CommandOrControl+Shift+1',
+        improveText: 'CommandOrControl+Shift+2',
+        transcript: 'CommandOrControl+Shift+3',
       },
     });
 
@@ -190,6 +221,8 @@ describe('Settings', () => {
       startAtStartup: true,
       microphoneDeviceId: 'mic-1',
       microphoneDeviceLabel: 'Studio Mic',
+      transcriptOutputDeviceId: 'out-1',
+      transcriptOutputDeviceLabel: 'Studio Headphones',
       microphoneEchoCancellation: false,
       microphoneNoiseSuppression: false,
       microphoneAutoGainControl: false,
@@ -204,11 +237,16 @@ describe('Settings', () => {
       hotkeys: {
         speak: 'Alt+S',
         improveText: 'Alt+I',
-        transcript: 'Alt+T',
+        transcript: 'CommandOrControl+Shift+3',
       },
     };
     await expect(handlers.get(channels.settingsSave)?.({}, nextSettings)).resolves.toEqual(nextSettings);
     expect(store['settings.json']).toEqual(nextSettings);
+    const windowApi = await import('@main/window');
+    lastHotkeyHandlers?.speak();
+    lastHotkeyHandlers?.transcript();
+    expect(windowApi.sendBackgroundAppAction).toHaveBeenCalledWith('speak');
+    expect(windowApi.sendBackgroundAppAction).toHaveBeenCalledWith('transcript');
     expect(app.setLoginItemSettings).toHaveBeenCalledWith({
       openAtLogin: true,
       openAsHidden: false,

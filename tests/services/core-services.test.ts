@@ -209,7 +209,11 @@ describe('Core services', () => {
 
     expect(result).toEqual({ speak: true, improveText: false, transcript: true });
     expect(shortcuts.unregisterAllCalls).toBe(1);
-    expect(shortcuts.registered).toEqual(['Alt+A', 'Alt+Z', 'Alt+T']);
+    expect(shortcuts.registered).toEqual([
+      defaultSettings.hotkeys.speak,
+      defaultSettings.hotkeys.improveText,
+      defaultSettings.hotkeys.transcript,
+    ]);
 
     service.unregisterAll();
 
@@ -362,6 +366,22 @@ describe('Core services', () => {
 
     await expect(new WhisperService().runtimeInfo()).resolves.toEqual({ runtimeAvailable: true });
     expect(spawnState.calls.some((call) => call.command.includes('whisper-server.exe'))).toBe(false);
+  });
+
+  it('starts Whisper server with conservative anti-hallucination thresholds', async () => {
+    const { whisperServerService } = await import('@services/whisper-server-service');
+    whisperServerService.stop();
+
+    await whisperServerService.warmup('C:\\whisper-server.exe', 'C:\\model.bin', {
+      language: 'auto',
+      threads: 4,
+      qualityArgs: [],
+      prompt: 'exact',
+    });
+
+    const args = spawnState.calls.find((call) => call.command === 'C:\\whisper-server.exe')?.args;
+    expect(args).toEqual(expect.arrayContaining(['-sns', '-nth', '0.5', '-lpt', '-0.8']));
+    whisperServerService.stop();
   });
 
   it('stores JSON and clears storage folders safely', async () => {

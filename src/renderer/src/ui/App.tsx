@@ -8,6 +8,7 @@ import type {
   HomeMode,
   LlmAvailableModel,
   LlmRuntimeInfo,
+  OverlayMode,
   OverlayState,
   ResultState,
   Settings as SettingsType,
@@ -34,12 +35,18 @@ import {
   speakFallbackResult,
   transcriptFallbackResult,
 } from './appState';
+import { shouldConfirmTranscriptOutputChange } from './settingsChangeGuards';
 
 const defaultWaveform = (): number[] => Array.from({ length: 28 }, () => 0.08);
 
 export const App = (): JSX.Element => {
   const overlayMode = new URLSearchParams(window.location.search).get('overlay');
-  if (overlayMode === 'speak' || overlayMode === 'improve' || overlayMode === 'transcript') {
+  if (
+    overlayMode === 'speak' ||
+    overlayMode === 'improve' ||
+    overlayMode === 'transcript' ||
+    overlayMode === 'additional-info'
+  ) {
     return <Overlay />;
   }
 
@@ -108,9 +115,21 @@ export const App = (): JSX.Element => {
     transcript: false,
   });
   const overlayNoticeRef = useRef<
-    Partial<Record<'speak' | 'improve' | 'transcript', { message: string; messageType: 'error' | 'success' | 'warning' | 'info' }>>
+    Partial<Record<HomeMode, { message: string; messageType: 'error' | 'success' | 'warning' | 'info' }>>
   >({});
-  const overlayWarningTimerRef = useRef<Partial<Record<'speak' | 'improve' | 'transcript', number>>>({});
+  const overlayWarningTimerRef = useRef<Partial<Record<OverlayMode, number>>>({});
+  const overlayHideTimerRef = useRef<Partial<Record<OverlayMode, number>>>({});
+  const microphoneSettingsKeyRef = useRef('');
+  const recordingActiveRef = useRef<Record<'speak' | 'transcript', boolean>>({
+    speak: false,
+    transcript: false,
+  });
+  const audioWarningTimerRef = useRef<Partial<Record<'speakMic' | 'transcriptMic' | 'transcriptSystem', number>>>({});
+  const audioWarningShownRef = useRef<Record<'speakMic' | 'transcriptMic' | 'transcriptSystem', boolean>>({
+    speakMic: false,
+    transcriptMic: false,
+    transcriptSystem: false,
+  });
   const result =
     mode === 'speak' ? speakResult : mode === 'improve' ? improveResult : transcriptResult;
   const audioLockState = {
@@ -127,10 +146,15 @@ export const App = (): JSX.Element => {
   const llmModelAvailable = Boolean(settings.llmModel && llmModels.includes(settings.llmModel));
 
   const publishOverlayState = (state: OverlayState): void => {
-    setOverlayStateByMode((current) => ({
-      ...current,
-      [state.mode]: state,
-    }));
+    if (state.active && state.status !== 'done') {
+      clearOverlayHideTimer(state.mode);
+    }
+    if (state.mode !== 'additional-info') {
+      setOverlayStateByMode((current) => ({
+        ...current,
+        [state.mode]: state,
+      }));
+    }
     void api.overlay.setState(state);
   };
 
@@ -239,6 +263,47 @@ export const App = (): JSX.Element => {
       window.clearInterval(timer);
     };
   }, [hardwareInfo.gpuAvailable]);
+
+  useEffect(() => {
+    const microphoneSettingsKey = [
+      settings.microphoneDeviceId,
+      settings.microphoneDeviceLabel,
+      settings.microphoneEchoCancellation,
+      settings.microphoneNoiseSuppression,
+      settings.microphoneAutoGainControl,
+    ].join('\n');
+    if (microphoneSettingsKeyRef.current === microphoneSettingsKey) {
+      return;
+    }
+    microphoneSettingsKeyRef.current = microphoneSettingsKey;
+    if (!recorder && !transcriptRecorder) {
+      return;
+    }
+    showToast('info', 'Microphone switched.');
+    const device = {
+      id: settings.microphoneDeviceId,
+      label: settings.microphoneDeviceLabel,
+    };
+    const options = {
+      echoCancellation: settings.microphoneEchoCancellation,
+      noiseSuppression: settings.microphoneNoiseSuppression,
+      autoGainControl: settings.microphoneAutoGainControl,
+    };
+    void recorder?.updateMicrophone?.(device, options).catch(() => {
+      showOverlayWarning('speak', 'Selected microphone is not available.', 'error');
+    });
+    void transcriptRecorder?.updateMicrophone?.(device, options).catch(() => {
+      showOverlayWarning('transcript', 'Selected microphone is not available.', 'error');
+    });
+  }, [
+    settings.microphoneDeviceId,
+    settings.microphoneDeviceLabel,
+    settings.microphoneEchoCancellation,
+    settings.microphoneNoiseSuppression,
+    settings.microphoneAutoGainControl,
+    recorder,
+    transcriptRecorder,
+  ]);
 
   useEffect(() => {
     if (!whisperRuntime.runtimeAvailable || !whisperModelAvailable || !settings.whisperModel) {
@@ -399,12 +464,20 @@ export const App = (): JSX.Element => {
       return;
     }
     setMode('speak');
+    recordingActiveRef.current.speak = true;
+    startAudioWarningTimer('speakMic', 'No microphone audio. Check settings.');
     publishOverlayState(overlayRecording('speak', defaultWaveform().slice(-8)));
     try {
       setRecorder(
         await startWavRecorder(
           (level) => {
             setWaveform((current) => {
+              if (!recordingActiveRef.current.speak) {
+                return current;
+              }
+              if (level > 0.1) {
+                markAudioDetected('speakMic');
+              }
               const nextWaveform = [...current.slice(1), Math.max(0.08, level)];
               publishOverlayState(overlayRecording(
                 'speak',
@@ -439,6 +512,8 @@ export const App = (): JSX.Element => {
     }
 
     setRecorder(null);
+    recordingActiveRef.current.speak = false;
+    clearAudioWarningTimer('speakMic');
     setWaveform(defaultWaveform());
     setIsSpeakProcessing(true);
     clearOverlayWarningTimer('speak');
@@ -475,15 +550,22 @@ export const App = (): JSX.Element => {
     }
     if (recordingMode === 'speak') {
       setRecorder(null);
+      recordingActiveRef.current.speak = false;
+      clearAudioWarningTimer('speakMic');
       setSpeakResult(actionResult('speak', 'warning', { message: actionMessages.recordingCancelled }));
     } else {
       setTranscriptRecorder(null);
+      recordingActiveRef.current.transcript = false;
+      clearAudioWarningTimer('transcriptMic');
+      clearAudioWarningTimer('transcriptSystem');
       setTranscriptResult(actionResult('transcript', 'warning', { message: actionMessages.recordingCancelled }));
     }
     delete overlayNoticeRef.current[recordingMode];
     setWaveform(defaultWaveform());
-    await activeRecorder.cancel();
     publishOverlayState(overlayInactive(recordingMode));
+    window.setTimeout(() => {
+      void activeRecorder.cancel();
+    }, 0);
   };
 
   const refreshHistoryAndModels = async (): Promise<void> => {
@@ -580,12 +662,18 @@ export const App = (): JSX.Element => {
     }
     setSection('home');
     setMode('transcript');
+    recordingActiveRef.current.transcript = true;
+    startAudioWarningTimer('transcriptMic', 'No microphone audio. Check settings.');
+    startAudioWarningTimer('transcriptSystem', 'No computer audio. Check settings.');
     publishOverlayState(overlayRecording('transcript', defaultWaveform().slice(-8)));
     try {
       setTranscriptRecorder(
         await startTranscriptRecorder(
           (level) => {
             setWaveform((current) => {
+              if (!recordingActiveRef.current.transcript) {
+                return current;
+              }
               const nextWaveform = [...current.slice(1), Math.max(0.08, level)];
               publishOverlayState(overlayRecording(
                 'transcript',
@@ -606,13 +694,26 @@ export const App = (): JSX.Element => {
               noiseSuppression: settings.microphoneNoiseSuppression,
               autoGainControl: settings.microphoneAutoGainControl,
             },
+            onMicrophoneLevel: (level) => {
+              if (recordingActiveRef.current.transcript && level > 0.1) {
+                markAudioDetected('transcriptMic');
+              }
+            },
             onSystemAudioChange: (active) => {
+              if (!recordingActiveRef.current.transcript) {
+                return;
+              }
               setTranscriptResult((current) => ({
                 ...current,
                 message: active
                   ? actionUi('transcript', 'recording').message
                   : `${actionUi('transcript', 'recording').message} Computer audio is not captured.`,
               }));
+            },
+            onSystemAudioLevel: (level) => {
+              if (recordingActiveRef.current.transcript && level > 0.1) {
+                markAudioDetected('transcriptSystem');
+              }
             },
           },
         ),
@@ -630,6 +731,9 @@ export const App = (): JSX.Element => {
     }
 
     setTranscriptRecorder(null);
+    recordingActiveRef.current.transcript = false;
+    clearAudioWarningTimer('transcriptMic');
+    clearAudioWarningTimer('transcriptSystem');
     setWaveform(defaultWaveform());
     setIsTranscriptProcessing(true);
     clearOverlayWarningTimer('transcript');
@@ -783,8 +887,61 @@ export const App = (): JSX.Element => {
     }
   };
 
+  const changeSettings = async (nextSettings: SettingsType): Promise<void> => {
+    if (shouldConfirmTranscriptOutputChange(settingsRef.current, nextSettings, Boolean(transcriptRecorder))) {
+      if (!window.confirm('Changing Transcript output will cancel the current recording. Continue?')) {
+        return;
+      }
+      void cancelRecording('transcript');
+    }
+    settingsRef.current = nextSettings;
+    setSettings(nextSettings);
+    await saveSettings(nextSettings);
+  };
+
   const showToast = (type: ToastType, message: string): void => {
     setToast({ id: Date.now(), type, message });
+  };
+
+  const showSettingsToast = (type: ToastType, message: string): void => {
+    setToast({
+      id: Date.now(),
+      type,
+      message,
+      actionLabel: 'Settings',
+      onAction: () => {
+        setToast(null);
+        openSettingsFocus('microphone');
+      },
+    });
+  };
+
+  const startAudioWarningTimer = (
+    key: 'speakMic' | 'transcriptMic' | 'transcriptSystem',
+    message: string,
+  ): void => {
+    window.clearTimeout(audioWarningTimerRef.current[key]);
+    audioWarningShownRef.current[key] = false;
+    audioWarningTimerRef.current[key] = window.setTimeout(() => {
+      if (audioWarningShownRef.current[key]) {
+        return;
+      }
+      audioWarningShownRef.current[key] = true;
+      showSettingsToast('warning', message);
+      showAdditionalInfoOverlay(message);
+    }, 15000);
+  };
+
+  const clearAudioWarningTimer = (key: 'speakMic' | 'transcriptMic' | 'transcriptSystem'): void => {
+    window.clearTimeout(audioWarningTimerRef.current[key]);
+    delete audioWarningTimerRef.current[key];
+  };
+
+  const markAudioDetected = (key: 'speakMic' | 'transcriptMic' | 'transcriptSystem'): void => {
+    if (audioWarningShownRef.current[key]) {
+      return;
+    }
+    clearAudioWarningTimer(key);
   };
 
   const showCopyToast = (nextResult: ResultState): void => {
@@ -798,6 +955,7 @@ export const App = (): JSX.Element => {
     nextResult: ResultState,
   ): void => {
     clearOverlayWarningTimer(overlayMode);
+    clearOverlayHideTimer(overlayMode);
     if (nextResult.status !== 'ready' || !nextResult.text) {
       publishOverlayState(overlayInactive(overlayMode));
       return;
@@ -807,20 +965,38 @@ export const App = (): JSX.Element => {
       actionUi(overlayMode, 'ready').message,
       'success',
     ));
-    window.setTimeout(() => {
+    overlayHideTimerRef.current[overlayMode] = window.setTimeout(() => {
       publishOverlayState(overlayInactive(overlayMode));
     }, 1800);
   };
 
   const showReadyOverlay = (overlayMode: 'speak' | 'improve' | 'transcript'): void => {
+    clearOverlayHideTimer(overlayMode);
     publishOverlayState(overlayDone(
       overlayMode,
       actionUi(overlayMode, 'ready').message,
       'success',
     ));
-    window.setTimeout(() => {
+    overlayHideTimerRef.current[overlayMode] = window.setTimeout(() => {
       publishOverlayState(overlayInactive(overlayMode));
     }, 1800);
+  };
+
+  const clearOverlayHideTimer = (overlayMode: OverlayMode): void => {
+    const timer = overlayHideTimerRef.current[overlayMode];
+    if (timer) {
+      window.clearTimeout(timer);
+      delete overlayHideTimerRef.current[overlayMode];
+    }
+  };
+
+  const showAdditionalInfoOverlay = (message: string): void => {
+    clearOverlayWarningTimer('additional-info');
+    publishOverlayState(overlayWarning('additional-info', message, 'warning'));
+    overlayWarningTimerRef.current['additional-info'] = window.setTimeout(() => {
+      delete overlayWarningTimerRef.current['additional-info'];
+      publishOverlayState(overlayInactive('additional-info', 'warning'));
+    }, 4200);
   };
 
   const showOverlayWarning = (
@@ -830,11 +1006,11 @@ export const App = (): JSX.Element => {
   ): void => {
     overlayNoticeRef.current[overlayMode] = { message, messageType };
     clearOverlayWarningTimer(overlayMode);
-    if (overlayMode === 'speak' && recorder) {
+    if (overlayMode === 'speak' && recordingActiveRef.current.speak) {
       publishOverlayState(overlayRecording('speak', waveform.slice(-8), message, messageType));
     } else if (overlayMode === 'speak' && isSpeakProcessing) {
       publishOverlayState(overlayProcessing('speak', waveform.slice(-8), message, messageType));
-    } else if (overlayMode === 'transcript' && transcriptRecorder) {
+    } else if (overlayMode === 'transcript' && recordingActiveRef.current.transcript) {
       publishOverlayState(overlayRecording('transcript', waveform.slice(-8), message, messageType));
     } else if (overlayMode === 'transcript' && isTranscriptProcessing) {
       publishOverlayState(overlayProcessing('transcript', waveform.slice(-8), message, messageType));
@@ -846,7 +1022,7 @@ export const App = (): JSX.Element => {
     overlayWarningTimerRef.current[overlayMode] = window.setTimeout(() => {
       delete overlayNoticeRef.current[overlayMode];
       delete overlayWarningTimerRef.current[overlayMode];
-      if (overlayMode === 'speak' && recorder) {
+      if (overlayMode === 'speak' && recordingActiveRef.current.speak) {
         publishOverlayState(overlayRecording('speak', waveform.slice(-8)));
         return;
       }
@@ -854,7 +1030,7 @@ export const App = (): JSX.Element => {
         publishOverlayState(overlayProcessing('speak', waveform.slice(-8)));
         return;
       }
-      if (overlayMode === 'transcript' && transcriptRecorder) {
+      if (overlayMode === 'transcript' && recordingActiveRef.current.transcript) {
         publishOverlayState(overlayRecording('transcript', waveform.slice(-8)));
         return;
       }
@@ -870,13 +1046,15 @@ export const App = (): JSX.Element => {
     }, 2400);
   };
 
-  const clearOverlayWarningTimer = (overlayMode: 'speak' | 'improve' | 'transcript'): void => {
+  const clearOverlayWarningTimer = (overlayMode: OverlayMode): void => {
     const timer = overlayWarningTimerRef.current[overlayMode];
     if (timer) {
       window.clearTimeout(timer);
       delete overlayWarningTimerRef.current[overlayMode];
     }
-    delete overlayNoticeRef.current[overlayMode];
+    if (overlayMode !== 'additional-info') {
+      delete overlayNoticeRef.current[overlayMode];
+    }
   };
 
   const changeMode = (nextMode: HomeMode): void => {
@@ -912,11 +1090,13 @@ export const App = (): JSX.Element => {
     if (!toast) {
       return;
     }
-    const timer = window.setTimeout(() => setToast(null), 2000);
+    const timer = window.setTimeout(() => setToast(null), toast.actionLabel ? 7000 : 2000);
     return () => window.clearTimeout(timer);
   }, [toast]);
 
   useEffect(() => () => {
+    Object.values(overlayHideTimerRef.current).forEach((timer) => window.clearTimeout(timer));
+    Object.values(audioWarningTimerRef.current).forEach((timer) => window.clearTimeout(timer));
     void api.overlay.setState(inactiveOverlayState);
   }, []);
 
@@ -1078,11 +1258,7 @@ export const App = (): JSX.Element => {
         onCopyResult={() => void copy()}
         onStartTranscript={() => void startTranscript()}
         onStopTranscript={() => void stopTranscript()}
-        onSettingsChange={(nextSettings) => {
-          settingsRef.current = nextSettings;
-          setSettings(nextSettings);
-          void saveSettings(nextSettings);
-        }}
+        onSettingsChange={(nextSettings) => void changeSettings(nextSettings)}
         onRefreshModels={() => void refreshModelsFromSettings()}
         onDownloadWhisperModel={(id) => void downloadWhisperModel(id)}
         onDeleteWhisperModel={(id) => void deleteWhisperModel(id)}
@@ -1121,6 +1297,8 @@ const settingsAreEqual = (left: SettingsType, right: SettingsType): boolean =>
   left.startAtStartup === right.startAtStartup &&
   left.microphoneDeviceId === right.microphoneDeviceId &&
   left.microphoneDeviceLabel === right.microphoneDeviceLabel &&
+  left.transcriptOutputDeviceId === right.transcriptOutputDeviceId &&
+  left.transcriptOutputDeviceLabel === right.transcriptOutputDeviceLabel &&
   left.microphoneEchoCancellation === right.microphoneEchoCancellation &&
   left.microphoneNoiseSuppression === right.microphoneNoiseSuppression &&
   left.microphoneAutoGainControl === right.microphoneAutoGainControl &&

@@ -16,6 +16,7 @@ import {
   Settings2,
   Square,
   Trash2,
+  Volume2,
   Wand2,
   type LucideIcon,
 } from 'lucide-react';
@@ -33,11 +34,23 @@ type AudioInputDevice = {
   label: string;
 };
 
+type AudioOutputDevice = {
+  deviceId: string;
+  label: string;
+};
+
 type MicrophoneTest = {
   stream: MediaStream;
   context: AudioContext;
   source: MediaStreamAudioSourceNode;
   processor: ScriptProcessorNode;
+};
+
+type OutputTest = {
+  context: AudioContext;
+  oscillator: OscillatorNode;
+  audio: HTMLAudioElement;
+  timer: number;
 };
 
 export type SettingsViewProps = {
@@ -86,10 +99,14 @@ export const SettingsView = ({
   const historyRef = useRef<HTMLElement>(null);
   const speakShortcutRef = useRef<HTMLButtonElement>(null);
   const microphoneTestRef = useRef<MicrophoneTest | null>(null);
+  const outputTestRef = useRef<OutputTest | null>(null);
   const [audioInputs, setAudioInputs] = useState<AudioInputDevice[]>([]);
+  const [audioOutputs, setAudioOutputs] = useState<AudioOutputDevice[]>([]);
   const [isMicrophoneTesting, setIsMicrophoneTesting] = useState(false);
+  const [isOutputTesting, setIsOutputTesting] = useState(false);
   const [microphoneTestLevels, setMicrophoneTestLevels] = useState<number[]>(Array.from({ length: 16 }, () => 0.08));
   const [microphoneTestError, setMicrophoneTestError] = useState('');
+  const [outputTestError, setOutputTestError] = useState('');
 
   useEffect(() => {
     if (!focusSection) {
@@ -112,7 +129,7 @@ export const SettingsView = ({
 
   useEffect(() => {
     let mounted = true;
-    const loadAudioInputs = async (): Promise<void> => {
+    const loadAudioDevices = async (): Promise<void> => {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
         if (!mounted) {
@@ -126,22 +143,32 @@ export const SettingsView = ({
               label: device.label || `Microphone ${index + 1}`,
             })),
         );
+        setAudioOutputs(
+          devices
+            .filter((device) => device.kind === 'audiooutput')
+            .map((device, index) => ({
+              deviceId: device.deviceId,
+              label: device.label || `Output ${index + 1}`,
+            })),
+        );
       } catch {
         if (mounted) {
           setAudioInputs([]);
+          setAudioOutputs([]);
         }
       }
     };
-    void loadAudioInputs();
-    navigator.mediaDevices.addEventListener('devicechange', loadAudioInputs);
+    void loadAudioDevices();
+    navigator.mediaDevices.addEventListener('devicechange', loadAudioDevices);
     return () => {
       mounted = false;
-      navigator.mediaDevices.removeEventListener('devicechange', loadAudioInputs);
+      navigator.mediaDevices.removeEventListener('devicechange', loadAudioDevices);
     };
   }, []);
 
   useEffect(() => () => {
     stopMicrophoneTest(microphoneTestRef.current);
+    stopOutputTest(outputTestRef.current);
   }, []);
 
   const toggleMicrophoneTest = async (): Promise<void> => {
@@ -182,6 +209,47 @@ export const SettingsView = ({
     } catch {
       setMicrophoneTestError('Microphone test failed.');
       setIsMicrophoneTesting(false);
+    }
+  };
+
+  const playOutputTest = async (): Promise<void> => {
+    stopOutputTest(outputTestRef.current);
+    outputTestRef.current = null;
+    setIsOutputTesting(false);
+    setOutputTestError('');
+
+    try {
+      const context = new AudioContext();
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const destination = context.createMediaStreamDestination();
+      const audio = new Audio();
+      const sinkAudio = audio as HTMLAudioElement & { setSinkId?: (sinkId: string) => Promise<void> };
+      if (settings.transcriptOutputDeviceId && !sinkAudio.setSinkId) {
+        await context.close();
+        setOutputTestError('Output selection is not supported on this system.');
+        return;
+      }
+      if (settings.transcriptOutputDeviceId && sinkAudio.setSinkId) {
+        await sinkAudio.setSinkId(settings.transcriptOutputDeviceId);
+      }
+      oscillator.frequency.value = 720;
+      gain.gain.value = 0.08;
+      oscillator.connect(gain);
+      gain.connect(destination);
+      audio.srcObject = destination.stream;
+      await audio.play();
+      oscillator.start();
+      setIsOutputTesting(true);
+      const timer = window.setTimeout(() => {
+        stopOutputTest(outputTestRef.current);
+        outputTestRef.current = null;
+        setIsOutputTesting(false);
+      }, 900);
+      outputTestRef.current = { context, oscillator, audio, timer };
+    } catch {
+      setOutputTestError('Output test failed.');
+      setIsOutputTesting(false);
     }
   };
 
@@ -249,7 +317,7 @@ export const SettingsView = ({
       </section>
 
       <section className="settings-section focused-target" ref={microphoneRef}>
-        <SectionTitle icon={Mic} title="Microphone settings" />
+        <SectionTitle icon={Mic} title="Audio settings" />
         <label>
           <span className="field-label">
             Microphone input
@@ -324,6 +392,48 @@ export const SettingsView = ({
             </div>
           </div>
           {microphoneTestError && <span className="microphone-test-error">{microphoneTestError}</span>}
+        </div>
+        <label>
+          <span className="field-label">
+            Computer audio for Transcript
+            <HelpHint text="Choose the Windows sound output you use for calls or meetings. This helps avoid confusing microphone input with computer audio output." />
+          </span>
+          <select
+            value={settings.transcriptOutputDeviceId}
+            onChange={(event) => {
+              const device = audioOutputs.find((output) => output.deviceId === event.target.value);
+              onChange({
+                ...settings,
+                transcriptOutputDeviceId: event.target.value,
+                transcriptOutputDeviceLabel: device?.label ?? '',
+              });
+            }}
+          >
+            <option value="">Windows default sound output</option>
+            {audioOutputs.map((device) => (
+              <option key={device.deviceId} value={device.deviceId}>
+                {device.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="microphone-test">
+          <div className="field-label">
+            Computer audio test
+            <HelpHint text="Plays a short local tone through the selected computer audio output." />
+          </div>
+          <div className="microphone-test-row">
+            <button type="button" onClick={() => void playOutputTest()}>
+              <Volume2 size={16} />
+              <span>{isOutputTesting ? 'Playing sound' : 'Play sound'}</span>
+            </button>
+            <div className={`microphone-test-wave ${isOutputTesting ? 'active' : ''}`} aria-hidden="true">
+              {microphoneTestLevels.map((level, index) => (
+                <span key={index} style={{ height: `${Math.round(5 + (isOutputTesting ? 0.6 : level) * 28)}px` }} />
+              ))}
+            </div>
+          </div>
+          {outputTestError && <span className="microphone-test-error">{outputTestError}</span>}
         </div>
         <label>
           <span className="field-label">
@@ -796,6 +906,21 @@ const stopMicrophoneTest = (test: MicrophoneTest | null): void => {
   void test.context.close();
 };
 
+const stopOutputTest = (test: OutputTest | null): void => {
+  if (!test) {
+    return;
+  }
+  window.clearTimeout(test.timer);
+  try {
+    test.oscillator.stop();
+  } catch {
+  }
+  test.oscillator.disconnect();
+  test.audio.pause();
+  test.audio.srcObject = null;
+  void test.context.close();
+};
+
 const modelStateIcon = {
   ready: CheckCircle2,
   missing: CircleDashed,
@@ -829,6 +954,7 @@ const ShortcutInput = ({
 }: ShortcutInputProps): JSX.Element => {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
+  const pressedModifiersRef = useRef<PressedModifiers>(emptyPressedModifiers());
 
   useEffect(() => {
     setDraft(value);
@@ -836,6 +962,7 @@ const ShortcutInput = ({
 
   useEffect(() => {
     onEditingChange(editing);
+    pressedModifiersRef.current = emptyPressedModifiers();
     return () => onEditingChange(false);
   }, [editing, onEditingChange]);
 
@@ -855,7 +982,9 @@ const ShortcutInput = ({
             value={formatShortcut(draft)}
             onKeyDown={(event) => {
               event.preventDefault();
-              const hasModifier = event.ctrlKey || event.metaKey || event.altKey || event.shiftKey;
+              updatePressedModifier(pressedModifiersRef.current, event.key, true);
+              const modifiers = shortcutModifiers(event, pressedModifiersRef.current);
+              const hasModifier = modifiers.commandOrControl || modifiers.alt || modifiers.shift;
               if (event.key === 'Enter' && !hasModifier) {
                 validateDraft();
                 return;
@@ -865,7 +994,7 @@ const ShortcutInput = ({
                 setEditing(false);
                 return;
               }
-              const nextShortcut = keyboardEventToShortcut(event);
+              const nextShortcut = keyboardEventToShortcut(event, modifiers);
               if (nextShortcut) {
                 setDraft(nextShortcut);
                 return;
@@ -873,6 +1002,12 @@ const ShortcutInput = ({
               if (hasModifier && !['Control', 'Alt', 'Shift', 'Meta'].includes(event.key)) {
                 onUnavailable();
               }
+            }}
+            onKeyUp={(event) => {
+              updatePressedModifier(pressedModifiersRef.current, event.key, false);
+            }}
+            onBlur={() => {
+              pressedModifiersRef.current = emptyPressedModifiers();
             }}
           />
           <button type="button" title="Apply shortcut" aria-label="Apply shortcut" onClick={validateDraft}>
@@ -906,21 +1041,73 @@ const ShortcutInput = ({
   );
 };
 
-const keyboardEventToShortcut = (event: KeyboardEvent<HTMLInputElement>): string => {
-  const key = shortcutKey(event.key);
-  if (!key || ['Control', 'Alt', 'Shift', 'Meta'].includes(key)) {
+const keyboardEventToShortcut = (
+  event: KeyboardEvent<HTMLInputElement>,
+  modifiers = shortcutModifiers(event),
+): string => {
+  return shortcutFromKey(event.key, event.code, modifiers);
+};
+
+type PressedModifiers = {
+  control: boolean;
+  meta: boolean;
+  alt: boolean;
+  shift: boolean;
+};
+
+export type ShortcutModifiers = {
+  commandOrControl: boolean;
+  alt: boolean;
+  shift: boolean;
+};
+
+export const shortcutFromKey = (key: string, code: string, modifiers: ShortcutModifiers): string => {
+  const normalizedKey = shortcutKey(key, code);
+  if (!normalizedKey || ['Control', 'Alt', 'Shift', 'Meta'].includes(normalizedKey)) {
     return '';
   }
   const keys = [
-    event.ctrlKey || event.metaKey ? 'CommandOrControl' : '',
-    event.altKey ? 'Alt' : '',
-    event.shiftKey ? 'Shift' : '',
-    key,
+    modifiers.commandOrControl ? 'CommandOrControl' : '',
+    modifiers.alt ? 'Alt' : '',
+    modifiers.shift ? 'Shift' : '',
+    normalizedKey,
   ].filter(Boolean);
   return keys.length >= 2 ? keys.join('+') : '';
 };
 
-const shortcutKey = (key: string): string => {
+const emptyPressedModifiers = (): PressedModifiers => ({
+  control: false,
+  meta: false,
+  alt: false,
+  shift: false,
+});
+
+const updatePressedModifier = (modifiers: PressedModifiers, key: string, pressed: boolean): void => {
+  if (key === 'Control') {
+    modifiers.control = pressed;
+  } else if (key === 'Meta') {
+    modifiers.meta = pressed;
+  } else if (key === 'Alt') {
+    modifiers.alt = pressed;
+  } else if (key === 'Shift') {
+    modifiers.shift = pressed;
+  }
+};
+
+const shortcutModifiers = (
+  event: KeyboardEvent<HTMLInputElement>,
+  pressed: PressedModifiers = emptyPressedModifiers(),
+): ShortcutModifiers => ({
+  commandOrControl: event.ctrlKey || event.metaKey || pressed.control || pressed.meta,
+  alt: event.altKey || pressed.alt,
+  shift: event.shiftKey || pressed.shift,
+});
+
+export const shortcutKey = (key: string, code = ''): string => {
+  const numpadMatch = /^Numpad([0-9])$/.exec(code);
+  if (numpadMatch) {
+    return `num${numpadMatch[1]}`;
+  }
   if (key === ' ') {
     return 'Space';
   }

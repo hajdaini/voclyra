@@ -239,7 +239,7 @@
 
 .history-content {
   display: grid;
-  gap: 5px;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -288,7 +288,7 @@
   justify-content: flex-start;
   gap: 10px;
   min-width: 0;
-  margin-top: -1px;
+  margin-top: -3px;
 }
 
 .history-kind-tag {
@@ -333,7 +333,8 @@
   white-space: nowrap;
 }
 
-.history-content time {
+.history-content time,
+.history-audio-size {
   display: inline-flex;
   align-items: center;
   gap: 5px;

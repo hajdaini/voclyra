@@ -7,6 +7,8 @@ export type Toast = {
   id: number;
   type: ToastType;
   message: string;
+  actionLabel?: string;
+  onAction?: () => void;
 };
 
 const toastIcons: Record<ToastType, typeof Info> = {
@@ -28,6 +30,11 @@ export const AppToast = ({ toast, onClose }: AppToastProps): JSX.Element => {
     <div className={`app-toast ${toast.type}`}>
       <ToastIcon size={18} />
       <span>{toast.message}</span>
+      {toast.actionLabel && toast.onAction && (
+        <button className="app-toast-action" type="button" onClick={toast.onAction}>
+          {toast.actionLabel}
+        </button>
+      )}
       <button type="button" title="Close notification" aria-label="Close notification" onClick={onClose}>
         <X size={15} />
       </button>

@@ -31,6 +31,8 @@ export const settingsSchema = z.object({
   startAtStartup: z.boolean(),
   microphoneDeviceId: z.string().max(260),
   microphoneDeviceLabel: z.string().max(260),
+  transcriptOutputDeviceId: z.string().max(260),
+  transcriptOutputDeviceLabel: z.string().max(260),
   microphoneEchoCancellation: z.boolean(),
   microphoneNoiseSuppression: z.boolean(),
   microphoneAutoGainControl: z.boolean(),
@@ -60,7 +62,7 @@ export const llmModelIdSchema = z.enum([
 
 export const overlayStateSchema = z.object({
   active: z.boolean(),
-  mode: z.enum(['speak', 'improve', 'transcript']),
+  mode: z.enum(['speak', 'improve', 'transcript', 'additional-info']),
   status: z.enum(['recording', 'transcribing', 'improving', 'done', 'warning']),
   phase: z.enum(['recording', 'stopping', 'preparing', 'loading', 'transcribing', 'thinking', 'generating', 'finalizing']).optional(),
   actionPhase: z.enum(['ready', 'loading', 'recording', 'processing', 'done', 'warning', 'error']).optional(),

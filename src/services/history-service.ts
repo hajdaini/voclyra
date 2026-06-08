@@ -3,7 +3,7 @@ import { AppStorage } from '@storage/app-storage';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-type AddHistoryEntry = Omit<HistoryEntry, 'id' | 'createdAt' | 'title' | 'audioFileName'> & {
+type AddHistoryEntry = Omit<HistoryEntry, 'id' | 'createdAt' | 'title' | 'audioFileName' | 'audioByteLength'> & {
   audio?: Uint8Array;
 };
 
@@ -24,6 +24,7 @@ export class HistoryService {
       kind: entry.kind,
       text: entry.text,
       ...(audioFileName ? { audioFileName } : {}),
+      ...(audioFileName && entry.audio ? { audioByteLength: entry.audio.byteLength } : {}),
       id,
       title: this.title(entry.text),
       createdAt: new Date().toISOString(),

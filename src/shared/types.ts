@@ -2,6 +2,8 @@ export type AppSection = 'home' | 'settings' | 'history' | 'about';
 
 export type HomeMode = 'speak' | 'improve' | 'transcript';
 
+export type OverlayMode = HomeMode | 'additional-info';
+
 export type LanguageMode = 'auto' | 'fr' | 'en' | 'es' | 'de' | 'it' | 'pt';
 
 export type WhisperQualityMode = 'fast' | 'balanced' | 'accurate';
@@ -30,6 +32,8 @@ export type Settings = {
   startAtStartup: boolean;
   microphoneDeviceId: string;
   microphoneDeviceLabel: string;
+  transcriptOutputDeviceId: string;
+  transcriptOutputDeviceLabel: string;
   microphoneEchoCancellation: boolean;
   microphoneNoiseSuppression: boolean;
   microphoneAutoGainControl: boolean;
@@ -48,6 +52,7 @@ export type HistoryEntry = {
   createdAt: string;
   favorite?: boolean;
   audioFileName?: string;
+  audioByteLength?: number;
 };
 
 export type AppStatus = 'ready' | 'listening' | 'processing' | 'error';
@@ -141,7 +146,7 @@ export type LlmRuntimeInfo = {
 
 export type OverlayState = {
   active: boolean;
-  mode: 'speak' | 'improve' | 'transcript';
+  mode: OverlayMode;
   status: 'recording' | 'transcribing' | 'improving' | 'done' | 'warning';
   phase?: 'recording' | 'stopping' | 'preparing' | 'loading' | 'transcribing' | 'thinking' | 'generating' | 'finalizing';
   actionPhase?: 'ready' | 'loading' | 'recording' | 'processing' | 'done' | 'warning' | 'error';

@@ -96,6 +96,7 @@ vi.mock('@main/window', () => ({
   getOverlayState: vi.fn(),
   resizeOverlayToContent: vi.fn(),
   sendAppAction: vi.fn(),
+  sendBackgroundAppAction: vi.fn(),
   sendImproveResult: vi.fn(),
   setOverlayState: vi.fn(),
   stopFromOverlay: vi.fn(),
@@ -159,9 +160,10 @@ describe('History', () => {
     const transcript = await service.add({ kind: 'transcript', text: 'Meeting note', audio: new Uint8Array([1, 2]) }, 100);
     const improve = await service.add({ kind: 'improvement', text: 'Better text', audio: new Uint8Array([1, 2]) }, 100);
 
-    expect(speak).toMatchObject({ kind: 'dictation', title: 'Hello world', audioFileName: expect.stringMatching(/^speak\/.+\.wav$/) });
-    expect(transcript).toMatchObject({ kind: 'transcript', audioFileName: expect.stringMatching(/^transcript\/.+\.wav$/) });
+    expect(speak).toMatchObject({ kind: 'dictation', title: 'Hello world', audioFileName: expect.stringMatching(/^speak\/.+\.wav$/), audioByteLength: 2 });
+    expect(transcript).toMatchObject({ kind: 'transcript', audioFileName: expect.stringMatching(/^transcript\/.+\.wav$/), audioByteLength: 2 });
     expect(improve.audioFileName).toBeUndefined();
+    expect(improve.audioByteLength).toBeUndefined();
     expect(ensureDir).toHaveBeenCalledWith('audio', 'speak');
     expect(ensureDir).toHaveBeenCalledWith('audio', 'transcript');
     expect(files.size).toBe(2);

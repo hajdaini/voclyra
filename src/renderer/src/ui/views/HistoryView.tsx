@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type JSX, type MouseEvent } from 'react';
-import { Calendar, Check, CheckSquare, Clipboard, Ear, FileDown, FileText, Headphones, History, Mic, Pencil, Search, Square, Star, Trash2, Wand2, X } from 'lucide-react';
+import { Calendar, Check, CheckSquare, Clipboard, Ear, FileDown, FileText, HardDrive, Headphones, History, Mic, Pencil, Search, Square, Star, Trash2, Wand2, X } from 'lucide-react';
 import type { HistoryEntry } from '@shared/types';
 import { api } from '../../api';
 
@@ -293,6 +293,12 @@ export const HistoryView = ({
                           minute: '2-digit',
                         })}
                       </time>
+                      {typeof entry.audioByteLength === 'number' && (
+                        <span className="history-audio-size">
+                          <HardDrive size={13} />
+                          {formatFileSize(entry.audioByteLength)}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -337,4 +343,11 @@ export const HistoryView = ({
       </div>
     </section>
   );
+};
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes < 1024 * 1024) {
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };

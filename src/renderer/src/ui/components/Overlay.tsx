@@ -12,13 +12,21 @@ export const Overlay = (): JSX.Element => {
       ? 'improve'
       : new URLSearchParams(window.location.search).get('overlay') === 'transcript'
         ? 'transcript'
-        : 'speak';
+        : new URLSearchParams(window.location.search).get('overlay') === 'additional-info'
+          ? 'additional-info'
+          : 'speak';
   const [overlayState, setOverlayState] = useState<OverlayState>(inactiveOverlayState);
   const [shortcut, setShortcut] = useState(
     overlayMode === 'transcript' ? defaultSettings.hotkeys.transcript : defaultSettings.hotkeys.speak,
   );
   const modeLabel =
-    overlayState.mode === 'speak' ? 'Speak' : overlayState.mode === 'improve' ? 'Improve' : 'Transcript';
+    overlayState.mode === 'speak'
+      ? 'Speak'
+      : overlayState.mode === 'improve'
+        ? 'Improve'
+        : overlayState.mode === 'transcript'
+          ? 'Transcript'
+          : 'Info';
   const statusMessage = overlayState.message ?? fallbackMessage(overlayState);
   const isBusy = overlayState.status === 'warning' && overlayState.actionPhase === 'loading'
     || overlayState.status === 'transcribing'
@@ -74,7 +82,7 @@ export const Overlay = (): JSX.Element => {
       <div className="overlay-icon">
         {isBusy ? (
           <LoaderCircle className="status-spinner-icon" size={20} aria-label={statusMessage} />
-        ) : overlayState.status === 'warning' ? (
+        ) : overlayState.status === 'warning' || overlayState.mode === 'additional-info' ? (
           <AlertTriangle size={18} />
         ) : overlayState.mode === 'speak' ? (
           <Mic size={20} />
@@ -116,7 +124,7 @@ export const Overlay = (): JSX.Element => {
           <small>{shortcut.replace('CommandOrControl', 'Ctrl')}</small>
         </button>
       )}
-      {overlayState.status === 'recording' && overlayMode !== 'improve' && (
+      {overlayState.status === 'recording' && (overlayMode === 'speak' || overlayMode === 'transcript') && (
         <button
           className="overlay-cancel"
           type="button"
@@ -142,6 +150,9 @@ const fallbackMessage = (state: OverlayState): string => {
   }
   if (state.status === 'improving') {
     return 'Improving text...';
+  }
+  if (state.mode === 'additional-info') {
+    return 'Info';
   }
   return state.mode === 'speak' ? 'Speak done' : state.mode === 'improve' ? 'Improve done' : 'Transcript done';
 };

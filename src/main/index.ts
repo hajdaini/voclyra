@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import { improveClipboardFromHotkey, registerIpc } from './ipc';
 import { createTray, destroyTray } from './tray';
-import { createMainWindow, sendAppAction, showMainWindow } from './window';
+import { createMainWindow, sendBackgroundAppAction, showMainWindow } from './window';
 import { ErrorLogService } from '@services/error-log-service';
 import { SettingsService } from '@services/settings-service';
 import { HotkeyService } from '@services/hotkey-service';
@@ -74,9 +74,9 @@ void app.whenReady().then(async () => {
   void settingsService.get().then((settings) => {
     startupService.apply(settings.startAtStartup);
     hotkeyService.register(settings, {
-      speak: () => sendAppAction('speak'),
+      speak: () => sendBackgroundAppAction('speak'),
       improveText: () => void improveClipboardFromHotkey(),
-      transcript: () => sendAppAction('transcript'),
+      transcript: () => sendBackgroundAppAction('transcript'),
     });
     createTray(settings);
   });

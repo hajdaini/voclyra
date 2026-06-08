@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { shell } from 'electron';
 import { channels } from '@shared/channels';
 import { actionBlockMessage, type ActionLockState } from '@shared/action-locks';
+import { defaultSettings } from '@shared/defaults';
 
 type IpcHandler = (event: unknown, value?: unknown) => unknown;
 
@@ -69,6 +70,7 @@ const overlayMock = {
   cancelRecordingFromOverlay: vi.fn(),
   dismissOverlay: vi.fn(),
   sendAppAction: vi.fn(),
+  sendBackgroundAppAction: vi.fn(),
   sendImproveResult: vi.fn(),
 };
 
@@ -232,15 +234,17 @@ const setup = async (): Promise<void> => {
     startAtStartup: false,
     microphoneDeviceId: '',
     microphoneDeviceLabel: '',
+    transcriptOutputDeviceId: '',
+    transcriptOutputDeviceLabel: '',
     microphoneEchoCancellation: true,
     microphoneNoiseSuppression: true,
     microphoneAutoGainControl: true,
     silenceSensitivity: 'normal',
     maxHistoryItems: 100,
     hotkeys: {
-      speak: 'Alt+A',
-      improveText: 'Alt+Z',
-      transcript: 'Alt+T',
+      speak: 'CommandOrControl+Shift+1',
+      improveText: 'CommandOrControl+Shift+2',
+      transcript: 'CommandOrControl+Shift+3',
     },
   });
   const { registerIpc } = await import('@main/ipc');
@@ -355,6 +359,28 @@ describe('App actions', () => {
     });
     expect(llamaMock.improveText).toHaveBeenCalledWith('C:\\models\\llm\\model.gguf', 'Correct text.', 'helo world');
     expect(historyMock.add).toHaveBeenCalledWith(expect.objectContaining({ kind: 'improvement', text: 'Corrected text.' }), 100);
+  });
+
+  it('falls back to the previous clipboard when Improve selected text is empty', async () => {
+    settingsMock.get.mockResolvedValue({
+      ...defaultSettings,
+      llmModel: 'model.gguf',
+      whisperModel: 'ggml-large-v3.bin',
+      correctionPrompt: 'Correct text.',
+      improveSelectedText: true,
+      maxHistoryItems: 100,
+    });
+    clipboardState.text = 'previous clipboard';
+    const { improveClipboardFromHotkey } = await import('@main/ipc');
+
+    await improveClipboardFromHotkey();
+
+    expect(activePasteMock.copySelection).toHaveBeenCalled();
+    expect(llamaMock.improveText).toHaveBeenCalledWith(
+      'C:\\models\\llm\\model.gguf',
+      'Correct text.',
+      'previous clipboard',
+    );
   });
 
   it('handles Improve guard and error cases', async () => {

@@ -30,15 +30,17 @@ correctionPrompt: [
   startAtStartup: false,
   microphoneDeviceId: '',
   microphoneDeviceLabel: '',
+  transcriptOutputDeviceId: '',
+  transcriptOutputDeviceLabel: '',
   microphoneEchoCancellation: true,
   microphoneNoiseSuppression: true,
   microphoneAutoGainControl: true,
   silenceSensitivity: 'normal',
   maxHistoryItems: 100,
   hotkeys: {
-    speak: 'Alt+A',
-    improveText: 'Alt+Z',
-    transcript: 'Alt+T',
+    speak: 'CommandOrControl+Shift+1',
+    improveText: 'CommandOrControl+Shift+2',
+    transcript: 'CommandOrControl+Shift+3',
   },
 };
 

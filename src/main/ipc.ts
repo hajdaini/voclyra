@@ -9,7 +9,7 @@ import { actionBlockMessage } from '@shared/action-locks';
 import { actionOverlay, actionUi } from '@shared/action-ui';
 import { historyTitleUpdateSchema, idSchema, llmModelIdSchema, overlayStateSchema, settingsSchema, textSchema } from '@shared/schemas';
 import { whisperModelIdSchema } from '@shared/schemas';
-import type { OverlayState, ResultState, Settings } from '@shared/types';
+import type { HomeMode, OverlayState, ResultState, Settings } from '@shared/types';
 import { ActivePasteService } from '@services/active-paste-service';
 import { HistoryService } from '@services/history-service';
 import { HardwareService } from '@services/hardware-service';
@@ -27,7 +27,7 @@ import {
   dismissOverlay,
   getOverlayState,
   resizeOverlayToContent,
-  sendAppAction,
+  sendBackgroundAppAction,
   sendImproveResult,
   setOverlayState,
   stopFromOverlay,
@@ -48,7 +48,7 @@ const transcriptService = new TranscriptService(whisperService, historyService);
 const hotkeyService = new HotkeyService();
 const startupService = new StartupService();
 let improveShortcutRunning = false;
-const progressUpdateState = new Map<OverlayState['mode'], { at: number; key: string }>();
+const progressUpdateState = new Map<HomeMode, { at: number; key: string }>();
 const helpUrl = 'https://github.com/hajdaini/voclyra#readme';
 
 const mainActionLockState = () => ({
@@ -88,7 +88,7 @@ const showImproveProcessing = (): void => {
 };
 
 const showProcessingProgress = (
-  mode: OverlayState['mode'],
+  mode: HomeMode,
   progress: Pick<OverlayState, 'phase' | 'progress' | 'tokensGenerated' | 'progressLabel'>,
 ): void => {
   const key = `${progress.progress ?? ''}:${progress.tokensGenerated ?? ''}:${progress.progressLabel ?? ''}`;
@@ -170,9 +170,9 @@ export const registerIpc = (): void => {
     const nextSettings = settingsSchema.parse(value);
     const previousSettings = settings;
     const handlers = {
-      speak: () => sendAppAction('speak'),
+      speak: () => sendBackgroundAppAction('speak'),
       improveText: () => void improveClipboardFromHotkey(),
-      transcript: () => sendAppAction('transcript'),
+      transcript: () => sendBackgroundAppAction('transcript'),
     };
     const registration = hotkeyService.register(nextSettings, handlers);
     if (!registration.speak || !registration.improveText || !registration.transcript) {
@@ -469,7 +469,8 @@ export const registerIpc = (): void => {
   });
 
   ipcMain.handle(channels.overlayGetState, (_event, value: unknown) => {
-    const mode = value === 'improve' || value === 'transcript' ? value : 'speak';
+    const mode =
+      value === 'improve' || value === 'transcript' || value === 'additional-info' ? value : 'speak';
     return getOverlayState(mode);
   });
 
@@ -479,7 +480,10 @@ export const registerIpc = (): void => {
       typeof value === 'object' &&
       'mode' in value &&
       'size' in value &&
-      (value.mode === 'speak' || value.mode === 'improve' || value.mode === 'transcript') &&
+      (value.mode === 'speak' ||
+        value.mode === 'improve' ||
+        value.mode === 'transcript' ||
+        value.mode === 'additional-info') &&
       value.size &&
       typeof value.size === 'object' &&
       'width' in value.size &&
@@ -506,7 +510,8 @@ export const registerIpc = (): void => {
   });
 
   ipcMain.handle(channels.overlayDismiss, (_event, value: unknown) => {
-    const mode = value === 'improve' || value === 'transcript' ? value : 'speak';
+    const mode =
+      value === 'improve' || value === 'transcript' || value === 'additional-info' ? value : 'speak';
     dismissOverlay(mode);
   });
 
@@ -604,9 +609,9 @@ const readActiveSelection = async (): Promise<string> => {
   await activePasteService.copySelection();
   await new Promise((resolve) => setTimeout(resolve, 120));
   const selectedText = clipboard.readText();
-  if (selectedText === sentinel) {
+  if (selectedText === sentinel || !selectedText.trim()) {
     clipboard.writeText(previousText);
-    return '';
+    return previousText;
   }
   return selectedText;
 };

@@ -7,10 +7,11 @@ import { ErrorLogService } from '@services/error-log-service';
 import { applyWindowSecurity } from './security';
 
 let mainWindow: BrowserWindow | null = null;
+let backgroundActionFocusTimer: NodeJS.Timeout | null = null;
 const errorLogService = new ErrorLogService();
 type OverlayMode = OverlayState['mode'];
 
-const overlayModes: OverlayMode[] = ['speak', 'improve', 'transcript'];
+const overlayModes: OverlayMode[] = ['speak', 'improve', 'transcript', 'additional-info'];
 const overlayWindows = new Map<OverlayMode, BrowserWindow>();
 const overlayDismissed = new Map<OverlayMode, boolean>();
 const overlayContentSizes = new Map<OverlayMode, { width: number; height: number }>();
@@ -66,11 +67,12 @@ export const createMainWindow = (): BrowserWindow => {
     mainWindow?.show();
   });
 
-  mainWindow.on('close', () => {
-    if (!app.isQuitting) {
-      app.isQuitting = true;
-      setTimeout(() => app.quit(), 0);
+  mainWindow.on('close', (event) => {
+    if (app.isQuitting) {
+      return;
     }
+    event.preventDefault();
+    mainWindow?.hide();
   });
 
   mainWindow.on('unresponsive', () => {
@@ -135,6 +137,21 @@ export const sendAppAction = (action: 'speak' | 'improveText' | 'transcript'): v
   mainWindow?.webContents.send(channel);
 };
 
+export const sendBackgroundAppAction = (action: 'speak' | 'transcript'): void => {
+  const window = mainWindow ?? createMainWindow();
+  window.setFocusable(false);
+  sendAppAction(action);
+  if (backgroundActionFocusTimer) {
+    clearTimeout(backgroundActionFocusTimer);
+  }
+  backgroundActionFocusTimer = setTimeout(() => {
+    backgroundActionFocusTimer = null;
+    if (!window.isDestroyed()) {
+      window.setFocusable(true);
+    }
+  }, 1200);
+};
+
 export const sendImproveResult = (result: ResultState): void => {
   mainWindow?.webContents.send(channels.appImproveResult, result);
 };
@@ -170,6 +187,9 @@ export const getOverlayState = (mode: OverlayMode = 'speak'): OverlayState =>
   overlayStates.get(mode) ?? { ...defaultOverlayState, mode };
 
 export const stopFromOverlay = (mode: OverlayMode = 'speak'): void => {
+  if (mode === 'additional-info') {
+    return;
+  }
   if (mode === 'transcript') {
     mainWindow?.webContents.send(channels.appTranscript);
     return;
@@ -249,7 +269,6 @@ const createOverlayWindow = (mode: OverlayMode): BrowserWindow => {
     transparent: true,
     show: false,
     focusable: false,
-    parent: mainWindow ?? undefined,
     skipTaskbar: true,
     alwaysOnTop: true,
     title: `${packageInfo.productName} ${mode}`,

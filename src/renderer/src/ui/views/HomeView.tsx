@@ -139,9 +139,14 @@ export const HomeView = ({
               <span>Home</span>
             </h1>
           </div>
-          <button type="button" title="Open model settings" onClick={onOpenSettings}>
-            <Bot size={17} />
-            <span>Model settings</span>
+          <button
+            className={`home-model-button ${showDownloadModelButton ? 'download' : ''}`}
+            type="button"
+            title={showDownloadModelButton ? 'Open model downloads' : 'Open model settings'}
+            onClick={onOpenSettings}
+          >
+            {showDownloadModelButton ? <Download size={17} /> : <Bot size={17} />}
+            <span>{showDownloadModelButton ? 'Download model' : 'Model settings'}</span>
           </button>
         </div>
 
@@ -308,17 +313,6 @@ export const HomeView = ({
                   )}
                   {statusMessage && <span>{statusMessage}</span>}
                 </span>
-                {showDownloadModelButton && (
-                  <button
-                    className="inline-model-action"
-                    type="button"
-                    title="Open model downloads"
-                    onClick={onOpenSettings}
-                  >
-                    <Download size={14} />
-                    <span>Download model</span>
-                  </button>
-                )}
                 {(mode === 'speak' || mode === 'transcript' || mode === 'improve') && (
                   <small className={`inline-runtime-badge ${runtimeTone}`}>
                     <Cpu size={14} />

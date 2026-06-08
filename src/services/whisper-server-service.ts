@@ -285,10 +285,13 @@ export class WhisperServerService {
       '-l',
       key.language,
       '-nt',
+      '-sns',
       '-t',
       String(key.threads),
       '-nth',
-      '0.6',
+      '0.5',
+      '-lpt',
+      '-0.8',
       ...key.qualityArgs,
     ];
     if (key.prompt) {

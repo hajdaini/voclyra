@@ -381,7 +381,7 @@
   bottom: 24px;
   z-index: 120;
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) 24px;
+  grid-template-columns: 18px minmax(0, 1fr) auto 24px;
   align-items: center;
   gap: 10px;
   min-width: 240px;
@@ -422,6 +422,16 @@
 
 .app-toast button:hover {
   background: rgba(255, 156, 77, 0.12);
+}
+
+.app-toast .app-toast-action {
+  width: auto;
+  min-width: 0;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  color: var(--primary-strong);
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .app-toast.info {

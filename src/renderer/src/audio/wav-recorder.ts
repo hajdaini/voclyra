@@ -1,12 +1,15 @@
 export type WavRecorder = {
   stop: () => Promise<ArrayBuffer>;
   cancel: () => Promise<void>;
+  updateMicrophone?: (device?: MicrophoneDevice, options?: MicrophoneOptions) => Promise<void>;
 };
 
 type TranscriptRecorderOptions = {
   microphoneDevice?: MicrophoneDevice;
   microphoneOptions?: MicrophoneOptions;
+  onMicrophoneLevel?: (level: number) => void;
   onSystemAudioChange?: (active: boolean) => void;
+  onSystemAudioLevel?: (level: number) => void;
 };
 
 export type MicrophoneDevice = {
@@ -26,11 +29,13 @@ export const startWavRecorder = async (
   microphoneOptions?: MicrophoneOptions,
 ): Promise<WavRecorder> => {
   const stream = await getMicrophoneStream(microphoneDevice, microphoneOptions);
+  let currentStream = stream;
   const context = new AudioContext();
-  const source = context.createMediaStreamSource(stream);
+  let source = context.createMediaStreamSource(currentStream);
   const processor = context.createScriptProcessor(4096, 1, 1);
   const chunks: Float32Array[] = [];
   const inputSampleRate = context.sampleRate;
+  let stopped = false;
 
   processor.onaudioprocess = (event) => {
     const input = event.inputBuffer.getChannelData(0);
@@ -39,25 +44,45 @@ export const startWavRecorder = async (
     for (const sample of input) {
       sum += sample * sample;
     }
-    onLevel(Math.min(1, Math.sqrt(sum / input.length) * 8));
+    const level = Math.min(1, Math.sqrt(sum / input.length) * 8);
+    onLevel(level);
   };
 
   source.connect(processor);
   processor.connect(context.destination);
 
-  const close = async (): Promise<void> => {
+  const close = (): void => {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
     processor.disconnect();
     source.disconnect();
-    stream.getTracks().forEach((track) => track.stop());
-    await context.close();
+    currentStream.getTracks().forEach((track) => track.stop());
+    void context.close();
   };
 
   return {
+    updateMicrophone: async (device, options) => {
+      if (stopped) {
+        return;
+      }
+      const nextStream = await getMicrophoneStream(device, options);
+      if (stopped) {
+        nextStream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      source.disconnect();
+      currentStream.getTracks().forEach((track) => track.stop());
+      currentStream = nextStream;
+      source = context.createMediaStreamSource(currentStream);
+      source.connect(processor);
+    },
     stop: async () => {
-      await close();
+      close();
       return encodeWav(resample(merge(chunks), inputSampleRate, 16000), 16000);
     },
-    cancel: close,
+    cancel: async () => close(),
   };
 };
 
@@ -145,18 +170,40 @@ export const startTranscriptRecorder = async (
   const processor = context.createScriptProcessor(4096, 1, 1);
   const streams: MediaStream[] = [];
   let micSource: MediaStreamAudioSourceNode | null = null;
+  let micLevelSource: MediaStreamAudioSourceNode | null = null;
+  let micLevelProcessor: ScriptProcessorNode | null = null;
   let micStream: MediaStream | null = null;
   let systemSource: MediaStreamAudioSourceNode | null = null;
+  let systemProcessor: ScriptProcessorNode | null = null;
   let stopped = false;
 
   const connectMic = async (): Promise<void> => {
+    if (stopped) {
+      return;
+    }
     const stream = await getMicrophoneStream(options.microphoneDevice, options.microphoneOptions);
+    if (stopped) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
     micStream?.getTracks().forEach((track) => track.stop());
     micStream = stream;
     streams.push(stream);
     micSource?.disconnect();
     micSource = context.createMediaStreamSource(stream);
     micSource.connect(destination);
+    micLevelSource?.disconnect();
+    micLevelProcessor?.disconnect();
+    micLevelSource = context.createMediaStreamSource(stream);
+    micLevelProcessor = context.createScriptProcessor(2048, 1, 1);
+    micLevelProcessor.onaudioprocess = (event) => {
+      if (stopped) {
+        return;
+      }
+      options.onMicrophoneLevel?.(audioLevel(event.inputBuffer.getChannelData(0)));
+    };
+    micLevelSource.connect(micLevelProcessor);
+    micLevelProcessor.connect(context.destination);
   };
 
   await connectMic();
@@ -171,9 +218,21 @@ export const startTranscriptRecorder = async (
     if (systemAudioTracks.length > 0) {
       systemSource = context.createMediaStreamSource(new MediaStream(systemAudioTracks));
       systemSource.connect(destination);
+      systemProcessor = context.createScriptProcessor(2048, 1, 1);
+      systemProcessor.onaudioprocess = (event) => {
+        if (stopped) {
+          return;
+        }
+        options.onSystemAudioLevel?.(audioLevel(event.inputBuffer.getChannelData(0)));
+      };
+      systemSource.connect(systemProcessor);
+      systemProcessor.connect(context.destination);
       options.onSystemAudioChange?.(true);
       systemAudioTracks.forEach((track) => {
         track.addEventListener('ended', () => {
+          if (stopped) {
+            return;
+          }
           options.onSystemAudioChange?.(false);
         });
       });
@@ -188,11 +247,8 @@ export const startTranscriptRecorder = async (
   processor.onaudioprocess = (event) => {
     const input = event.inputBuffer.getChannelData(0);
     chunks.push(new Float32Array(input));
-    let sum = 0;
-    for (const sample of input) {
-      sum += sample * sample;
-    }
-    onLevel(Math.min(1, Math.sqrt(sum / input.length) * 8));
+    const level = audioLevel(input);
+    onLevel(level);
   };
 
   const reconnectMic = (): void => {
@@ -206,23 +262,37 @@ export const startTranscriptRecorder = async (
   source.connect(processor);
   processor.connect(context.destination);
 
-  const close = async (): Promise<void> => {
+  const close = (): void => {
+    if (stopped) {
+      return;
+    }
     stopped = true;
     navigator.mediaDevices.removeEventListener('devicechange', reconnectMic);
     processor.disconnect();
     source.disconnect();
     micSource?.disconnect();
+    micLevelSource?.disconnect();
+    micLevelProcessor?.disconnect();
     systemSource?.disconnect();
+    systemProcessor?.disconnect();
     streams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
-    await context.close();
+    void context.close();
   };
 
   return {
+    updateMicrophone: async (device, microphoneOptions) => {
+      if (stopped) {
+        return;
+      }
+      options.microphoneDevice = device;
+      options.microphoneOptions = microphoneOptions;
+      await connectMic();
+    },
     stop: async () => {
-      await close();
+      close();
       return encodeWav(resample(merge(chunks), inputSampleRate, 16000), 16000);
     },
-    cancel: close,
+    cancel: async () => close(),
   };
 };
 
@@ -235,6 +305,14 @@ const merge = (chunks: Float32Array[]): Float32Array => {
     offset += chunk.length;
   }
   return result;
+};
+
+const audioLevel = (input: Float32Array): number => {
+  let sum = 0;
+  for (const sample of input) {
+    sum += sample * sample;
+  }
+  return Math.min(1, Math.sqrt(sum / input.length) * 8);
 };
 
 const resample = (input: Float32Array, inputRate: number, outputRate: number): Float32Array => {
