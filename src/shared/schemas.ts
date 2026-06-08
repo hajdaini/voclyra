@@ -33,6 +33,8 @@ export const settingsSchema = z.object({
   microphoneDeviceLabel: z.string().max(260),
   transcriptOutputDeviceId: z.string().max(260),
   transcriptOutputDeviceLabel: z.string().max(260),
+  transcriptLiveChunkSeconds: z.number().int().min(10).max(120),
+  transcriptLiveOverlapSeconds: z.number().int().min(0).max(20),
   silenceSensitivity: z.enum(['low', 'normal', 'high']),
   maxHistoryItems: z.number().int().min(1).max(10000),
   hotkeys: hotkeysSchema,

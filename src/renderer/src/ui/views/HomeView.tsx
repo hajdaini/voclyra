@@ -104,6 +104,7 @@ export const HomeView = ({
   const StatusIcon = statusIcon[statusTone];
   const showProgressStatus = activeOverlay
     ? activeOverlay.actionPhase === 'loading' || activeOverlay.actionPhase === 'processing'
+      || (activeOverlay.status === 'recording' && Boolean(activeOverlay.progressLabel))
     : result.status === 'processing' || result.actionPhase === 'loading';
   const activeRuntimeAvailable = runtimeInfoLoaded && (mode === 'improve' ? llmRuntime.runtimeAvailable : whisperRuntime.runtimeAvailable);
   const showDownloadModelButton = shouldShowDownloadModelButton(

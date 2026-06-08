@@ -18,7 +18,9 @@ import type { LanguageMode, Settings, SilenceSensitivity, WhisperRuntimeInfo } f
 type TranscribeOptions = {
   timeoutMs?: number | null;
   debugName?: string;
-  onProgress?: (progress: number) => void;
+  onProgress?: (progress?: number, label?: string) => void;
+  onPartial?: (text: string) => void;
+  progressive?: boolean;
 };
 
 type WavInfo = {
@@ -245,6 +247,8 @@ export class WhisperService {
         options.timeoutMs,
         options.debugName,
         options.onProgress,
+        options.onPartial,
+        Boolean(options.progressive),
       );
     } finally {
       await this.cleanupTemporaryFiles(temporaryRoot);
@@ -258,14 +262,78 @@ export class WhisperService {
     id: string,
     timeoutMs: number | null | undefined,
     debugName?: string,
-    onProgress?: (progress: number) => void,
+    onProgress?: (progress?: number, label?: string) => void,
+    onPartial?: (text: string) => void,
+    progressive = false,
   ): Promise<string> {
+    void temporaryRoot;
+    void id;
+    void debugName;
+    if (progressive) {
+      return this.transcribeMeetingAudioProgressive(audio, modelPath, timeoutMs, onProgress, onPartial);
+    }
     const result = await this.transcribeWithServer(
       modelPath,
       audio,
       timeoutMs,
     );
     return result.text;
+  }
+
+  private async transcribeMeetingAudioProgressive(
+    audio: Uint8Array,
+    modelPath: string,
+    timeoutMs: number | null | undefined,
+    onProgress?: (progress?: number, label?: string) => void,
+    onPartial?: (text: string) => void,
+  ): Promise<string> {
+    const chunks = this.meetingChunks(audio);
+    if (chunks.length <= 1) {
+      const result = await this.transcribeWithServer(modelPath, audio, timeoutMs);
+      return result.text;
+    }
+
+    let text = '';
+    for (let index = 0; index < chunks.length; index += 1) {
+      const chunk = chunks[index];
+      if (!chunk) {
+        continue;
+      }
+      onProgress?.(undefined, `Transcribing part ${index + 1}/${chunks.length}`);
+      const result = await this.transcribeWithServer(modelPath, chunk, timeoutMs);
+      text = mergeTranscriptText(text, result.text);
+      if (text) {
+        onPartial?.(text);
+      }
+    }
+    onProgress?.(undefined, 'Finalizing transcript');
+    return text.trim();
+  }
+
+  private meetingChunks(audio: Uint8Array): Uint8Array[] {
+    const info = this.wavInfo(audio);
+    if (!info || info.bitsPerSample !== 16) {
+      return [audio];
+    }
+
+    const frames = Math.floor(info.dataSize / (info.channels * 2));
+    const chunkFrames = Math.round(info.sampleRate * 75);
+    const overlapFrames = Math.round(info.sampleRate * 8);
+    if (frames <= chunkFrames) {
+      return [audio];
+    }
+
+    const chunks: Uint8Array[] = [];
+    let startFrame = 0;
+    while (startFrame < frames) {
+      const endFrame = Math.min(startFrame + chunkFrames, frames);
+      chunks.push(this.wavSlice(audio, info, { startFrame, endFrame }));
+      if (endFrame === frames) {
+        break;
+      }
+      startFrame = Math.max(startFrame + 1, endFrame - overlapFrames);
+    }
+    return chunks;
   }
 
   private async transcribeWithServer(
@@ -694,6 +762,35 @@ const lineCount = (text: string): number => text ? text.split(/\r?\n/).length : 
 const quoteArgs = (args: string[]): string => args.map((part) => `"${part}"`).join(' ');
 
 const yesNo = (value: boolean | undefined): string => value === undefined ? 'unknown' : value ? 'yes' : 'no';
+
+const mergeTranscriptText = (current: string, next: string): string => {
+  const left = current.trim();
+  const right = next.trim();
+  if (!left) {
+    return right;
+  }
+  if (!right) {
+    return left;
+  }
+
+  const leftWords = left.split(/\s+/);
+  const rightWords = right.split(/\s+/);
+  const maxOverlap = Math.min(80, leftWords.length, rightWords.length);
+  for (let count = maxOverlap; count >= 8; count -= 1) {
+    const leftTail = normalizeWords(leftWords.slice(-count));
+    const rightHead = normalizeWords(rightWords.slice(0, count));
+    if (leftTail === rightHead) {
+      return `${leftWords.join(' ')} ${rightWords.slice(count).join(' ')}`.trim();
+    }
+  }
+  return `${left}\n${right}`.trim();
+};
+
+const normalizeWords = (words: string[]): string =>
+  words
+    .map((word) => word.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ''))
+    .filter(Boolean)
+    .join(' ');
 
 const silenceSensitivityConfig: Record<
   SilenceSensitivity,

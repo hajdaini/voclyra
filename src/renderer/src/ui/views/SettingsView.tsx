@@ -692,45 +692,6 @@ export const SettingsView = ({
                 ))}
               </select>
             </label>
-            <label>
-              <span className="field-label">
-                Whisper language
-                <HelpHint text="Auto detects the spoken language. A fixed language can be faster and more stable when you always speak the same language." />
-              </span>
-              <select
-                value={settings.whisperLanguage}
-                onChange={(event) =>
-                  onChange({ ...settings, whisperLanguage: event.target.value as SettingsType['whisperLanguage'] })
-                }
-              >
-                <option value="auto">Auto</option>
-                <option value="fr">French</option>
-                <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="de">German</option>
-                <option value="it">Italian</option>
-                <option value="pt">Portuguese</option>
-              </select>
-            </label>
-            <label>
-              <span className="field-label">
-                Quality mode
-                <HelpHint text="Fast is quicker with lower search effort. Balanced keeps the current behavior. Accurate searches more and can be slower." />
-              </span>
-              <select
-                value={settings.whisperQualityMode}
-                onChange={(event) =>
-                  onChange({
-                    ...settings,
-                    whisperQualityMode: event.target.value as SettingsType['whisperQualityMode'],
-                  })
-                }
-              >
-                <option value="fast">Fast</option>
-                <option value="balanced">Balanced</option>
-                <option value="accurate">Accurate</option>
-              </select>
-            </label>
           </div>
           <div className="inline-download-heading">
             <Download size={16} />
@@ -789,6 +750,85 @@ export const SettingsView = ({
                 </article>
               );
             })}
+          </div>
+          <div className="settings-grid models-select-grid">
+            <label>
+              <span className="field-label">
+                Whisper language
+                <HelpHint text="Auto detects the spoken language. A fixed language can be faster and more stable when you always speak the same language." />
+              </span>
+              <select
+                value={settings.whisperLanguage}
+                onChange={(event) =>
+                  onChange({ ...settings, whisperLanguage: event.target.value as SettingsType['whisperLanguage'] })
+                }
+              >
+                <option value="auto">Auto</option>
+                <option value="fr">French</option>
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="de">German</option>
+                <option value="it">Italian</option>
+                <option value="pt">Portuguese</option>
+              </select>
+            </label>
+            <label>
+              <span className="field-label">
+                Quality mode
+                <HelpHint text="Fast is quicker with lower search effort. Balanced keeps the current behavior. Accurate searches more and can be slower." />
+              </span>
+              <select
+                value={settings.whisperQualityMode}
+                onChange={(event) =>
+                  onChange({
+                    ...settings,
+                    whisperQualityMode: event.target.value as SettingsType['whisperQualityMode'],
+                  })
+                }
+              >
+                <option value="fast">Fast</option>
+                <option value="balanced">Balanced</option>
+                <option value="accurate">Accurate</option>
+              </select>
+            </label>
+            <label>
+              <span className="field-label">
+                Transcript chunk seconds
+                <HelpHint text="Controls how much recorded meeting audio is copied to Whisper at a time. Longer chunks are usually more accurate; shorter chunks appear sooner." />
+              </span>
+              <input
+                type="number"
+                min={10}
+                max={120}
+                step={5}
+                value={settings.transcriptLiveChunkSeconds}
+                onChange={(event) =>
+                  onChange({
+                    ...settings,
+                    transcriptLiveChunkSeconds: Math.max(10, Math.min(120, Math.round(Number(event.target.value) || 30))),
+                  })
+                }
+              />
+            </label>
+            <label>
+              <span className="field-label">
+                Transcript overlap seconds
+                <HelpHint text="Repeats the end of the previous transcript chunk to avoid missing words at boundaries. Higher values reduce cuts but can create duplicates." />
+              </span>
+              <input
+                type="number"
+                min={0}
+                max={20}
+                step={1}
+                value={settings.transcriptLiveOverlapSeconds}
+                onChange={(event) =>
+                  onChange({
+                    ...settings,
+                    transcriptLiveOverlapSeconds: Math.max(0, Math.min(20, Math.round(Number(event.target.value) || 0))),
+                  })
+                }
+              />
+            </label>
           </div>
         </div>
       </section>

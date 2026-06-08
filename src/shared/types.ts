@@ -34,6 +34,8 @@ export type Settings = {
   microphoneDeviceLabel: string;
   transcriptOutputDeviceId: string;
   transcriptOutputDeviceLabel: string;
+  transcriptLiveChunkSeconds: number;
+  transcriptLiveOverlapSeconds: number;
   silenceSensitivity: SilenceSensitivity;
   maxHistoryItems: number;
   hotkeys: Hotkeys;
@@ -173,13 +175,16 @@ export type AppApi = {
     stop: () => Promise<ResultState>;
   };
   transcript: {
-    start: (audio: ArrayBuffer) => Promise<ResultState>;
+    start: (audio: ArrayBuffer, options?: { progressive?: boolean }) => Promise<ResultState>;
+    preview: (audio: ArrayBuffer) => Promise<string>;
+    onPartial: (callback: (text: string) => void) => () => void;
   };
   audioCapture: {
     start: (mode: 'speak' | 'transcript') => Promise<void>;
     switch: (mode: 'speak' | 'transcript', source: 'input' | 'output') => Promise<void>;
     stop: (mode: 'speak' | 'transcript') => Promise<ArrayBuffer>;
     cancel: (mode: 'speak' | 'transcript') => Promise<void>;
+    previewChunk: (mode: 'speak' | 'transcript', options: { chunkMs: number; overlapMs: number }) => Promise<ArrayBuffer | null>;
     onLevel: (callback: (event: { mode: 'speak' | 'transcript'; source?: 'input' | 'output'; level: number }) => void) => () => void;
   };
   text: {

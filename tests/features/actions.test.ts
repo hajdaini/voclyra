@@ -238,6 +238,8 @@ const setup = async (): Promise<void> => {
     microphoneDeviceLabel: '',
     transcriptOutputDeviceId: '',
     transcriptOutputDeviceLabel: '',
+    transcriptLiveChunkSeconds: 30,
+    transcriptLiveOverlapSeconds: 5,
     silenceSensitivity: 'normal',
     maxHistoryItems: 100,
     hotkeys: {

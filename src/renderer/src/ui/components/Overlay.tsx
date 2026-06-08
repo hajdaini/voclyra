@@ -29,7 +29,9 @@ export const Overlay = (): JSX.Element => {
           ? 'Transcript'
           : 'Info';
   const statusMessage = overlayState.message ?? fallbackMessage(overlayState);
-  const isBusy = overlayState.status === 'warning' && overlayState.actionPhase === 'loading'
+  const isLivePreview = overlayState.status === 'recording' && Boolean(overlayState.progressLabel);
+  const isBusy = isLivePreview
+    || overlayState.status === 'warning' && overlayState.actionPhase === 'loading'
     || overlayState.status === 'transcribing'
     || overlayState.status === 'improving';
 
@@ -81,7 +83,7 @@ export const Overlay = (): JSX.Element => {
   return (
     <main className={`overlay ${overlayState.status}`}>
       <div className="overlay-icon">
-        {isBusy ? (
+        {isBusy || isLivePreview ? (
           <LoaderCircle className="status-spinner-icon" size={20} aria-label={statusMessage} />
         ) : overlayState.status === 'warning' || overlayState.mode === 'additional-info' ? (
           <AlertTriangle size={18} />

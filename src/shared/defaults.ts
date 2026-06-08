@@ -32,6 +32,8 @@ correctionPrompt: [
   microphoneDeviceLabel: '',
   transcriptOutputDeviceId: 'all',
   transcriptOutputDeviceLabel: 'All computer audio',
+  transcriptLiveChunkSeconds: 30,
+  transcriptLiveOverlapSeconds: 5,
   silenceSensitivity: 'normal',
   maxHistoryItems: 100,
   hotkeys: {

@@ -121,6 +121,10 @@ export const App = (): JSX.Element => {
   >({});
   const overlayWarningTimerRef = useRef<Partial<Record<OverlayMode, number>>>({});
   const overlayHideTimerRef = useRef<Partial<Record<OverlayMode, number>>>({});
+  const transcriptLivePreviewTimerRef = useRef<number | null>(null);
+  const transcriptLivePreviewRunningRef = useRef(false);
+  const transcriptLivePreviewTranscribingRef = useRef(false);
+  const transcriptLiveTextRef = useRef('');
   const microphoneSettingsKeyRef = useRef('');
   const transcriptOutputSettingsKeyRef = useRef('');
   const recordingActiveRef = useRef<Record<'speak' | 'transcript', boolean>>({
@@ -260,6 +264,15 @@ export const App = (): JSX.Element => {
         );
       });
     });
+    const removeTranscriptPartialListener = api.transcript.onPartial((text) => {
+      setTranscriptResult((current) => ({
+        ...current,
+        text,
+        status: 'processing',
+        actionPhase: 'processing',
+        message: 'Transcribing...',
+      }));
+    });
     const removeOverlayListener = api.overlay.onState((state) => {
       setOverlayStateByMode((current) => ({
         ...current,
@@ -268,9 +281,11 @@ export const App = (): JSX.Element => {
     });
     return () => {
       active = false;
+      stopTranscriptLivePreview();
       cancelInitialLoad?.();
       removeWhisperDownloadListener();
       removeLlmDownloadListener();
+      removeTranscriptPartialListener();
       removeOverlayListener();
     };
   }, []);
@@ -617,6 +632,7 @@ export const App = (): JSX.Element => {
     } else {
       setTranscriptRecorder(null);
       recordingActiveRef.current.transcript = false;
+      stopTranscriptLivePreview();
       clearAudioWarningTimer('transcriptMic');
       clearAudioWarningTimer('transcriptSystem');
       setTranscriptResult(actionResult('transcript', 'warning', { message: actionMessages.recordingCancelled }));
@@ -710,6 +726,76 @@ export const App = (): JSX.Element => {
     setTranscriptSystemAudioWaveform(nextSystemAudioWaveform);
   };
 
+  const startTranscriptLivePreview = (): void => {
+    stopTranscriptLivePreview();
+    transcriptLiveTextRef.current = '';
+    transcriptLivePreviewTimerRef.current = window.setInterval(() => {
+      void transcribeLivePreviewChunk();
+    }, 1000);
+  };
+
+  const stopTranscriptLivePreview = (): void => {
+    if (transcriptLivePreviewTimerRef.current !== null) {
+      window.clearInterval(transcriptLivePreviewTimerRef.current);
+      transcriptLivePreviewTimerRef.current = null;
+    }
+  };
+
+  const transcribeLivePreviewChunk = async (): Promise<void> => {
+    if (!recordingActiveRef.current.transcript || transcriptLivePreviewRunningRef.current) {
+      return;
+    }
+    transcriptLivePreviewRunningRef.current = true;
+    try {
+      const audio = await api.audioCapture.previewChunk('transcript', {
+        chunkMs: settingsRef.current.transcriptLiveChunkSeconds * 1000,
+        overlapMs: Math.min(
+          settingsRef.current.transcriptLiveOverlapSeconds,
+          settingsRef.current.transcriptLiveChunkSeconds - 1,
+        ) * 1000,
+      });
+      if (!audio || !recordingActiveRef.current.transcript) {
+        return;
+      }
+      transcriptLivePreviewTranscribingRef.current = true;
+      publishOverlayState(overlayRecording(
+        'transcript',
+        transcriptSystemAudioWaveformRef.current.slice(-overlayWaveformSize),
+        'Recording...',
+        'info',
+        'recording',
+        {
+          microphoneWaveform: transcriptMicrophoneWaveformRef.current.slice(-overlayWaveformSize),
+          systemAudioWaveform: transcriptSystemAudioWaveformRef.current.slice(-overlayWaveformSize),
+          progressLabel: 'Transcribing live preview',
+        },
+      ));
+      const chunkText = await api.transcript.preview(audio);
+      if (!chunkText.trim()) {
+        return;
+      }
+      transcriptLiveTextRef.current = mergePreviewTranscriptText(transcriptLiveTextRef.current, chunkText);
+      setTranscriptResult((current) => ({
+        ...current,
+        text: transcriptLiveTextRef.current,
+        status: 'processing',
+        actionPhase: 'processing',
+        message: 'Transcribing...',
+      }));
+    } catch {
+      stopTranscriptLivePreview();
+    } finally {
+      transcriptLivePreviewTranscribingRef.current = false;
+      if (recordingActiveRef.current.transcript) {
+        publishTranscriptRecordingOverlay(
+          transcriptSystemAudioWaveformRef.current,
+          transcriptMicrophoneWaveformRef.current,
+        );
+      }
+      transcriptLivePreviewRunningRef.current = false;
+    }
+  };
+
   const publishTranscriptRecordingOverlay = (
     systemAudioWaveform: number[],
     microphoneWaveform: number[],
@@ -725,6 +811,7 @@ export const App = (): JSX.Element => {
       {
         microphoneWaveform: microphoneWaveform.slice(-overlayWaveformSize),
         systemAudioWaveform: systemAudioWaveform.slice(-overlayWaveformSize),
+        progressLabel: transcriptLivePreviewTranscribingRef.current ? 'Transcribing live preview' : undefined,
       },
     ));
   };
@@ -820,6 +907,7 @@ export const App = (): JSX.Element => {
           },
         ),
       );
+      startTranscriptLivePreview();
     } catch (error) {
       const message = errorMessage(error);
       setTranscriptResult(actionResult('transcript', 'error', { message }));
@@ -834,6 +922,7 @@ export const App = (): JSX.Element => {
 
     setTranscriptRecorder(null);
     recordingActiveRef.current.transcript = false;
+    stopTranscriptLivePreview();
     clearAudioWarningTimer('transcriptMic');
     clearAudioWarningTimer('transcriptSystem');
     setWaveform(defaultWaveform());
@@ -842,10 +931,11 @@ export const App = (): JSX.Element => {
     clearOverlayWarningTimer('transcript');
     publishOverlayState(overlayProcessing('transcript', defaultWaveform().slice(-overlayWaveformSize), undefined, undefined, {
       phase: 'transcribing',
+      progressLabel: 'Preparing transcript',
     }));
     try {
       const audio = await transcriptRecorder.stop();
-      await transcribeAudio(audio);
+      await transcribeAudio(audio, true);
     } catch (error) {
       const message = errorMessage(error);
       setTranscriptResult(actionResult('transcript', 'error', { message }));
@@ -889,7 +979,7 @@ export const App = (): JSX.Element => {
       publishOverlayState(overlayProcessing('transcript', defaultWaveform().slice(-overlayWaveformSize), undefined, undefined, {
         phase: 'transcribing',
       }));
-      await transcribeAudio(audio);
+      await transcribeAudio(audio, false);
     } catch (error) {
       const message = errorMessage(error);
       showToast('error', message);
@@ -900,8 +990,8 @@ export const App = (): JSX.Element => {
     }
   };
 
-  const transcribeAudio = async (audio: ArrayBuffer): Promise<void> => {
-    const nextResult = await api.transcript.start(audio);
+  const transcribeAudio = async (audio: ArrayBuffer, progressive: boolean): Promise<void> => {
+    const nextResult = await api.transcript.start(audio, { progressive });
     setTranscriptResult(nextResult);
     if (!nextResult.text) {
       showOverlayWarning('transcript', nextResult.message);
@@ -988,6 +1078,9 @@ export const App = (): JSX.Element => {
     ) {
       llmWarmupModelRef.current = null;
       setLlmWarmupRevision((current) => current + 1);
+    }
+    if (!settingsAreEqual(savedSettings, previousSettings)) {
+      showToast('success', 'Settings updated.');
     }
   };
 
@@ -1411,6 +1504,8 @@ const settingsAreEqual = (left: SettingsType, right: SettingsType): boolean =>
   left.microphoneDeviceLabel === right.microphoneDeviceLabel &&
   left.transcriptOutputDeviceId === right.transcriptOutputDeviceId &&
   left.transcriptOutputDeviceLabel === right.transcriptOutputDeviceLabel &&
+  left.transcriptLiveChunkSeconds === right.transcriptLiveChunkSeconds &&
+  left.transcriptLiveOverlapSeconds === right.transcriptLiveOverlapSeconds &&
   left.silenceSensitivity === right.silenceSensitivity &&
   left.maxHistoryItems === right.maxHistoryItems &&
   left.hotkeys.speak === right.hotkeys.speak &&
@@ -1458,6 +1553,32 @@ const isSameActionProcessingBlock = (
 ): boolean =>
   (mode === 'speak' && message === 'Speak is already transcribing.') ||
   (mode === 'transcript' && message === 'Transcript is already transcribing.');
+
+const mergePreviewTranscriptText = (current: string, next: string): string => {
+  const left = current.trim();
+  const right = next.trim();
+  if (!left) {
+    return right;
+  }
+  if (!right) {
+    return left;
+  }
+  const leftWords = left.split(/\s+/);
+  const rightWords = right.split(/\s+/);
+  const maxOverlap = Math.min(80, leftWords.length, rightWords.length);
+  for (let count = maxOverlap; count >= 8; count -= 1) {
+    if (normalizePreviewWords(leftWords.slice(-count)) === normalizePreviewWords(rightWords.slice(0, count))) {
+      return `${leftWords.join(' ')} ${rightWords.slice(count).join(' ')}`.trim();
+    }
+  }
+  return `${left}\n${right}`.trim();
+};
+
+const normalizePreviewWords = (words: string[]): string =>
+  words
+    .map((word) => word.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ''))
+    .filter(Boolean)
+    .join(' ');
 
 const normalizeCopyResult = (
   mode: 'speak' | 'improve' | 'transcript',

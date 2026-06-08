@@ -83,6 +83,7 @@ static class WasapiRecorder
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(options.OutputPath)) ?? ".");
         using var stop = new CancellationTokenSource();
+        var snapshotRequested = 0;
         _ = Task.Run(async () =>
         {
             while (!stop.IsCancellationRequested)
@@ -92,6 +93,10 @@ static class WasapiRecorder
                 {
                     stop.Cancel();
                     return;
+                }
+                if (line.Equals("snapshot", StringComparison.OrdinalIgnoreCase))
+                {
+                    Interlocked.Exchange(ref snapshotRequested, 1);
                 }
             }
         });
@@ -123,6 +128,12 @@ static class WasapiRecorder
                     capture.GetNextPacketSize(out var packetFrames);
                     if (packetFrames == 0)
                     {
+                        if (Interlocked.Exchange(ref snapshotRequested, 0) == 1)
+                        {
+                            wav.UpdateHeader();
+                            Console.WriteLine("SNAPSHOT");
+                            Console.Out.Flush();
+                        }
                         var now = DateTime.UtcNow;
                         var silentFrames = (int)Math.Round((now - lastWriteAt).TotalSeconds * format.SampleRate);
                         if (silentFrames > 0)
@@ -158,6 +169,12 @@ static class WasapiRecorder
                         levelSum = 0;
                         levelCount = 0;
                         lastLevelAt = DateTime.UtcNow;
+                    }
+                    if (Interlocked.Exchange(ref snapshotRequested, 0) == 1)
+                    {
+                        wav.UpdateHeader();
+                        Console.WriteLine("SNAPSHOT");
+                        Console.Out.Flush();
                     }
                 }
             }
@@ -336,8 +353,9 @@ sealed class WavWriter : IDisposable
         }
     }
 
-    public void Dispose()
+    public void UpdateHeader()
     {
+        var position = stream.Position;
         stream.Position = 0;
         var header = new byte[44];
         Encoding.ASCII.GetBytes("RIFF").CopyTo(header, 0);
@@ -353,6 +371,13 @@ sealed class WavWriter : IDisposable
         Encoding.ASCII.GetBytes("data").CopyTo(header, 36);
         BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(40), (uint)bytesWritten);
         stream.Write(header);
+        stream.Position = position;
+        stream.Flush();
+    }
+
+    public void Dispose()
+    {
+        UpdateHeader();
         stream.Dispose();
     }
 }

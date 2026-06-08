@@ -390,11 +390,33 @@ export const registerIpc = (): void => {
     }
   });
 
-  ipcMain.handle(channels.transcriptStart, async (_event, value: unknown) => {
-    const audio = value instanceof ArrayBuffer ? new Uint8Array(value) : null;
-    if (!audio || audio.byteLength === 0) {
+  ipcMain.handle(channels.audioCapturePreviewChunk, async (_event, value: unknown) => {
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      !('mode' in value) ||
+      !('chunkMs' in value) ||
+      !('overlapMs' in value) ||
+      (value.mode !== 'speak' && value.mode !== 'transcript') ||
+      typeof value.chunkMs !== 'number' ||
+      typeof value.overlapMs !== 'number'
+    ) {
+      return null;
+    }
+    const audio = await audioCaptureHelperService.previewChunk(value.mode, value.chunkMs, value.overlapMs);
+    return audio ? audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength) : null;
+  });
+
+  ipcMain.handle(channels.transcriptStart, async (event, value: unknown) => {
+    const input = transcriptInput(value);
+    if (!input) {
       return ready('', 'No audio captured.');
     }
+    const audio = new Uint8Array(input.audio);
+    if (audio.byteLength === 0) {
+      return ready('', 'No audio captured.');
+    }
+    const progressive = input.progressive;
     const whisperModels = await whisperModelService.downloadedModelNames();
     const whisperModel = whisperModels.includes(settings.whisperModel)
       ? settings.whisperModel
@@ -408,8 +430,12 @@ export const registerIpc = (): void => {
       const text = await whisperService.transcribeMeeting(audio, whisperModel, {
         timeoutMs: null,
         debugName: 'transcript',
-        onProgress: (progress) => {
-          showProcessingProgress('transcript', { phase: 'transcribing', progress });
+        progressive,
+        onProgress: (progress, label) => {
+          showProcessingProgress('transcript', { phase: 'transcribing', progress, progressLabel: label });
+        },
+        onPartial: (partialText) => {
+          event.sender.send(channels.transcriptPartial, partialText);
         },
       });
       const durationMs = elapsedMs(startedAt);
@@ -421,6 +447,24 @@ export const registerIpc = (): void => {
     } catch (error) {
       return failed(error);
     }
+  });
+
+  ipcMain.handle(channels.transcriptPreview, async (_event, value: unknown) => {
+    const audio = value instanceof ArrayBuffer ? new Uint8Array(value) : null;
+    if (!audio || audio.byteLength === 0) {
+      return '';
+    }
+    const whisperModels = await whisperModelService.downloadedModelNames();
+    const whisperModel = whisperModels.includes(settings.whisperModel)
+      ? settings.whisperModel
+      : whisperModels[0];
+    if (!whisperModel) {
+      return '';
+    }
+    return whisperService.transcribeMeeting(audio, whisperModel, {
+      timeoutMs: null,
+      debugName: 'transcript',
+    });
   });
 
   ipcMain.handle(channels.textImprove, async (_event, value: unknown) => {
@@ -603,6 +647,24 @@ const failed = (error: unknown): ResultState => ({
 });
 
 const singleLineText = (text: string): string => text.replace(/\s*\r?\n+\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+
+const transcriptInput = (value: unknown): { audio: ArrayBuffer; progressive: boolean } | null => {
+  if (value instanceof ArrayBuffer) {
+    return { audio: value, progressive: false };
+  }
+  if (
+    value &&
+    typeof value === 'object' &&
+    'audio' in value &&
+    value.audio instanceof ArrayBuffer
+  ) {
+    return {
+      audio: value.audio,
+      progressive: 'progressive' in value && value.progressive === true,
+    };
+  }
+  return null;
+};
 
 const isWavAudio = (audio: Uint8Array): boolean => {
   if (audio.byteLength < 12) {

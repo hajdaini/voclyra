@@ -24,14 +24,29 @@ const api: AppApi = {
     stop: () => ipcRenderer.invoke(channels.dictationStop) as ReturnType<AppApi['dictation']['stop']>,
   },
   transcript: {
-    start: (audio) =>
-      ipcRenderer.invoke(channels.transcriptStart, audio) as ReturnType<AppApi['transcript']['start']>,
+    start: (audio, options) =>
+      ipcRenderer.invoke(channels.transcriptStart, { audio, progressive: Boolean(options?.progressive) }) as ReturnType<AppApi['transcript']['start']>,
+    preview: (audio) =>
+      ipcRenderer.invoke(channels.transcriptPreview, audio) as ReturnType<AppApi['transcript']['preview']>,
+    onPartial: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, text: unknown): void => {
+        if (typeof text === 'string') {
+          callback(text);
+        }
+      };
+      ipcRenderer.on(channels.transcriptPartial, listener);
+      return () => {
+        ipcRenderer.removeListener(channels.transcriptPartial, listener);
+      };
+    },
   },
   audioCapture: {
     start: (mode) => ipcRenderer.invoke(channels.audioCaptureStart, mode) as Promise<void>,
     switch: (mode, source) => ipcRenderer.invoke(channels.audioCaptureSwitch, { mode, source }) as Promise<void>,
     stop: (mode) => ipcRenderer.invoke(channels.audioCaptureStop, mode) as Promise<ArrayBuffer>,
     cancel: (mode) => ipcRenderer.invoke(channels.audioCaptureCancel, mode) as Promise<void>,
+    previewChunk: (mode, options) =>
+      ipcRenderer.invoke(channels.audioCapturePreviewChunk, { mode, ...options }) as ReturnType<AppApi['audioCapture']['previewChunk']>,
     onLevel: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, value: unknown): void => {
         if (

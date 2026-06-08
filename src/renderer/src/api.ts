@@ -29,12 +29,15 @@ const fallbackApi: AppApi = {
   },
   transcript: {
     start: () => Promise.resolve(bridgeMissing()),
+    preview: () => Promise.resolve(''),
+    onPartial: () => () => {},
   },
   audioCapture: {
     start: () => Promise.resolve(),
     switch: () => Promise.resolve(),
     stop: () => Promise.resolve(new ArrayBuffer(0)),
     cancel: () => Promise.resolve(),
+    previewChunk: () => Promise.resolve(null),
     onLevel: () => () => {},
   },
   text: {

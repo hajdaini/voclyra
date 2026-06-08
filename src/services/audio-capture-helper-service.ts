@@ -31,6 +31,7 @@ type CaptureSegment = {
 type CaptureState = {
   mode: CaptureMode;
   startedAtMs: number;
+  previewEndedAtMs: number;
   settings: Settings;
   onLevel: (source: CaptureSource, level: number) => void;
   processes: Map<string, CaptureProcess>;
@@ -55,6 +56,7 @@ export class AudioCaptureHelperService {
     const state: CaptureState = {
       mode,
       startedAtMs: Date.now(),
+      previewEndedAtMs: 0,
       settings,
       onLevel,
       processes: new Map(),
@@ -109,6 +111,36 @@ export class AudioCaptureHelperService {
     const audio = await mixWavSegments(state.segments, state.startedAtMs);
     await this.cleanup(state.temporaryRoot);
     return audio;
+  }
+
+  async previewChunk(mode: CaptureMode, chunkMs: number, overlapMs: number): Promise<Uint8Array | null> {
+    const state = this.captures.get(mode);
+    if (!state || chunkMs < 5000 || overlapMs < 0 || overlapMs >= chunkMs) {
+      return null;
+    }
+    await Promise.all([...state.processes.values()].map((process) => this.snapshotProcess(process)));
+    const now = Date.now();
+    const elapsedMs = Math.max(0, now - state.startedAtMs);
+    if (elapsedMs - state.previewEndedAtMs < chunkMs) {
+      return null;
+    }
+
+    const activeSegments = [...state.processes.values()].map((process) => ({
+      source: process.source,
+      outputPath: process.outputPath,
+      startedAtMs: process.startedAtMs,
+      endedAtMs: now,
+    }));
+    const audio = await mixWavSegments([...state.segments, ...activeSegments], state.startedAtMs);
+    const parsed = parsePcm16MonoWav(audio);
+    if (!parsed) {
+      return null;
+    }
+
+    const startMs = Math.max(0, state.previewEndedAtMs - overlapMs);
+    const endMs = elapsedMs;
+    state.previewEndedAtMs = elapsedMs;
+    return slicePcm16MonoWav(parsed, startMs, endMs);
   }
 
   async cancel(mode: CaptureMode): Promise<void> {
@@ -168,6 +200,14 @@ export class AudioCaptureHelperService {
       startedAtMs: process.startedAtMs,
       endedAtMs: Date.now(),
     });
+  }
+
+  private async snapshotProcess(process: CaptureProcess): Promise<void> {
+    if (process.child.exitCode !== null || process.child.stdin.destroyed) {
+      return;
+    }
+    process.child.stdin.write('snapshot\n');
+    await delay(120);
   }
 
   private args(source: CaptureSource, outputPath: string, settings: Settings, device?: CaptureDevice): string[] {
@@ -347,4 +387,10 @@ const writePcm16MonoWav = (samples: Int16Array, sampleRate: number): Uint8Array 
   buffer.writeUInt32LE(dataSize, 40);
   Buffer.from(samples.buffer, samples.byteOffset, dataSize).copy(buffer, 44);
   return buffer;
+};
+
+const slicePcm16MonoWav = (audio: Pcm16MonoWav, startMs: number, endMs: number): Uint8Array => {
+  const start = Math.max(0, Math.floor((startMs / 1000) * audio.sampleRate));
+  const end = Math.max(start, Math.min(audio.samples.length, Math.ceil((endMs / 1000) * audio.sampleRate)));
+  return writePcm16MonoWav(audio.samples.slice(start, end), audio.sampleRate);
 };
