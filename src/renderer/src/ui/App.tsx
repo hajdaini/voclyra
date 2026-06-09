@@ -681,6 +681,9 @@ export const App = (): JSX.Element => {
       showCompletionOverlay('speak', nextResult);
       setWhisperRuntime(await api.whisper.runtimeInfo());
       await refreshHistoryAndModels();
+      if (settingsRef.current.improveAfterSpeak) {
+        void improve(nextResult.text);
+      }
     } catch (error) {
       delete recordingStartedAtRef.current.speak;
       const message = errorMessage(error);
@@ -732,7 +735,7 @@ export const App = (): JSX.Element => {
     showToast('success', 'Models refreshed.');
   };
 
-  const improve = async (): Promise<void> => {
+  const improve = async (sourceOverride?: string): Promise<void> => {
     if (isImproveProcessing) {
       return;
     }
@@ -752,16 +755,16 @@ export const App = (): JSX.Element => {
       showOverlayWarning('improve', actionMessages.llamaModelMissing, 'error');
       return;
     }
-    const sourceText = isImproveInputFocused
+    const sourceText = sourceOverride ?? (isImproveInputFocused
       ? improveInput
       : settings.improveSelectedText
         ? await api.clipboard.readSelection()
-        : await api.clipboard.read();
-    if (!isImproveInputFocused && sourceText) {
+        : await api.clipboard.read());
+    if ((sourceOverride || !isImproveInputFocused) && sourceText) {
       setImproveInput(sourceText);
     }
     if (!sourceText.trim()) {
-      const message = isImproveInputFocused ? actionMessages.enterTextToImprove : actionMessages.clipboardEmpty;
+      const message = isImproveInputFocused && !sourceOverride ? actionMessages.enterTextToImprove : actionMessages.clipboardEmpty;
       setImproveResult(actionResult('improve', 'error', { message }));
       showOverlayWarning('improve', message);
       return;
@@ -1731,6 +1734,7 @@ const settingsAreEqual = (left: SettingsType, right: SettingsType): boolean =>
   left.correctionPrompt === right.correctionPrompt &&
   left.pasteAfterDictation === right.pasteAfterDictation &&
   left.pasteAfterImprovement === right.pasteAfterImprovement &&
+  left.improveAfterSpeak === right.improveAfterSpeak &&
   left.improveSelectedText === right.improveSelectedText &&
   left.startAtStartup === right.startAtStartup &&
   left.microphoneDeviceId === right.microphoneDeviceId &&

@@ -26,6 +26,7 @@ correctionPrompt: [
 ].join('\n'),
   pasteAfterDictation: false,
   pasteAfterImprovement: false,
+  improveAfterSpeak: false,
   improveSelectedText: false,
   startAtStartup: false,
   microphoneDeviceId: '',

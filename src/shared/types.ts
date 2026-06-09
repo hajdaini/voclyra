@@ -28,6 +28,7 @@ export type Settings = {
   correctionPrompt: string;
   pasteAfterDictation: boolean;
   pasteAfterImprovement: boolean;
+  improveAfterSpeak: boolean;
   improveSelectedText: boolean;
   startAtStartup: boolean;
   microphoneDeviceId: string;

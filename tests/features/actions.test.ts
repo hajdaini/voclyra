@@ -232,6 +232,7 @@ const setup = async (): Promise<void> => {
     correctionPrompt: 'Correct text.',
     pasteAfterDictation: false,
     pasteAfterImprovement: false,
+    improveAfterSpeak: false,
     improveSelectedText: false,
     startAtStartup: false,
     microphoneDeviceId: '',

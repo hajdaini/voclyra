@@ -338,6 +338,17 @@ export const SettingsView = ({
         <label className="settings-checkbox">
           <input
             type="checkbox"
+            checked={settings.improveAfterSpeak}
+            onChange={(event) => onChange({ ...settings, improveAfterSpeak: event.target.checked })}
+          />
+          <span className="settings-option-label">
+            Improve automatically after Speak
+            <HelpHint text="When enabled, Speak keeps its transcription result and automatically sends that text to Improve." />
+          </span>
+        </label>
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
             checked={settings.improveSelectedText}
             onChange={(event) => onChange({ ...settings, improveSelectedText: event.target.checked })}
           />

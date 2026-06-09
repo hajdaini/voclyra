@@ -134,6 +134,7 @@ describe('Settings', () => {
     expect(settingsSchema.safeParse({ ...defaultSettings, correctionPrompt: '' }).success).toBe(false);
     expect(settingsSchema.safeParse({ ...defaultSettings, maxHistoryItems: 10001 }).success).toBe(false);
     expect(settingsSchema.safeParse({ ...defaultSettings, hotkeys: { ...defaultSettings.hotkeys, speak: '' } }).success).toBe(false);
+    expect(settingsSchema.parse({ ...defaultSettings, improveAfterSpeak: true }).improveAfterSpeak).toBe(true);
   });
 
   it('stores settings safely', async () => {
@@ -163,7 +164,7 @@ describe('Settings', () => {
     expect(partialSettings).toEqual(defaultSettings);
     expect(writeJson).toHaveBeenCalledWith('settings.json', withoutStartup(defaultSettings));
 
-    const savedSettings = { ...defaultSettings, pasteAfterDictation: true };
+    const savedSettings = { ...defaultSettings, pasteAfterDictation: true, improveAfterSpeak: true };
     await expect(service.save(savedSettings)).resolves.toEqual(savedSettings);
     await expect(service.get()).resolves.toEqual(savedSettings);
   });
