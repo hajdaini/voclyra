@@ -35,7 +35,6 @@ export type Settings = {
   transcriptOutputDeviceId: string;
   transcriptOutputDeviceLabel: string;
   transcriptLiveChunkSeconds: number;
-  transcriptLiveOverlapSeconds: number;
   silenceSensitivity: SilenceSensitivity;
   maxHistoryItems: number;
   hotkeys: Hotkeys;
@@ -150,6 +149,7 @@ export type OverlayState = {
   progress?: number;
   tokensGenerated?: number;
   progressLabel?: string;
+  recordingStartedAtMs?: number;
   message?: string;
   messageType?: 'error' | 'success' | 'warning' | 'info';
 };
@@ -177,18 +177,21 @@ export type AppApi = {
   transcript: {
     start: (audio: ArrayBuffer, options?: { progressive?: boolean }) => Promise<ResultState>;
     preview: (audio: ArrayBuffer) => Promise<string>;
+    save: (audio: ArrayBuffer, text: string) => Promise<ResultState>;
     onPartial: (callback: (text: string) => void) => () => void;
   };
   audioCapture: {
     start: (mode: 'speak' | 'transcript') => Promise<void>;
     switch: (mode: 'speak' | 'transcript', source: 'input' | 'output') => Promise<void>;
     stop: (mode: 'speak' | 'transcript') => Promise<ArrayBuffer>;
+    stopTranscript: () => Promise<{ audio: ArrayBuffer; finalSegmentAudio: ArrayBuffer }>;
     cancel: (mode: 'speak' | 'transcript') => Promise<void>;
-    previewChunk: (mode: 'speak' | 'transcript', options: { chunkMs: number; overlapMs: number }) => Promise<ArrayBuffer | null>;
+    previewChunk: (mode: 'speak' | 'transcript', options: { chunkMs: number }) => Promise<ArrayBuffer | null>;
     onLevel: (callback: (event: { mode: 'speak' | 'transcript'; source?: 'input' | 'output'; level: number }) => void) => () => void;
   };
   text: {
     improve: (text: string) => Promise<ResultState>;
+    export: (text: string) => Promise<boolean>;
     replaceActive: (text: string) => Promise<void>;
   };
   clipboard: {

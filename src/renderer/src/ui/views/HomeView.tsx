@@ -1,4 +1,4 @@
-import { type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import {
   AlertCircle,
   Bot,
@@ -50,6 +50,7 @@ export type HomeViewProps = {
   onImproveInputChange: (value: string) => void;
   onImproveInputFocusChange: (focused: boolean) => void;
   onCopy: () => void;
+  onExport: () => void;
 };
 
 export const shouldShowDownloadModelButton = (
@@ -86,6 +87,7 @@ export const HomeView = ({
   onImproveInputChange,
   onImproveInputFocusChange,
   onCopy,
+  onExport,
 }: HomeViewProps): JSX.Element => {
   const isActionBlocked = Boolean(actionBlockMessage) && !isRecording;
   const missingMessage = runtimeInfoLoaded
@@ -99,6 +101,11 @@ export const HomeView = ({
       })
     : null;
   const activeOverlay = overlayState.active && overlayState.mode === mode ? overlayState : null;
+  const isRecordingActive = isRecording || activeOverlay?.status === 'recording';
+  const recordingElapsedLabel = useRecordingElapsedLabel(
+    isRecordingActive,
+    activeOverlay?.recordingStartedAtMs,
+  );
   const statusMessage = missingMessage ?? activeOverlay?.message ?? result.message;
   const statusTone = missingMessage ? 'error' : activeOverlay ? statusToneForOverlay(activeOverlay) : statusToneFor(result);
   const StatusIcon = statusIcon[statusTone];
@@ -151,7 +158,7 @@ export const HomeView = ({
 
         <div className="home-actions">
           <button
-            className={`home-action speak-action ${mode === 'speak' ? 'selected' : ''} ${mode === 'speak' && isRecording ? 'recording' : ''}`}
+            className={`home-action speak-action ${mode === 'speak' ? 'selected' : ''} ${mode === 'speak' && isRecordingActive ? 'recording' : ''}`}
             type="button"
             title="Switch to Speak"
             onClick={() => onModeChange('speak')}
@@ -189,7 +196,7 @@ export const HomeView = ({
           </button>
 
           <button
-            className={`home-action ${mode === 'transcript' ? 'selected' : ''} ${mode === 'transcript' && isRecording ? 'recording' : ''}`}
+            className={`home-action ${mode === 'transcript' ? 'selected' : ''} ${mode === 'transcript' && isRecordingActive ? 'recording' : ''}`}
             type="button"
             title="Switch to Transcript"
             onClick={() => onModeChange('transcript')}
@@ -209,27 +216,27 @@ export const HomeView = ({
         </div>
 
         {(mode === 'speak' || mode === 'transcript') && (
-          <div className={`task-panel speak-task ${isRecording ? 'recording' : ''}`}>
+          <div className={`task-panel speak-task ${isRecordingActive ? 'recording' : ''}`}>
             <button
-              className={`record-button ${isRecording ? 'recording' : ''}`}
+              className={`record-button ${isRecordingActive ? 'recording' : ''}`}
               type="button"
               title={
-                isRecording
+                isRecordingActive
                   ? `Stop ${mode === 'transcript' ? 'transcript' : 'recording'}`
                   : `Start ${mode === 'transcript' ? 'transcript' : 'recording'}`
               }
               onClick={
                 mode === 'transcript'
-                  ? isRecording
+                  ? isRecordingActive
                     ? onStopTranscript
                     : onStartTranscript
-                  : isRecording
+                  : isRecordingActive
                     ? onStopRecording
                     : onStartRecording
               }
               disabled={isActionBlocked}
             >
-              {isRecording ? (
+              {isRecordingActive ? (
                 <Square size={21} />
               ) : mode === 'transcript' ? (
                 <Headphones size={24} />
@@ -237,22 +244,29 @@ export const HomeView = ({
                 <Mic size={24} />
               )}
               <span className="action-button-text">
-                <span>{isRecording ? 'Stop' : mode === 'transcript' ? 'Transcript' : 'Speak'}</span>
+                <span>{isRecordingActive ? 'Stop' : mode === 'transcript' ? 'Transcript' : 'Speak'}</span>
                 <small>({formatShortcut(mode === 'transcript' ? hotkeys.transcript : hotkeys.speak)})</small>
               </span>
             </button>
 
-            {isRecording && (
-              <button
-                className="cancel-record-button"
-                type="button"
-                title="Cancel recording"
-                onClick={onCancelRecording}
-              >
-                <span>Cancel</span>
-              </button>
+            {isRecordingActive && (
+              <>
+                <button
+                  className="cancel-record-button"
+                  type="button"
+                  title="Cancel recording"
+                  onClick={onCancelRecording}
+                >
+                  <span>Cancel</span>
+                </button>
+                {recordingElapsedLabel && (
+                  <span className="recording-elapsed" title="Recording duration">
+                    <Timer size={14} />
+                    <span>{recordingElapsedLabel}</span>
+                  </span>
+                )}
+              </>
             )}
-
           </div>
         )}
 
@@ -328,6 +342,16 @@ export const HomeView = ({
             >
               <Clipboard size={17} />
             </button>
+            <button
+              className="result-copy-button result-export-button"
+              type="button"
+              title="Export result as TXT"
+              aria-label="Export result as TXT"
+              onClick={onExport}
+              disabled={result.text.length === 0}
+            >
+              <Download size={17} />
+            </button>
             <div className={`result-output ${result.text ? '' : 'empty'}`} aria-label="Result">
               {result.text || 'The result will appear here.'}
             </div>
@@ -378,6 +402,29 @@ const formatDuration = (durationMs: number): string => {
     return `${durationMs} ms`;
   }
   return `${(durationMs / 1000).toFixed(durationMs < 10000 ? 1 : 0)}s`;
+};
+
+const useRecordingElapsedLabel = (active: boolean, startedAtMs?: number): string => {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!active || !startedAtMs) {
+      return;
+    }
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [active, startedAtMs]);
+  if (!active || !startedAtMs) {
+    return '';
+  }
+  return formatRecordingElapsed(Math.max(0, now - startedAtMs));
+};
+
+const formatRecordingElapsed = (durationMs: number): string => {
+  const totalSeconds = Math.floor(durationMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 };
 
 const statusIcon = {

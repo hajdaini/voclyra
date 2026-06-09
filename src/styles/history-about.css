@@ -265,8 +265,8 @@
 
 .history-entry-title button:last-child {
   justify-content: center;
-  width: 30px;
-  min-height: 30px;
+  width: 27px;
+  min-height: 27px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: #2d2d30;
@@ -287,20 +287,21 @@
   justify-content: flex-start;
   gap: 10px;
   min-width: 0;
-  margin-top: -3px;
+  margin-top: -2px;
 }
 
+
 .history-kind-tag {
-  display: inline-flex !important;
-  flex: 0 0 auto;
+  display: inline-flex;
+  flex: 0 1 auto;
   align-items: center;
-  gap: 6px;
-  min-height: 22px;
-  padding: 2px 8px;
-  border: 1px solid #2a3b51;
+  gap: 5px;
+  min-height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
   color: var(--muted);
-  background: #1b1b1b;
+  background: var(--surface-raised);
   font-size: 12px;
   font-weight: 650;
 }

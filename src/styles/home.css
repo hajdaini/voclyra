@@ -302,7 +302,7 @@
 }
 
 .speak-task.recording {
-  grid-template-columns: 136px 70px minmax(132px, 1fr);
+  grid-template-columns: 136px 70px auto minmax(72px, 1fr);
   gap: 8px;
   border-color: rgba(255, 156, 77, 0.72);
   background: rgba(255, 156, 77, 0.08);
@@ -420,6 +420,21 @@
   background: rgba(255, 107, 122, 0.08);
 }
 
+.recording-elapsed {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  min-width: 48px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.recording-elapsed svg {
+  color: var(--primary-strong);
+}
+
 .improve-input {
   display: grid;
   gap: 10px;
@@ -430,18 +445,18 @@
 }
 
 .improve-task {
-  display: flex;
-  gap: 16px;
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 10px;
   min-height: 0;
   overflow: hidden;
-  flex-direction: column;
 }
 
 .improve-input textarea {
   box-sizing: border-box;
   width: 100%;
-  height: clamp(112px, 22vh, 204px);
-  min-height: 0;
+  height: 150px;
+  min-height: 150px;
   resize: none;
   overflow: auto;
   padding: 16px;
@@ -464,7 +479,7 @@
 }
 
 .improve-task > .primary-action {
-  margin-top: 5px;
+  margin-top: 0;
 }
 
 .result-title {
@@ -619,7 +634,7 @@
 .result-copy-button {
   position: absolute;
   top: 6px;
-  right: 20px;
+  right: 37px;
   z-index: 1;
   display: inline-grid;
   width: 28px;
@@ -638,11 +653,15 @@
   background: transparent;
 }
 
+.result-export-button {
+  right: 14px;
+}
+
 .result-output {
   width: 100%;
   flex: 1 1 auto;
   min-height: 140px;
-  padding: 10px 44px 12px 12px;
+  padding: 10px 55px 12px 12px;
   overflow: auto;
   white-space: pre-wrap;
   border: 1px solid var(--border-strong);
@@ -685,32 +704,6 @@
 .result-metric svg {
   flex: 0 0 auto;
   margin-right: 0;
-}
-
-@media (min-width: 1180px) {
-  .workspace {
-    grid-template-areas:
-      "heading heading"
-      "actions result"
-      "task result";
-    grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr);
-    gap: 8px 12px;
-    height: 100%;
-    min-height: 0;
-  }
-
-  .home-actions {
-    grid-template-columns: 1fr;
-  }
-
-  .result-panel {
-    margin-top: 0;
-  }
-
-  .result-output {
-    min-height: 0;
-  }
 }
 
 @media (max-width: 860px) {

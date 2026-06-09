@@ -21,6 +21,7 @@ import { SettingsService } from '@services/settings-service';
 import { TranscriptService } from '@services/transcript-service';
 import { WhisperModelService } from '@services/whisper-model-service';
 import { WhisperService } from '@services/whisper-service';
+import { ProcessLogService } from '@services/process-log-service';
 import { HotkeyService } from '@services/hotkey-service';
 import { StartupService } from '@services/startup-service';
 import { AppStorage } from '@storage/app-storage';
@@ -49,9 +50,12 @@ const appStorage = new AppStorage();
 const whisperModelService = new WhisperModelService();
 const whisperService = new WhisperService();
 const transcriptService = new TranscriptService(whisperService, historyService);
+const transcriptLogService = new ProcessLogService();
 const hotkeyService = new HotkeyService();
 const startupService = new StartupService();
 let improveShortcutRunning = false;
+let transcriptLogSessionId = '';
+let transcriptLogChunk = 0;
 const progressUpdateState = new Map<HomeMode, { at: number; key: string }>();
 const helpUrl = 'https://github.com/hajdaini/voclyra#readme';
 
@@ -356,6 +360,9 @@ export const registerIpc = (): void => {
       throw new Error('Invalid audio capture mode.');
     }
     settings = await settingsService.get();
+    if (value === 'transcript') {
+      await resetTranscriptLog('live transcript', settings);
+    }
     await audioCaptureHelperService.start(value, settings, (source, level) => {
       event.sender.send(channels.audioCaptureLevel, { mode: value, source, level });
     });
@@ -384,6 +391,17 @@ export const registerIpc = (): void => {
     return audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength);
   });
 
+  ipcMain.handle(channels.audioCaptureStopTranscript, async () => {
+    const { audio, finalSegmentAudio } = await audioCaptureHelperService.stopTranscript();
+    return {
+      audio: audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength),
+      finalSegmentAudio: finalSegmentAudio.buffer.slice(
+        finalSegmentAudio.byteOffset,
+        finalSegmentAudio.byteOffset + finalSegmentAudio.byteLength,
+      ),
+    };
+  });
+
   ipcMain.handle(channels.audioCaptureCancel, async (_event, value: unknown) => {
     if (value === 'speak' || value === 'transcript') {
       await audioCaptureHelperService.cancel(value);
@@ -396,14 +414,12 @@ export const registerIpc = (): void => {
       typeof value !== 'object' ||
       !('mode' in value) ||
       !('chunkMs' in value) ||
-      !('overlapMs' in value) ||
       (value.mode !== 'speak' && value.mode !== 'transcript') ||
-      typeof value.chunkMs !== 'number' ||
-      typeof value.overlapMs !== 'number'
+      typeof value.chunkMs !== 'number'
     ) {
       return null;
     }
-    const audio = await audioCaptureHelperService.previewChunk(value.mode, value.chunkMs, value.overlapMs);
+    const audio = await audioCaptureHelperService.previewChunk(value.mode, value.chunkMs);
     return audio ? audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength) : null;
   });
 
@@ -425,6 +441,7 @@ export const registerIpc = (): void => {
       return ready('', 'Select a Whisper model first.');
     }
     try {
+      await resetTranscriptLog('full transcript', settings);
       const startedAt = performance.now();
       const audioDurationMs = wavDurationMs(audio);
       const text = await whisperService.transcribeMeeting(audio, whisperModel, {
@@ -461,10 +478,98 @@ export const registerIpc = (): void => {
     if (!whisperModel) {
       return '';
     }
-    return whisperService.transcribeMeeting(audio, whisperModel, {
+    const chunkIndex = nextTranscriptLogChunk();
+    const startedAt = performance.now();
+    const debug = await whisperService.transcribeMeetingDetailed(audio, whisperModel, {
       timeoutMs: null,
       debugName: 'transcript',
     });
+    const text = debug.text;
+    const diagnostics = debug.diagnostics;
+    await appendTranscriptLog([
+      '',
+      `[CHUNK ${chunkIndex}]`,
+      `duration ms: ${elapsedMs(startedAt)}`,
+      `audio bytes: ${audio.byteLength}`,
+      `audio duration ms: ${wavDurationMs(audio) ?? 'unknown'}`,
+      `output chars: ${text.length}`,
+      '',
+      '[SERVER PROCESS]',
+      'engine: whisper',
+      `executable: ${diagnostics.executable}`,
+      `args: ${quoteArgs(diagnostics.args)}`,
+      `pid: ${diagnostics.pid ?? 'unknown'}`,
+      `host: ${diagnostics.host}`,
+      `port: ${diagnostics.port}`,
+      `url: ${diagnostics.url}`,
+      `server reused: ${yesNo(diagnostics.serverReused)}`,
+      `server started during action: ${yesNo(diagnostics.serverStartedDuringAction)}`,
+      `startup duration ms: ${diagnostics.startupDurationMs}`,
+      `alive before request: ${yesNo(diagnostics.aliveBeforeRequest)}`,
+      `alive after request: ${yesNo(diagnostics.aliveAfterRequest)}`,
+      '',
+      '[SERVER STDOUT RAW TAIL]',
+      diagnostics.stdoutTail || 'empty',
+      '',
+      '[SERVER STDERR RAW TAIL]',
+      diagnostics.stderrTail || 'empty',
+      '',
+      '[CLIENT REQUEST]',
+      `method: ${diagnostics.method}`,
+      `endpoint: ${diagnostics.endpoint}`,
+      `timeout ms: ${diagnostics.timeoutMs}`,
+      `request started at: ${diagnostics.requestStartedAt}`,
+      `request finished at: ${diagnostics.requestFinishedAt}`,
+      `request duration ms: ${diagnostics.requestDurationMs}`,
+      `http status: ${diagnostics.httpStatus ?? 'unknown'}`,
+      `http status text: ${diagnostics.httpStatusText}`,
+      `content type: ${diagnostics.contentType}`,
+      `request bytes: ${diagnostics.requestBytes}`,
+      `response bytes: ${diagnostics.responseBytes}`,
+      '',
+      '[WHISPER]',
+      `model: ${whisperModel}`,
+      `language: ${settings.whisperLanguage}`,
+      `quality: ${settings.whisperQualityMode}`,
+      `sample rate: ${debug.wavInfo?.sampleRate ?? 'unknown'}`,
+      `channels: ${debug.wavInfo?.channels ?? 'unknown'}`,
+      `bits per sample: ${debug.wavInfo?.bitsPerSample ?? 'unknown'}`,
+      '',
+      '[HTTP RAW RESPONSE TAIL]',
+      diagnostics.rawResponseTail || 'empty',
+      '[RAW TEXT]',
+      text || 'empty',
+    ]);
+    return text;
+  });
+
+  ipcMain.handle(channels.transcriptSave, async (_event, value: unknown) => {
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      !('audio' in value) ||
+      !('text' in value) ||
+      !(value.audio instanceof ArrayBuffer) ||
+      typeof value.text !== 'string'
+    ) {
+      return ready('', 'No transcript generated.');
+    }
+    const audio = new Uint8Array(value.audio);
+    const text = textSchema.parse(value.text).trim();
+    if (!audio.byteLength || !text) {
+      return ready('', 'No speech detected.');
+    }
+    await appendTranscriptLog([
+      '',
+      '[FINAL]',
+      `audio bytes: ${audio.byteLength}`,
+      `audio duration ms: ${wavDurationMs(audio) ?? 'unknown'}`,
+      `text chars: ${text.length}`,
+      '[FINAL TEXT]',
+      text || 'empty',
+    ]);
+    await historyService.add({ kind: 'transcript', text, audio }, settings.maxHistoryItems);
+    return ready(text, 'Transcript generated.', undefined, { audioDurationMs: wavDurationMs(audio) });
   });
 
   ipcMain.handle(channels.textImprove, async (_event, value: unknown) => {
@@ -504,6 +609,25 @@ export const registerIpc = (): void => {
     } finally {
       improveShortcutRunning = false;
     }
+  });
+
+  ipcMain.handle(channels.textExport, async (event, value: unknown) => {
+    const text = textSchema.parse(value);
+    if (!text) {
+      return false;
+    }
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const options = {
+      title: 'Export text',
+      defaultPath: 'voclyra-result.txt',
+      filters: [{ name: 'Text files', extensions: ['txt'] }],
+    };
+    const result = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) {
+      return false;
+    }
+    await writeFile(result.filePath, text, 'utf8');
+    return true;
   });
 
   ipcMain.handle(channels.clipboardRead, () => clipboard.readText());
@@ -680,6 +804,40 @@ const safeFileName = (name: string): string => {
 };
 
 const elapsedMs = (startedAt: number): number => Math.max(0, Math.round(performance.now() - startedAt));
+
+const quoteArgs = (args: string[]): string => args.map((part) => `"${part}"`).join(' ');
+
+const yesNo = (value: boolean): string => (value ? 'yes' : 'no');
+
+const resetTranscriptLog = async (reason: string, currentSettings: Settings): Promise<void> => {
+  transcriptLogSessionId = randomUUID();
+  transcriptLogChunk = 0;
+  await transcriptLogService.writeSnapshot('transcript.log', [
+    '[TRANSCRIPT SESSION]',
+    `session id: ${transcriptLogSessionId}`,
+    `reason: ${reason}`,
+    `whisper model: ${currentSettings.whisperModel || 'empty'}`,
+    `whisper language: ${currentSettings.whisperLanguage}`,
+    `whisper quality: ${currentSettings.whisperQualityMode}`,
+    `chunk seconds: ${currentSettings.transcriptLiveChunkSeconds}`,
+    'silence seconds: 0.4',
+  ]);
+};
+
+const nextTranscriptLogChunk = (): number => {
+  transcriptLogChunk += 1;
+  return transcriptLogChunk;
+};
+
+const appendTranscriptLog = async (lines: string[]): Promise<void> => {
+  if (!transcriptLogSessionId) {
+    await resetTranscriptLog('transcript debug', settings);
+  }
+  await transcriptLogService.append('transcript.log', [
+    `session id: ${transcriptLogSessionId}`,
+    ...lines,
+  ]);
+};
 
 const wavDurationMs = (audio: Uint8Array): number | undefined => {
   if (audio.byteLength < 44) {

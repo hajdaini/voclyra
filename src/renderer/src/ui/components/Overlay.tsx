@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type JSX } from 'react';
-import { AlertTriangle, CheckCircle2, Headphones, LoaderCircle, Mic, Volume2, Wand2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Headphones, LoaderCircle, Mic, Timer, Volume2, Wand2 } from 'lucide-react';
 import type { OverlayState } from '@shared/types';
 import { defaultSettings } from '@shared/defaults';
 import { api } from '../../api';
@@ -30,6 +30,10 @@ export const Overlay = (): JSX.Element => {
           : 'Info';
   const statusMessage = overlayState.message ?? fallbackMessage(overlayState);
   const isLivePreview = overlayState.status === 'recording' && Boolean(overlayState.progressLabel);
+  const recordingElapsedLabel = useRecordingElapsedLabel(
+    overlayState.status === 'recording',
+    overlayState.recordingStartedAtMs,
+  );
   const isBusy = isLivePreview
     || overlayState.status === 'warning' && overlayState.actionPhase === 'loading'
     || overlayState.status === 'transcribing'
@@ -161,8 +165,37 @@ export const Overlay = (): JSX.Element => {
           <span>Cancel</span>
         </button>
       )}
+      {overlayState.status === 'recording' && recordingElapsedLabel && (
+        <span className="overlay-timer overlay-actions-timer" title="Recording duration">
+          <Timer size={14} />
+          <span>{recordingElapsedLabel}</span>
+        </span>
+      )}
     </main>
   );
+};
+
+const useRecordingElapsedLabel = (active: boolean, startedAtMs?: number): string => {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!active || !startedAtMs) {
+      return;
+    }
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [active, startedAtMs]);
+  if (!active || !startedAtMs) {
+    return '';
+  }
+  return formatRecordingElapsed(Math.max(0, now - startedAtMs));
+};
+
+const formatRecordingElapsed = (durationMs: number): string => {
+  const totalSeconds = Math.floor(durationMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 };
 
 const fallbackMessage = (state: OverlayState): string => {

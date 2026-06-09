@@ -15,6 +15,33 @@ body {
   background: var(--bg);
 }
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 156, 77, 0.62) rgba(255, 255, 255, 0.04);
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(255, 156, 77, 0.62);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 179, 102, 0.82);
+  background-clip: content-box;
+}
+
 button,
 input,
 select,

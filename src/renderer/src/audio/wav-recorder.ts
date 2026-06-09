@@ -2,6 +2,7 @@ import { api } from '../api';
 
 export type WavRecorder = {
   stop: () => Promise<ArrayBuffer>;
+  stopTranscript?: () => Promise<{ audio: ArrayBuffer; finalSegmentAudio: ArrayBuffer }>;
   cancel: () => Promise<void>;
   updateMicrophone?: (device?: MicrophoneDevice, options?: MicrophoneOptions) => Promise<void>;
   updateOutput?: () => Promise<void>;
@@ -214,6 +215,10 @@ export const startTranscriptRecorder = async (
       stop: async () => {
         removeLevelListener();
         return api.audioCapture.stop('transcript');
+      },
+      stopTranscript: async () => {
+        removeLevelListener();
+        return api.audioCapture.stopTranscript();
       },
       cancel: async () => {
         removeLevelListener();

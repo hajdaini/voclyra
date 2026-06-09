@@ -793,41 +793,22 @@ export const SettingsView = ({
             </label>
             <label>
               <span className="field-label">
-                Transcript chunk seconds
-                <HelpHint text="Controls how much recorded meeting audio is copied to Whisper at a time. Longer chunks are usually more accurate; shorter chunks appear sooner." />
+                Transcript minimum chunk seconds
+                <HelpHint text="Controls the minimum meeting audio duration before Voclyra waits for a short silence and sends the chunk to Whisper." />
               </span>
-              <input
-                type="number"
-                min={10}
-                max={120}
-                step={5}
-                value={settings.transcriptLiveChunkSeconds}
-                onChange={(event) =>
-                  onChange({
-                    ...settings,
-                    transcriptLiveChunkSeconds: Math.max(10, Math.min(120, Math.round(Number(event.target.value) || 30))),
-                  })
-                }
-              />
-            </label>
-            <label>
-              <span className="field-label">
-                Transcript overlap seconds
-                <HelpHint text="Repeats the end of the previous transcript chunk to avoid missing words at boundaries. Higher values reduce cuts but can create duplicates." />
-              </span>
-              <input
-                type="number"
-                min={0}
-                max={20}
-                step={1}
-                value={settings.transcriptLiveOverlapSeconds}
-                onChange={(event) =>
-                  onChange({
-                    ...settings,
-                    transcriptLiveOverlapSeconds: Math.max(0, Math.min(20, Math.round(Number(event.target.value) || 0))),
-                  })
-                }
-              />
+                <input
+                  type="number"
+                  min={30}
+                  max={300}
+                  step={5}
+                  value={settings.transcriptLiveChunkSeconds}
+                  onChange={(event) =>
+                    onChange({
+                      ...settings,
+                      transcriptLiveChunkSeconds: Math.max(30, Math.min(300, Math.round(Number(event.target.value) || 60))),
+                    })
+                  }
+                />
             </label>
           </div>
         </div>

@@ -27,6 +27,7 @@ type AppHomeProps = {
   onImproveInputChange: (value: string) => void;
   onImproveInputFocusChange: (focused: boolean) => void;
   onCopyResult: () => void;
+  onExportResult: () => void;
 };
 
 export const AppHome = ({
@@ -54,6 +55,7 @@ export const AppHome = ({
   onImproveInputChange,
   onImproveInputFocusChange,
   onCopyResult,
+  onExportResult,
 }: AppHomeProps): JSX.Element => (
   <HomeView
     mode={mode}
@@ -82,5 +84,6 @@ export const AppHome = ({
     onImproveInputChange={onImproveInputChange}
     onImproveInputFocusChange={onImproveInputFocusChange}
     onCopy={onCopyResult}
+    onExport={onExportResult}
   />
 );

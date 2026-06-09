@@ -254,6 +254,13 @@ cmake --build external/whisper.cpp/build --config Release
 
 Copy `whisper-server.exe` and the required runtime DLLs from the build output into `resources/runtimes/whisper/cuda-12/win-x64`.
 
+Voclyra also uses the whisper.cpp VAD model to reduce silence hallucinations:
+
+```powershell
+New-Item -ItemType Directory -Force resources/runtimes/whisper/vad
+Invoke-WebRequest -Uri https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin -OutFile resources/runtimes/whisper/vad/ggml-silero-v6.2.0.bin
+```
+
 ### 4. Build llama.cpp with CUDA
 
 Voclyra expects `llama-server.exe` and its required DLLs here:
@@ -282,6 +289,8 @@ npm install
 
 ```powershell
 npm run dev
+npm run dev:console # => to view the dev console
+npm run dev:console:overlay # => to view the dev console including overlay
 ```
 
 ### 7. Build the Electron app

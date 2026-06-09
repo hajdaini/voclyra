@@ -33,8 +33,7 @@ export const settingsSchema = z.object({
   microphoneDeviceLabel: z.string().max(260),
   transcriptOutputDeviceId: z.string().max(260),
   transcriptOutputDeviceLabel: z.string().max(260),
-  transcriptLiveChunkSeconds: z.number().int().min(10).max(120),
-  transcriptLiveOverlapSeconds: z.number().int().min(0).max(20),
+  transcriptLiveChunkSeconds: z.number().int().min(30).max(300),
   silenceSensitivity: z.enum(['low', 'normal', 'high']),
   maxHistoryItems: z.number().int().min(1).max(10000),
   hotkeys: hotkeysSchema,
@@ -73,6 +72,7 @@ export const overlayStateSchema = z.object({
   progress: z.number().min(0).max(100).optional(),
   tokensGenerated: z.number().int().min(0).max(1000000).optional(),
   progressLabel: z.string().max(80).optional(),
+  recordingStartedAtMs: z.number().int().min(0).optional(),
   message: z.string().max(160).optional(),
   messageType: z.enum(['error', 'success', 'warning', 'info']).optional(),
 });

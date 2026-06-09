@@ -30,18 +30,21 @@ const fallbackApi: AppApi = {
   transcript: {
     start: () => Promise.resolve(bridgeMissing()),
     preview: () => Promise.resolve(''),
+    save: (_audio, text) => Promise.resolve(bridgeMissing(text)),
     onPartial: () => () => {},
   },
   audioCapture: {
     start: () => Promise.resolve(),
     switch: () => Promise.resolve(),
     stop: () => Promise.resolve(new ArrayBuffer(0)),
+    stopTranscript: () => Promise.resolve({ audio: new ArrayBuffer(0), finalSegmentAudio: new ArrayBuffer(0) }),
     cancel: () => Promise.resolve(),
     previewChunk: () => Promise.resolve(null),
     onLevel: () => () => {},
   },
   text: {
     improve: (text) => Promise.resolve(bridgeMissing(text)),
+    export: () => Promise.resolve(false),
     replaceActive: () => Promise.resolve(),
   },
   clipboard: {

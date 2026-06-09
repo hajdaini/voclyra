@@ -31,6 +31,12 @@ type WavInfo = {
   bitsPerSample: number;
 };
 
+export type TranscriptChunkDebug = {
+  text: string;
+  diagnostics: WhisperServerDiagnostics;
+  wavInfo: WavInfo | null;
+};
+
 type SpeechRange = {
   startFrame: number;
   endFrame: number;
@@ -66,6 +72,7 @@ export class WhisperService {
       language: whisperLanguage(settings.whisperLanguage),
       threads: whisperThreadCount(),
       qualityArgs: whisperQualityArgs(settings.whisperQualityMode),
+      vadModelPath: await this.vadModelPath(),
     });
   }
 
@@ -111,6 +118,30 @@ export class WhisperService {
 
     try {
       settings = await this.settingsService.get();
+      if (options.debugName === 'speak') {
+        const result = await this.transcribeWithServer(
+          modelPath,
+          audio,
+          options.timeoutMs,
+        );
+        serverDiagnostics.push(result.diagnostics);
+        this.writeWhisperLog({
+          fileName: this.logFileName(options.debugName),
+          actionType: this.actionType(options.debugName),
+          status: 'success',
+          startedAt,
+          durationMs: Math.max(1, Date.now() - startedAt),
+          modelPath,
+          audio,
+          wavInfo,
+          settings,
+          segments: [audio],
+          serverDiagnostics,
+          serverCalled: true,
+          outputText: result.text,
+        });
+        return result.text;
+      }
       segments = this.speechSegments(audio, settings.silenceSensitivity);
       if (segments.length === 0) {
         this.writeWhisperLog({
@@ -197,40 +228,15 @@ export class WhisperService {
 
   async transcribeFile(audioPath: string, modelFileName: string, options: TranscribeOptions = {}): Promise<string> {
     const modelPath = await this.modelPath(modelFileName);
-    const id = crypto.randomUUID();
-    const temporaryRoot = await this.storage.ensureDir('tmp', 'current', id);
 
-    try {
-      await access(audioPath);
-      const audio = await readFile(audioPath);
-      const settings = await this.settingsService.get();
-      const segments = this.speechSegments(audio, settings.silenceSensitivity);
-      if (segments.length === 0) {
-        return '';
-      }
-      const texts: string[] = [];
-      for (let index = 0; index < segments.length; index += 1) {
-        const segment = segments[index];
-        if (!segment) {
-          continue;
-        }
-        const segmentId = `${id}-segment-${index}`;
-        const segmentPath = join(temporaryRoot, `${segmentId}.wav`);
-        await writeFile(segmentPath, segment);
-        const result = await this.transcribeWithServer(
-          modelPath,
-          segment,
-          options.timeoutMs,
-        );
-        const text = result.text;
-        if (text) {
-          texts.push(text);
-        }
-      }
-      return texts.join('\n').trim();
-    } finally {
-      await this.cleanupTemporaryFiles(temporaryRoot);
-    }
+    await access(audioPath);
+    const audio = await readFile(audioPath);
+    const result = await this.transcribeWithServer(
+      modelPath,
+      audio,
+      options.timeoutMs,
+    );
+    return result.text;
   }
 
   async transcribeMeeting(audio: Uint8Array, modelFileName: string, options: TranscribeOptions = {}): Promise<string> {
@@ -253,6 +259,24 @@ export class WhisperService {
     } finally {
       await this.cleanupTemporaryFiles(temporaryRoot);
     }
+  }
+
+  async transcribeMeetingDetailed(
+    audio: Uint8Array,
+    modelFileName: string,
+    options: TranscribeOptions = {},
+  ): Promise<TranscriptChunkDebug> {
+    const modelPath = await this.modelPath(modelFileName);
+    const result = await this.transcribeWithServer(
+      modelPath,
+      audio,
+      options.timeoutMs,
+    );
+    return {
+      text: result.text,
+      diagnostics: result.diagnostics,
+      wavInfo: this.wavInfo(audio),
+    };
   }
 
   private async transcribeMeetingAudio(
@@ -347,6 +371,7 @@ export class WhisperService {
       language: whisperLanguage(settings.whisperLanguage),
       threads: whisperThreadCount(),
       qualityArgs: whisperQualityArgs(settings.whisperQualityMode),
+      vadModelPath: await this.vadModelPath(),
       timeoutMs,
     });
   }
@@ -375,6 +400,11 @@ export class WhisperService {
       whisperRuntimeConfig.executableName,
     );
     return runtime.path;
+  }
+
+  private async vadModelPath(): Promise<string | null> {
+    const path = this.runtimePaths.path('whisper', 'vad', vadModelFileName);
+    return (await this.exists(path)) ? path : null;
   }
 
 
@@ -710,6 +740,8 @@ const whisperLanguage = (language: LanguageMode): string => language;
 
 const whisperThreadCount = (): number => Math.max(1, Math.min(12, cpus().length || 4));
 
+const vadModelFileName = 'ggml-silero-v6.2.0.bin';
+
 const whisperQualityArgs = (mode: Settings['whisperQualityMode']): string[] => {
   if (mode === 'fast') {
     return ['-bs', '1', '-bo', '1'];
@@ -763,7 +795,7 @@ const quoteArgs = (args: string[]): string => args.map((part) => `"${part}"`).jo
 
 const yesNo = (value: boolean | undefined): string => value === undefined ? 'unknown' : value ? 'yes' : 'no';
 
-const mergeTranscriptText = (current: string, next: string): string => {
+export const mergeTranscriptText = (current: string, next: string): string => {
   const left = current.trim();
   const right = next.trim();
   if (!left) {
@@ -775,12 +807,15 @@ const mergeTranscriptText = (current: string, next: string): string => {
 
   const leftWords = left.split(/\s+/);
   const rightWords = right.split(/\s+/);
-  const maxOverlap = Math.min(80, leftWords.length, rightWords.length);
+  const maxOverlap = Math.min(80, leftWords.length);
+  const maxRightOffset = Math.min(24, rightWords.length);
   for (let count = maxOverlap; count >= 8; count -= 1) {
     const leftTail = normalizeWords(leftWords.slice(-count));
-    const rightHead = normalizeWords(rightWords.slice(0, count));
-    if (leftTail === rightHead) {
-      return `${leftWords.join(' ')} ${rightWords.slice(count).join(' ')}`.trim();
+    for (let offset = 0; offset < maxRightOffset && offset + count <= rightWords.length; offset += 1) {
+      const rightOverlap = normalizeWords(rightWords.slice(offset, offset + count));
+      if (leftTail === rightOverlap) {
+        return `${leftWords.join(' ')} ${rightWords.slice(offset + count).join(' ')}`.trim();
+      }
     }
   }
   return `${left}\n${right}`.trim();

@@ -9,6 +9,8 @@
   "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
+    "dev:console": "set VOCLYRA_OPEN_DEVTOOLS=1&& set ELECTRON_ENABLE_LOGGING=1&& electron-vite dev",
+    "dev:console:overlay": "set VOCLYRA_OPEN_DEVTOOLS=1&& set VOCLYRA_OPEN_OVERLAY_DEVTOOLS=1&& set ELECTRON_ENABLE_LOGGING=1&& electron-vite dev",
     "start": "electron-vite preview",
     "test": "vitest run --reporter verbose --exclude \"tests/runtime/**\"",
     "test:watch": "vitest --reporter verbose --exclude \"tests/runtime/**\"",

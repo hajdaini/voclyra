@@ -11,6 +11,7 @@ type WhisperServerKey = {
   language: string;
   threads: number;
   qualityArgs: string[];
+  vadModelPath?: string | null;
   prompt?: string;
 };
 
@@ -76,6 +77,7 @@ export class WhisperServerService {
       language: string;
       threads: number;
       qualityArgs: string[];
+      vadModelPath?: string | null;
       prompt?: string;
       timeoutMs?: number | null;
     },
@@ -86,6 +88,7 @@ export class WhisperServerService {
       language: options.language,
       threads: options.threads,
       qualityArgs: options.qualityArgs,
+      vadModelPath: options.vadModelPath,
       prompt: options.prompt,
     });
     const form = new FormData();
@@ -178,6 +181,7 @@ export class WhisperServerService {
       language: string;
       threads: number;
       qualityArgs: string[];
+      vadModelPath?: string | null;
       prompt?: string;
     },
   ): Promise<void> {
@@ -187,6 +191,7 @@ export class WhisperServerService {
       language: options.language,
       threads: options.threads,
       qualityArgs: options.qualityArgs,
+      vadModelPath: options.vadModelPath,
       prompt: options.prompt,
     });
   }
@@ -294,6 +299,23 @@ export class WhisperServerService {
       '-0.8',
       ...key.qualityArgs,
     ];
+    if (key.vadModelPath) {
+      args.push(
+        '--vad',
+        '--vad-model',
+        key.vadModelPath,
+        '--vad-threshold',
+        '0.5',
+        '--vad-min-speech-duration-ms',
+        '250',
+        '--vad-min-silence-duration-ms',
+        '500',
+        '--vad-speech-pad-ms',
+        '400',
+        '--vad-samples-overlap',
+        '0.1',
+      );
+    }
     if (key.prompt) {
       args.push('-mc', '0', '--prompt', key.prompt);
     }

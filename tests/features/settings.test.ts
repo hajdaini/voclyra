@@ -124,16 +124,13 @@ describe('Settings', () => {
     for (const llmContextSize of [512, 1024, 2048, 3072, 4096, 6144, 8192, 12288, 16384, 32768]) {
       expect(settingsSchema.safeParse({ ...defaultSettings, llmContextSize }).success).toBe(true);
     }
-    for (const transcriptLiveChunkSeconds of [10, 30, 60, 120]) {
+    for (const transcriptLiveChunkSeconds of [30, 60, 120, 300]) {
       expect(settingsSchema.safeParse({ ...defaultSettings, transcriptLiveChunkSeconds }).success).toBe(true);
-    }
-    for (const transcriptLiveOverlapSeconds of [0, 3, 5, 20]) {
-      expect(settingsSchema.safeParse({ ...defaultSettings, transcriptLiveOverlapSeconds }).success).toBe(true);
     }
     expect(settingsSchema.safeParse({ ...defaultSettings, whisperLanguage: 'jp' }).success).toBe(false);
     expect(settingsSchema.safeParse({ ...defaultSettings, llmContextSize: 9999 }).success).toBe(false);
-    expect(settingsSchema.safeParse({ ...defaultSettings, transcriptLiveChunkSeconds: 9 }).success).toBe(false);
-    expect(settingsSchema.safeParse({ ...defaultSettings, transcriptLiveOverlapSeconds: 21 }).success).toBe(false);
+    expect(settingsSchema.safeParse({ ...defaultSettings, transcriptLiveChunkSeconds: 29 }).success).toBe(false);
+    expect(settingsSchema.safeParse({ ...defaultSettings, transcriptLiveChunkSeconds: 301 }).success).toBe(false);
     expect(settingsSchema.safeParse({ ...defaultSettings, correctionPrompt: '' }).success).toBe(false);
     expect(settingsSchema.safeParse({ ...defaultSettings, maxHistoryItems: 10001 }).success).toBe(false);
     expect(settingsSchema.safeParse({ ...defaultSettings, hotkeys: { ...defaultSettings.hotkeys, speak: '' } }).success).toBe(false);
@@ -214,8 +211,7 @@ describe('Settings', () => {
     await expect(handlers.get(channels.settingsGet)?.({})).resolves.toMatchObject({
       transcriptOutputDeviceId: 'all',
       transcriptOutputDeviceLabel: 'All computer audio',
-      transcriptLiveChunkSeconds: 30,
-      transcriptLiveOverlapSeconds: 5,
+      transcriptLiveChunkSeconds: 60,
       hotkeys: {
         speak: 'CommandOrControl+Shift+1',
         improveText: 'CommandOrControl+Shift+2',
@@ -239,7 +235,6 @@ describe('Settings', () => {
       transcriptOutputDeviceId: 'out-1',
       transcriptOutputDeviceLabel: 'Studio Headphones',
       transcriptLiveChunkSeconds: 45,
-      transcriptLiveOverlapSeconds: 8,
       silenceSensitivity: 'high' as const,
       maxHistoryItems: 25,
       llmModel: 'model.gguf',

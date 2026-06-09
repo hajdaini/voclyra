@@ -31,7 +31,7 @@ type CaptureSegment = {
 type CaptureState = {
   mode: CaptureMode;
   startedAtMs: number;
-  previewEndedAtMs: number;
+  nextPreviewStartMs: number;
   settings: Settings;
   onLevel: (source: CaptureSource, level: number) => void;
   processes: Map<string, CaptureProcess>;
@@ -56,7 +56,7 @@ export class AudioCaptureHelperService {
     const state: CaptureState = {
       mode,
       startedAtMs: Date.now(),
-      previewEndedAtMs: 0,
+      nextPreviewStartMs: 0,
       settings,
       onLevel,
       processes: new Map(),
@@ -113,34 +113,43 @@ export class AudioCaptureHelperService {
     return audio;
   }
 
-  async previewChunk(mode: CaptureMode, chunkMs: number, overlapMs: number): Promise<Uint8Array | null> {
-    const state = this.captures.get(mode);
-    if (!state || chunkMs < 5000 || overlapMs < 0 || overlapMs >= chunkMs) {
-      return null;
+  async stopTranscript(): Promise<{ audio: Uint8Array; finalSegmentAudio: Uint8Array }> {
+    const state = this.captures.get('transcript');
+    if (!state) {
+      return { audio: new Uint8Array(), finalSegmentAudio: new Uint8Array() };
     }
-    await Promise.all([...state.processes.values()].map((process) => this.snapshotProcess(process)));
-    const now = Date.now();
-    const elapsedMs = Math.max(0, now - state.startedAtMs);
-    if (elapsedMs - state.previewEndedAtMs < chunkMs) {
-      return null;
-    }
+    this.captures.delete('transcript');
+    await this.stopCurrentProcesses(state);
+    const audio = await mixWavSegments(state.segments, state.startedAtMs);
+    const parsed = parsePcm16MonoWav(audio);
+    const finalSegmentAudio = parsed
+      ? slicePcm16MonoWav(parsed, state.nextPreviewStartMs, wavDurationMs(parsed))
+      : audio;
+    await this.cleanup(state.temporaryRoot);
+    return { audio, finalSegmentAudio };
+  }
 
-    const activeSegments = [...state.processes.values()].map((process) => ({
-      source: process.source,
-      outputPath: process.outputPath,
-      startedAtMs: process.startedAtMs,
-      endedAtMs: now,
-    }));
-    const audio = await mixWavSegments([...state.segments, ...activeSegments], state.startedAtMs);
+  async previewChunk(mode: CaptureMode, chunkMs: number): Promise<Uint8Array | null> {
+    const state = this.captures.get(mode);
+    if (!state || chunkMs < 5000) {
+      return null;
+    }
+    const audio = await this.snapshotCurrentAudio(state);
     const parsed = parsePcm16MonoWav(audio);
     if (!parsed) {
       return null;
     }
-
-    const startMs = Math.max(0, state.previewEndedAtMs - overlapMs);
-    const endMs = elapsedMs;
-    state.previewEndedAtMs = elapsedMs;
-    return slicePcm16MonoWav(parsed, startMs, endMs);
+    const durationMs = wavDurationMs(parsed);
+    if (durationMs - state.nextPreviewStartMs < chunkMs) {
+      return null;
+    }
+    const boundaryMs = findStableSilenceBoundary(parsed, state.nextPreviewStartMs + chunkMs);
+    if (boundaryMs === null) {
+      return null;
+    }
+    const chunk = slicePcm16MonoWav(parsed, state.nextPreviewStartMs, boundaryMs);
+    state.nextPreviewStartMs = boundaryMs;
+    return chunk;
   }
 
   async cancel(mode: CaptureMode): Promise<void> {
@@ -202,12 +211,42 @@ export class AudioCaptureHelperService {
     });
   }
 
-  private async snapshotProcess(process: CaptureProcess): Promise<void> {
-    if (process.child.exitCode !== null || process.child.stdin.destroyed) {
-      return;
+  private async stopCurrentProcesses(state: CaptureState): Promise<CaptureSegment[]> {
+    const entries = [...state.processes.entries()];
+    const previousLength = state.segments.length;
+    for (const [key, process] of entries) {
+      await this.stopProcess(process, state);
+      state.processes.delete(key);
     }
-    process.child.stdin.write('snapshot\n');
-    await delay(120);
+    return state.segments.slice(previousLength);
+  }
+
+  private async snapshotCurrentAudio(state: CaptureState): Promise<Uint8Array> {
+    const snapshotStartedAtMs = Date.now();
+    const segments = await Promise.all([...state.processes.values()].map(async (process) => {
+      const outputPath = join(state.temporaryRoot, `${state.mode}-${process.source}-snapshot-${randomUUID()}.wav`);
+      process.child.stdin.write(`snapshot ${outputPath}\n`);
+      await this.waitForSnapshot(outputPath, 800);
+      return {
+        source: process.source,
+        outputPath,
+        startedAtMs: process.startedAtMs,
+        endedAtMs: snapshotStartedAtMs,
+      };
+    }));
+    return mixWavSegments(segments, state.startedAtMs);
+  }
+
+  private async waitForSnapshot(path: string, timeoutMs: number): Promise<void> {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      const audio = await readFile(path).catch(() => null);
+      if (audio && audio.byteLength > 44) {
+        return;
+      }
+      await delay(20);
+    }
+    throw new Error('Audio capture snapshot timed out.');
   }
 
   private args(source: CaptureSource, outputPath: string, settings: Settings, device?: CaptureDevice): string[] {
@@ -271,6 +310,14 @@ export class AudioCaptureHelperService {
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+export const transcriptSilenceMs = 400;
+export const transcriptSilenceBoundaryOffsetMs = transcriptSilenceMs / 2;
+const silenceAnalysisFrameMs = 20;
+const silenceNoiseWindowMs = 10000;
+const silenceThresholdFloorDb = -45;
+const silenceThresholdCeilingDb = -35;
+const silenceThresholdAboveNoiseDb = 6;
+
 const displayLevel = (rawLevel: number): number => {
   const noiseFloor = 0.003;
   if (!Number.isFinite(rawLevel) || rawLevel <= noiseFloor) {
@@ -316,15 +363,7 @@ const mixWavSegments = async (segments: CaptureSegment[], sessionStartedAtMs: nu
   const sampleCount = Math.max(
     ...parsed.map((file) => Math.round((file.offsetMs / 1000) * sampleRate) + file.samples.length),
   );
-  const mixed = new Int16Array(sampleCount);
-  for (const file of parsed) {
-    const offsetSamples = Math.round((file.offsetMs / 1000) * sampleRate);
-    for (let index = 0; index < file.samples.length; index += 1) {
-      const targetIndex = offsetSamples + index;
-      mixed[targetIndex] = Math.max(-32768, Math.min(32767, (mixed[targetIndex] ?? 0) + (file.samples[index] ?? 0)));
-    }
-  }
-  return writePcm16MonoWav(mixed, sampleRate);
+  return writePcm16MonoWav(mixPcm16MonoSamples(parsed, sampleCount, sampleRate), sampleRate);
 };
 
 type Pcm16MonoWav = {
@@ -334,7 +373,46 @@ type Pcm16MonoWav = {
   offsetMs: number;
 };
 
-const parsePcm16MonoWav = (source: Uint8Array): Pcm16MonoWav | null => {
+export const mixPcm16MonoSamples = (
+  files: Array<Pick<Pcm16MonoWav, 'sampleRate' | 'samples' | 'offsetMs'>>,
+  sampleCount: number,
+  sampleRate: number,
+): Int16Array => {
+  if (files.length === 1) {
+    const file = files[0];
+    const mixed = new Int16Array(sampleCount);
+    if (!file) {
+      return mixed;
+    }
+    const offsetSamples = Math.round((file.offsetMs / 1000) * sampleRate);
+    const targetOffset = Math.max(0, offsetSamples);
+    if (targetOffset >= sampleCount) {
+      return mixed;
+    }
+    mixed.set(file.samples.slice(0, sampleCount - targetOffset), targetOffset);
+    return mixed;
+  }
+  const sums = new Int32Array(sampleCount);
+  for (const file of files) {
+    const offsetSamples = Math.round((file.offsetMs / 1000) * sampleRate);
+    for (let index = 0; index < file.samples.length; index += 1) {
+      const sample = file.samples[index] ?? 0;
+      const targetIndex = offsetSamples + index;
+      if (targetIndex < 0 || targetIndex >= sampleCount) {
+        continue;
+      }
+      sums[targetIndex] = (sums[targetIndex] ?? 0) + sample;
+    }
+  }
+
+  const mixed = new Int16Array(sampleCount);
+  for (let index = 0; index < sampleCount; index += 1) {
+    mixed[index] = softLimitPcm16(sums[index] ?? 0);
+  }
+  return mixed;
+};
+
+export const parsePcm16MonoWav = (source: Uint8Array): Pcm16MonoWav | null => {
   if (source.byteLength < 44) {
     return null;
   }
@@ -369,7 +447,7 @@ const parsePcm16MonoWav = (source: Uint8Array): Pcm16MonoWav | null => {
   };
 };
 
-const writePcm16MonoWav = (samples: Int16Array, sampleRate: number): Uint8Array => {
+export const writePcm16MonoWav = (samples: Int16Array, sampleRate: number): Uint8Array => {
   const dataSize = samples.length * 2;
   const buffer = Buffer.alloc(44 + dataSize);
   buffer.write('RIFF', 0, 'ascii');
@@ -389,8 +467,76 @@ const writePcm16MonoWav = (samples: Int16Array, sampleRate: number): Uint8Array 
   return buffer;
 };
 
-const slicePcm16MonoWav = (audio: Pcm16MonoWav, startMs: number, endMs: number): Uint8Array => {
+const clampPcm16 = (value: number): number => Math.max(-32768, Math.min(32767, value));
+
+const softLimitPcm16 = (value: number): number => {
+  const sign = Math.sign(value);
+  const absolute = Math.abs(value);
+  const threshold = 28000;
+  const knee = 6000;
+  if (absolute <= threshold) {
+    return clampPcm16(value);
+  }
+  const compressed = threshold + (absolute - threshold) / (1 + (absolute - threshold) / knee);
+  return clampPcm16(Math.round(sign * compressed));
+};
+
+export const slicePcm16MonoWav = (audio: Pcm16MonoWav, startMs: number, endMs: number): Uint8Array => {
   const start = Math.max(0, Math.floor((startMs / 1000) * audio.sampleRate));
   const end = Math.max(start, Math.min(audio.samples.length, Math.ceil((endMs / 1000) * audio.sampleRate)));
   return writePcm16MonoWav(audio.samples.slice(start, end), audio.sampleRate);
+};
+
+export const wavDurationMs = (audio: Pcm16MonoWav): number => (audio.samples.length / audio.sampleRate) * 1000;
+
+export const findStableSilenceBoundary = (audio: Pcm16MonoWav, searchStartMs: number): number | null => {
+  const frameSamples = Math.max(1, Math.round((silenceAnalysisFrameMs / 1000) * audio.sampleRate));
+  const levels = frameDbLevels(audio.samples, frameSamples);
+  const searchFrame = Math.max(0, Math.floor(searchStartMs / silenceAnalysisFrameMs));
+  const silenceFrames = Math.max(1, Math.ceil(transcriptSilenceMs / silenceAnalysisFrameMs));
+  if (levels.length - searchFrame < silenceFrames) {
+    return null;
+  }
+  const noiseStart = Math.max(0, searchFrame - Math.round(silenceNoiseWindowMs / silenceAnalysisFrameMs));
+  const threshold = silenceThreshold(levels.slice(noiseStart, searchFrame));
+  let run = 0;
+  for (let index = searchFrame; index < levels.length; index += 1) {
+    if ((levels[index] ?? 0) <= threshold) {
+      run += 1;
+      if (run >= silenceFrames) {
+        const silenceStartFrame = index - run + 1;
+        return (silenceStartFrame * silenceAnalysisFrameMs) + transcriptSilenceBoundaryOffsetMs;
+      }
+      continue;
+    }
+    run = 0;
+  }
+  return null;
+};
+
+const frameDbLevels = (samples: Int16Array, frameSamples: number): number[] => {
+  const levels: number[] = [];
+  for (let start = 0; start < samples.length; start += frameSamples) {
+    const end = Math.min(samples.length, start + frameSamples);
+    let sum = 0;
+    for (let index = start; index < end; index += 1) {
+      const value = (samples[index] ?? 0) / 32768;
+      sum += value * value;
+    }
+    const rms = end > start ? Math.sqrt(sum / (end - start)) : 0;
+    levels.push(rms > 0 ? 20 * Math.log10(rms) : -120);
+  }
+  return levels;
+};
+
+const silenceThreshold = (levels: number[]): number => {
+  if (levels.length === 0) {
+    return silenceThresholdFloorDb;
+  }
+  const sorted = [...levels].sort((left, right) => left - right);
+  const noiseFloor = sorted[Math.floor(sorted.length * 0.2)] ?? silenceThresholdFloorDb;
+  return Math.min(
+    silenceThresholdCeilingDb,
+    Math.max(noiseFloor + silenceThresholdAboveNoiseDb, silenceThresholdFloorDb),
+  );
 };

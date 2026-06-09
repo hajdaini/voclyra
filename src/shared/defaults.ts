@@ -4,7 +4,7 @@ export const defaultSettings: Settings = {
   llmModel: '',
   whisperModel: '',
   whisperLanguage: 'auto',
-  whisperQualityMode: 'balanced',
+  whisperQualityMode: 'accurate',
   llmContextSize: 4096,
   llmTemperature: 0.1,
 correctionPrompt: [
@@ -32,8 +32,7 @@ correctionPrompt: [
   microphoneDeviceLabel: '',
   transcriptOutputDeviceId: 'all',
   transcriptOutputDeviceLabel: 'All computer audio',
-  transcriptLiveChunkSeconds: 30,
-  transcriptLiveOverlapSeconds: 5,
+  transcriptLiveChunkSeconds: 60,
   silenceSensitivity: 'normal',
   maxHistoryItems: 100,
   hotkeys: {

@@ -28,6 +28,8 @@ const api: AppApi = {
       ipcRenderer.invoke(channels.transcriptStart, { audio, progressive: Boolean(options?.progressive) }) as ReturnType<AppApi['transcript']['start']>,
     preview: (audio) =>
       ipcRenderer.invoke(channels.transcriptPreview, audio) as ReturnType<AppApi['transcript']['preview']>,
+    save: (audio, text) =>
+      ipcRenderer.invoke(channels.transcriptSave, { audio, text }) as ReturnType<AppApi['transcript']['save']>,
     onPartial: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, text: unknown): void => {
         if (typeof text === 'string') {
@@ -44,6 +46,7 @@ const api: AppApi = {
     start: (mode) => ipcRenderer.invoke(channels.audioCaptureStart, mode) as Promise<void>,
     switch: (mode, source) => ipcRenderer.invoke(channels.audioCaptureSwitch, { mode, source }) as Promise<void>,
     stop: (mode) => ipcRenderer.invoke(channels.audioCaptureStop, mode) as Promise<ArrayBuffer>,
+    stopTranscript: () => ipcRenderer.invoke(channels.audioCaptureStopTranscript) as ReturnType<AppApi['audioCapture']['stopTranscript']>,
     cancel: (mode) => ipcRenderer.invoke(channels.audioCaptureCancel, mode) as Promise<void>,
     previewChunk: (mode, options) =>
       ipcRenderer.invoke(channels.audioCapturePreviewChunk, { mode, ...options }) as ReturnType<AppApi['audioCapture']['previewChunk']>,
@@ -76,6 +79,7 @@ const api: AppApi = {
   },
   text: {
     improve: (text) => ipcRenderer.invoke(channels.textImprove, text) as ReturnType<AppApi['text']['improve']>,
+    export: (text) => ipcRenderer.invoke(channels.textExport, text) as ReturnType<AppApi['text']['export']>,
     replaceActive: (text) => ipcRenderer.invoke(channels.textReplaceActive, text) as Promise<void>,
   },
   clipboard: {

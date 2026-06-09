@@ -447,11 +447,14 @@ describe('Core services', () => {
       language: 'auto',
       threads: 4,
       qualityArgs: [],
+      vadModelPath: 'C:\\vad\\ggml-silero-v6.2.0.bin',
       prompt: 'exact',
     });
 
     const args = spawnState.calls.find((call) => call.command === 'C:\\whisper-server.exe')?.args;
     expect(args).toEqual(expect.arrayContaining(['-sns', '-nth', '0.5', '-lpt', '-0.8']));
+    expect(args).toEqual(expect.arrayContaining(['--vad', '--vad-model', 'C:\\vad\\ggml-silero-v6.2.0.bin']));
+    expect(args).not.toContain('-nf');
     whisperServerService.stop();
   });
 

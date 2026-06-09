@@ -83,23 +83,6 @@ static class WasapiRecorder
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(options.OutputPath)) ?? ".");
         using var stop = new CancellationTokenSource();
-        var snapshotRequested = 0;
-        _ = Task.Run(async () =>
-        {
-            while (!stop.IsCancellationRequested)
-            {
-                var line = await Console.In.ReadLineAsync();
-                if (line is null || line.Equals("stop", StringComparison.OrdinalIgnoreCase))
-                {
-                    stop.Cancel();
-                    return;
-                }
-                if (line.Equals("snapshot", StringComparison.OrdinalIgnoreCase))
-                {
-                    Interlocked.Exchange(ref snapshotRequested, 1);
-                }
-            }
-        });
 
         var flow = options.Mode == "output" ? EDataFlow.eRender : EDataFlow.eCapture;
         var flags = options.Mode == "output" ? AudioClientStreamFlags.Loopback : AudioClientStreamFlags.None;
@@ -116,6 +99,28 @@ static class WasapiRecorder
             Marshal.Release(capturePtr);
 
             using var wav = new WavWriter(options.OutputPath, format.SampleRate);
+            _ = Task.Run(async () =>
+            {
+                while (!stop.IsCancellationRequested)
+                {
+                    var line = await Console.In.ReadLineAsync();
+                    if (line is null || line.Equals("stop", StringComparison.OrdinalIgnoreCase))
+                    {
+                        stop.Cancel();
+                        return;
+                    }
+                    if (line.StartsWith("snapshot ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var snapshotPath = line["snapshot ".Length..].Trim();
+                        if (!string.IsNullOrWhiteSpace(snapshotPath))
+                        {
+                            wav.Snapshot(snapshotPath);
+                            Console.WriteLine($"SNAPSHOT {snapshotPath}");
+                            Console.Out.Flush();
+                        }
+                    }
+                }
+            });
             audioClient.Start();
             try
             {
@@ -128,12 +133,6 @@ static class WasapiRecorder
                     capture.GetNextPacketSize(out var packetFrames);
                     if (packetFrames == 0)
                     {
-                        if (Interlocked.Exchange(ref snapshotRequested, 0) == 1)
-                        {
-                            wav.UpdateHeader();
-                            Console.WriteLine("SNAPSHOT");
-                            Console.Out.Flush();
-                        }
                         var now = DateTime.UtcNow;
                         var silentFrames = (int)Math.Round((now - lastWriteAt).TotalSeconds * format.SampleRate);
                         if (silentFrames > 0)
@@ -169,12 +168,6 @@ static class WasapiRecorder
                         levelSum = 0;
                         levelCount = 0;
                         lastLevelAt = DateTime.UtcNow;
-                    }
-                    if (Interlocked.Exchange(ref snapshotRequested, 0) == 1)
-                    {
-                        wav.UpdateHeader();
-                        Console.WriteLine("SNAPSHOT");
-                        Console.Out.Flush();
                     }
                 }
             }
@@ -304,34 +297,38 @@ sealed class WavWriter : IDisposable
 {
     private readonly FileStream stream;
     private readonly int sampleRate;
+    private readonly object sync = new();
     private int bytesWritten;
 
     public WavWriter(string path, int sampleRate)
     {
         this.sampleRate = sampleRate;
-        stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read);
+        stream = new FileStream(path, FileMode.Create, FileAccess.ReadWrite, FileShare.Read);
         stream.Write(new byte[44]);
     }
 
     public void Write(short[] samples)
     {
-        Span<byte> buffer = stackalloc byte[Math.Min(samples.Length * 2, 8192)];
-        var offset = 0;
-        foreach (var sample in samples)
+        lock (sync)
         {
-            if (offset + 2 > buffer.Length)
+            Span<byte> buffer = stackalloc byte[Math.Min(samples.Length * 2, 8192)];
+            var offset = 0;
+            foreach (var sample in samples)
+            {
+                if (offset + 2 > buffer.Length)
+                {
+                    stream.Write(buffer[..offset]);
+                    bytesWritten += offset;
+                    offset = 0;
+                }
+                BinaryPrimitives.WriteInt16LittleEndian(buffer.Slice(offset, 2), sample);
+                offset += 2;
+            }
+            if (offset > 0)
             {
                 stream.Write(buffer[..offset]);
                 bytesWritten += offset;
-                offset = 0;
             }
-            BinaryPrimitives.WriteInt16LittleEndian(buffer.Slice(offset, 2), sample);
-            offset += 2;
-        }
-        if (offset > 0)
-        {
-            stream.Write(buffer[..offset]);
-            bytesWritten += offset;
         }
     }
 
@@ -341,19 +338,45 @@ sealed class WavWriter : IDisposable
         {
             return;
         }
-        Span<byte> buffer = stackalloc byte[8192];
-        var bytesRemaining = frames * 2;
-        while (bytesRemaining > 0)
+        lock (sync)
         {
-            var bytes = Math.Min(buffer.Length, bytesRemaining);
-            buffer[..bytes].Clear();
-            stream.Write(buffer[..bytes]);
-            bytesWritten += bytes;
-            bytesRemaining -= bytes;
+            Span<byte> buffer = stackalloc byte[8192];
+            var bytesRemaining = frames * 2;
+            while (bytesRemaining > 0)
+            {
+                var bytes = Math.Min(buffer.Length, bytesRemaining);
+                buffer[..bytes].Clear();
+                stream.Write(buffer[..bytes]);
+                bytesWritten += bytes;
+                bytesRemaining -= bytes;
+            }
         }
     }
 
     public void UpdateHeader()
+    {
+        lock (sync)
+        {
+            UpdateHeaderLocked();
+        }
+    }
+
+    public void Snapshot(string path)
+    {
+        lock (sync)
+        {
+            UpdateHeaderLocked();
+            stream.Flush(true);
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".");
+            var position = stream.Position;
+            stream.Position = 0;
+            using var output = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read);
+            stream.CopyTo(output);
+            stream.Position = position;
+        }
+    }
+
+    private void UpdateHeaderLocked()
     {
         var position = stream.Position;
         stream.Position = 0;

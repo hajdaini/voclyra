@@ -10,7 +10,12 @@ export class ProcessLogService {
   async append(fileName: string, lines: string[]): Promise<void> {
     const logsRoot = await this.storage.ensureDir('logs');
     const path = join(logsRoot, fileName);
-    await writeFile(path, [`[${new Date().toISOString()}]`, ...lines].join('\n'), 'utf8');
+    const previous = await readFile(path, 'utf8').catch(() => '');
+    const next = [
+      previous.trimEnd(),
+      [`[${new Date().toISOString()}]`, ...lines].join('\n'),
+    ].filter(Boolean).join('\n');
+    await writeFile(path, next, 'utf8');
     await this.truncate(path);
   }
 

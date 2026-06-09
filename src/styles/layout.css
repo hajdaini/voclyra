@@ -573,7 +573,7 @@
 }
 
 .overlay.recording {
-  grid-template-columns: 38px minmax(72px, 1fr) 66px 64px;
+  grid-template-columns: 38px 66px 64px max-content minmax(72px, 1fr);
 }
 
 .overlay.warning {
@@ -591,6 +591,7 @@ body:has(.overlay) {
 }
 
 .overlay-icon {
+  grid-column: 1;
   grid-row: 1;
   display: grid;
   width: 38px;
@@ -685,6 +686,8 @@ body:has(.overlay) {
 }
 
 .overlay-main {
+  grid-column: 5;
+  grid-row: 1;
   display: grid;
   gap: 5px;
   min-width: max-content;
@@ -780,6 +783,7 @@ body:has(.overlay) {
 }
 
 .overlay .overlay-stop {
+  grid-column: 2;
   flex-direction: column;
   gap: 1px;
   padding: 0 8px;
@@ -793,6 +797,7 @@ body:has(.overlay) {
 }
 
 .overlay .overlay-cancel {
+  grid-column: 3;
   border-color: var(--border);
   background: transparent;
   color: var(--muted);
@@ -803,6 +808,28 @@ body:has(.overlay) {
   border-color: var(--danger);
   background: rgba(255, 107, 122, 0.08);
   color: var(--danger);
+}
+
+.overlay .overlay-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 2px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.overlay .overlay-timer svg {
+  color: var(--overlay-accent-strong);
+}
+
+.overlay .overlay-actions-timer {
+  grid-column: 4;
+  grid-row: 1;
+  justify-self: center;
+  margin-left: 0;
 }
 
 .overlay-spinner {

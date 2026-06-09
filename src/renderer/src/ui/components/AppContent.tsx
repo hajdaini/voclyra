@@ -48,6 +48,7 @@ type AppContentProps = {
   onImproveInputChange: (value: string) => void;
   onImproveInputFocusChange: (focused: boolean) => void;
   onCopyResult: () => void;
+  onExportResult: () => void;
   onStartTranscript: () => void;
   onStopTranscript: () => void;
   onSettingsChange: (settings: Settings) => void;
@@ -99,6 +100,7 @@ export const AppContent = ({
   onImproveInputChange,
   onImproveInputFocusChange,
   onCopyResult,
+  onExportResult,
   onStartTranscript,
   onStopTranscript,
   onSettingsChange,
@@ -146,6 +148,7 @@ export const AppContent = ({
         onImproveInputChange={onImproveInputChange}
         onImproveInputFocusChange={onImproveInputFocusChange}
         onCopyResult={onCopyResult}
+        onExportResult={onExportResult}
       />
     )}
     {section === 'settings' && (

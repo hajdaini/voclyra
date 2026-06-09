@@ -29,6 +29,12 @@ const getAppIconPath = (): string =>
     ? join(process.resourcesPath, appAssetConfig.packagedAssetDir, appAssetConfig.iconIco)
     : join(app.getAppPath(), appAssetConfig.devAssetDir, appAssetConfig.iconIco);
 
+const shouldOpenDevTools = (): boolean =>
+  !app.isPackaged && process.env.VOCLYRA_OPEN_DEVTOOLS === '1';
+
+const shouldOpenOverlayDevTools = (): boolean =>
+  shouldOpenDevTools() && process.env.VOCLYRA_OPEN_OVERLAY_DEVTOOLS === '1';
+
 export const createMainWindow = (): BrowserWindow => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     return mainWindow;
@@ -38,7 +44,7 @@ export const createMainWindow = (): BrowserWindow => {
     width: 1180,
     height: 740,
     minWidth: 960,
-    minHeight: 620,
+    minHeight: 780,
     title: packageInfo.productName,
     icon: getAppIconPath(),
     backgroundColor: '#080d14',
@@ -107,6 +113,12 @@ export const createMainWindow = (): BrowserWindow => {
     void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
     void mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
+  }
+
+  if (shouldOpenDevTools()) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      mainWindow?.webContents.openDevTools({ mode: 'detach' });
+    });
   }
 
   return mainWindow;
@@ -303,6 +315,9 @@ const createOverlayWindow = (mode: OverlayMode): BrowserWindow => {
 
   window.webContents.once('did-finish-load', () => {
     window.webContents.send(channels.overlayStateChanged, getOverlayState(mode));
+    if (shouldOpenOverlayDevTools()) {
+      window.webContents.openDevTools({ mode: 'detach' });
+    }
   });
 
   if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {

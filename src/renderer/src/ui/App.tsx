@@ -32,6 +32,15 @@ import { Overlay } from './components/Overlay';
 import { syncModelSettings } from './modelSettingsSync';
 import { overlayDone, overlayInactive, overlayProcessing, overlayRecording, overlayWarning } from './overlayStates';
 import {
+  assembleTranscriptLiveSegments,
+  createTranscriptLiveSegment,
+  enqueueFinalTranscriptLiveSegmentAfterCurrentTask,
+  hasFailedTranscriptLiveSegments,
+  hasRetryableTranscriptLiveSegments,
+  nextTranscriptLiveSegment,
+  type TranscriptLiveSegment,
+} from './transcript-live-segments';
+import {
   improveFallbackResult,
   inactiveOverlayState,
   speakFallbackResult,
@@ -123,7 +132,14 @@ export const App = (): JSX.Element => {
   const overlayHideTimerRef = useRef<Partial<Record<OverlayMode, number>>>({});
   const transcriptLivePreviewTimerRef = useRef<number | null>(null);
   const transcriptLivePreviewRunningRef = useRef(false);
+  const transcriptLiveSegmentClosingRef = useRef(false);
+  const transcriptLiveSegmentCloseTaskRef = useRef<Promise<void> | null>(null);
   const transcriptLivePreviewTranscribingRef = useRef(false);
+  const transcriptLivePreviewTaskRef = useRef<Promise<void> | null>(null);
+  const transcriptLivePreviewTaskRunIdRef = useRef(0);
+  const transcriptLiveRunIdRef = useRef(0);
+  const transcriptLiveSegmentsRef = useRef<TranscriptLiveSegment[]>([]);
+  const transcriptLiveNextSegmentIdRef = useRef(1);
   const transcriptLiveTextRef = useRef('');
   const microphoneSettingsKeyRef = useRef('');
   const transcriptOutputSettingsKeyRef = useRef('');
@@ -131,6 +147,7 @@ export const App = (): JSX.Element => {
     speak: false,
     transcript: false,
   });
+  const recordingStartedAtRef = useRef<Partial<Record<'speak' | 'transcript', number>>>({});
   const audioWarningTimerRef = useRef<Partial<Record<'speakMic' | 'transcriptMic' | 'transcriptSystem', number>>>({});
   const audioWarningShownRef = useRef<Record<'speakMic' | 'transcriptMic' | 'transcriptSystem', boolean>>({
     speakMic: false,
@@ -547,7 +564,10 @@ export const App = (): JSX.Element => {
     setMode('speak');
     recordingActiveRef.current.speak = true;
     startAudioWarningTimer('speakMic', 'No microphone audio. Check settings.');
-    publishOverlayState(overlayRecording('speak', defaultWaveform().slice(-overlayWaveformSize)));
+    recordingStartedAtRef.current.speak = Date.now();
+    publishOverlayState(overlayRecording('speak', defaultWaveform().slice(-overlayWaveformSize), undefined, undefined, 'recording', {
+      recordingStartedAtMs: recordingStartedAtRef.current.speak,
+    }));
     try {
       setRecorder(
         await startWavRecorder(
@@ -565,6 +585,8 @@ export const App = (): JSX.Element => {
                 nextWaveform.slice(-overlayWaveformSize),
                 overlayNoticeRef.current.speak?.message,
                 overlayNoticeRef.current.speak?.messageType,
+                'recording',
+                { recordingStartedAtMs: recordingStartedAtRef.current.speak },
               ));
               return nextWaveform;
             });
@@ -589,6 +611,7 @@ export const App = (): JSX.Element => {
 
     setRecorder(null);
     recordingActiveRef.current.speak = false;
+    delete recordingStartedAtRef.current.speak;
     clearAudioWarningTimer('speakMic');
     setWaveform(defaultWaveform());
     setIsSpeakProcessing(true);
@@ -611,6 +634,7 @@ export const App = (): JSX.Element => {
       setWhisperRuntime(await api.whisper.runtimeInfo());
       await refreshHistoryAndModels();
     } catch (error) {
+      delete recordingStartedAtRef.current.speak;
       const message = errorMessage(error);
       setSpeakResult(actionResult('speak', 'error', { message }));
       showOverlayWarning('speak', message, 'error');
@@ -627,12 +651,14 @@ export const App = (): JSX.Element => {
     if (recordingMode === 'speak') {
       setRecorder(null);
       recordingActiveRef.current.speak = false;
+      delete recordingStartedAtRef.current.speak;
       clearAudioWarningTimer('speakMic');
       setSpeakResult(actionResult('speak', 'warning', { message: actionMessages.recordingCancelled }));
     } else {
       setTranscriptRecorder(null);
       recordingActiveRef.current.transcript = false;
-      stopTranscriptLivePreview();
+      delete recordingStartedAtRef.current.transcript;
+      cancelTranscriptLivePreview();
       clearAudioWarningTimer('transcriptMic');
       clearAudioWarningTimer('transcriptSystem');
       setTranscriptResult(actionResult('transcript', 'warning', { message: actionMessages.recordingCancelled }));
@@ -728,9 +754,17 @@ export const App = (): JSX.Element => {
 
   const startTranscriptLivePreview = (): void => {
     stopTranscriptLivePreview();
-    transcriptLiveTextRef.current = '';
+    resetTranscriptLiveSegments();
+    const runId = transcriptLiveRunIdRef.current + 1;
+    transcriptLiveRunIdRef.current = runId;
     transcriptLivePreviewTimerRef.current = window.setInterval(() => {
-      void transcribeLivePreviewChunk();
+      const task = closeTranscriptLiveSegment(runId);
+      transcriptLiveSegmentCloseTaskRef.current = task;
+      void task.finally(() => {
+        if (transcriptLiveSegmentCloseTaskRef.current === task) {
+          transcriptLiveSegmentCloseTaskRef.current = null;
+        }
+      });
     }, 1000);
   };
 
@@ -741,50 +775,133 @@ export const App = (): JSX.Element => {
     }
   };
 
-  const transcribeLivePreviewChunk = async (): Promise<void> => {
-    if (!recordingActiveRef.current.transcript || transcriptLivePreviewRunningRef.current) {
+  const cancelTranscriptLivePreview = (): void => {
+    transcriptLiveRunIdRef.current += 1;
+    stopTranscriptLivePreview();
+    transcriptLivePreviewTaskRef.current = null;
+    transcriptLivePreviewTaskRunIdRef.current = 0;
+    transcriptLivePreviewRunningRef.current = false;
+    transcriptLivePreviewTranscribingRef.current = false;
+    transcriptLiveSegmentClosingRef.current = false;
+  };
+
+  const resetTranscriptLiveSegments = (): void => {
+    transcriptLiveSegmentsRef.current = [];
+    transcriptLiveNextSegmentIdRef.current = 1;
+    transcriptLiveTextRef.current = '';
+  };
+
+  const enqueueTranscriptLiveSegment = (audio: ArrayBuffer): void => {
+    if (audio.byteLength === 0) {
       return;
     }
-    transcriptLivePreviewRunningRef.current = true;
+    transcriptLiveSegmentsRef.current.push(
+      createTranscriptLiveSegment(transcriptLiveNextSegmentIdRef.current, audio),
+    );
+    transcriptLiveNextSegmentIdRef.current += 1;
+  };
+
+  const closeTranscriptLiveSegment = async (runId: number): Promise<void> => {
+    if (
+      runId !== transcriptLiveRunIdRef.current ||
+      !recordingActiveRef.current.transcript ||
+      transcriptLiveSegmentClosingRef.current
+    ) {
+      return;
+    }
+    transcriptLiveSegmentClosingRef.current = true;
     try {
       const audio = await api.audioCapture.previewChunk('transcript', {
         chunkMs: settingsRef.current.transcriptLiveChunkSeconds * 1000,
-        overlapMs: Math.min(
-          settingsRef.current.transcriptLiveOverlapSeconds,
-          settingsRef.current.transcriptLiveChunkSeconds - 1,
-        ) * 1000,
       });
-      if (!audio || !recordingActiveRef.current.transcript) {
+      if (!audio || runId !== transcriptLiveRunIdRef.current || !recordingActiveRef.current.transcript) {
         return;
       }
-      transcriptLivePreviewTranscribingRef.current = true;
-      publishOverlayState(overlayRecording(
-        'transcript',
-        transcriptSystemAudioWaveformRef.current.slice(-overlayWaveformSize),
-        'Recording...',
-        'info',
-        'recording',
-        {
-          microphoneWaveform: transcriptMicrophoneWaveformRef.current.slice(-overlayWaveformSize),
-          systemAudioWaveform: transcriptSystemAudioWaveformRef.current.slice(-overlayWaveformSize),
-          progressLabel: 'Transcribing live preview',
-        },
-      ));
-      const chunkText = await api.transcript.preview(audio);
-      if (!chunkText.trim()) {
-        return;
-      }
-      transcriptLiveTextRef.current = mergePreviewTranscriptText(transcriptLiveTextRef.current, chunkText);
-      setTranscriptResult((current) => ({
-        ...current,
-        text: transcriptLiveTextRef.current,
-        status: 'processing',
-        actionPhase: 'processing',
-        message: 'Transcribing...',
-      }));
+      enqueueTranscriptLiveSegment(audio);
+      void startTranscriptLiveSegmentWorker(runId).catch(() => {
+        if (runId === transcriptLiveRunIdRef.current) {
+          stopTranscriptLivePreview();
+        }
+      });
     } catch {
       stopTranscriptLivePreview();
     } finally {
+      if (runId === transcriptLiveRunIdRef.current) {
+        transcriptLiveSegmentClosingRef.current = false;
+      }
+    }
+  };
+
+  const startTranscriptLiveSegmentWorker = (runId = transcriptLiveRunIdRef.current): Promise<void> => {
+    if (transcriptLivePreviewTaskRef.current && transcriptLivePreviewTaskRunIdRef.current === runId) {
+      return transcriptLivePreviewTaskRef.current;
+    }
+    const task = runTranscriptLiveSegmentWorker(runId);
+    transcriptLivePreviewTaskRef.current = task;
+    transcriptLivePreviewTaskRunIdRef.current = runId;
+    void task.finally(() => {
+      if (transcriptLivePreviewTaskRef.current === task) {
+        transcriptLivePreviewTaskRef.current = null;
+        transcriptLivePreviewTaskRunIdRef.current = 0;
+      }
+    });
+    return task;
+  };
+
+  const runTranscriptLiveSegmentWorker = async (runId: number): Promise<void> => {
+    if (runId !== transcriptLiveRunIdRef.current || transcriptLivePreviewRunningRef.current) {
+      return;
+    }
+    transcriptLivePreviewRunningRef.current = true;
+    transcriptLivePreviewTranscribingRef.current = true;
+    try {
+      if (recordingActiveRef.current.transcript) {
+        publishOverlayState(overlayRecording(
+          'transcript',
+          transcriptSystemAudioWaveformRef.current.slice(-overlayWaveformSize),
+          'Recording...',
+          'info',
+          'recording',
+          {
+            microphoneWaveform: transcriptMicrophoneWaveformRef.current.slice(-overlayWaveformSize),
+            systemAudioWaveform: transcriptSystemAudioWaveformRef.current.slice(-overlayWaveformSize),
+          progressLabel: 'Transcribing live preview',
+          recordingStartedAtMs: recordingStartedAtRef.current.transcript,
+        },
+      ));
+      }
+      while (true) {
+        if (runId !== transcriptLiveRunIdRef.current) {
+          return;
+        }
+        const segment = nextTranscriptLiveSegment(transcriptLiveSegmentsRef.current);
+        if (!segment) {
+          return;
+        }
+        segment.status = 'transcribing';
+        segment.attempts += 1;
+        try {
+          const text = await api.transcript.preview(segment.audio);
+          if (runId !== transcriptLiveRunIdRef.current) {
+            return;
+          }
+          segment.text = text;
+          segment.status = 'done';
+          publishTranscriptLiveText();
+        } catch (error) {
+          if (runId !== transcriptLiveRunIdRef.current) {
+            return;
+          }
+          segment.status = 'failed';
+          if (!nextTranscriptLiveSegment(transcriptLiveSegmentsRef.current)) {
+            throw error;
+          }
+        }
+      }
+    } finally {
+      if (runId !== transcriptLiveRunIdRef.current) {
+        return;
+      }
       transcriptLivePreviewTranscribingRef.current = false;
       if (recordingActiveRef.current.transcript) {
         publishTranscriptRecordingOverlay(
@@ -794,6 +911,38 @@ export const App = (): JSX.Element => {
       }
       transcriptLivePreviewRunningRef.current = false;
     }
+  };
+
+  const publishTranscriptLiveText = (): string => {
+    const text = assembleTranscriptLiveSegments(transcriptLiveSegmentsRef.current);
+    transcriptLiveTextRef.current = text;
+    if (text.trim()) {
+      setTranscriptResult((current) => ({
+        ...current,
+        text,
+        status: 'processing',
+        actionPhase: 'processing',
+        message: 'Transcribing...',
+      }));
+    }
+    return text;
+  };
+
+  const drainTranscriptLiveSegments = async (runId = transcriptLiveRunIdRef.current): Promise<string> => {
+    while (
+      hasRetryableTranscriptLiveSegments(transcriptLiveSegmentsRef.current) ||
+      (transcriptLivePreviewTaskRef.current && transcriptLivePreviewTaskRunIdRef.current === runId)
+    ) {
+      await (
+        transcriptLivePreviewTaskRef.current && transcriptLivePreviewTaskRunIdRef.current === runId
+          ? transcriptLivePreviewTaskRef.current
+          : startTranscriptLiveSegmentWorker(runId)
+      );
+    }
+    if (hasFailedTranscriptLiveSegments(transcriptLiveSegmentsRef.current)) {
+      throw new Error('Transcript segment failed.');
+    }
+    return publishTranscriptLiveText();
   };
 
   const publishTranscriptRecordingOverlay = (
@@ -812,6 +961,7 @@ export const App = (): JSX.Element => {
         microphoneWaveform: microphoneWaveform.slice(-overlayWaveformSize),
         systemAudioWaveform: systemAudioWaveform.slice(-overlayWaveformSize),
         progressLabel: transcriptLivePreviewTranscribingRef.current ? 'Transcribing live preview' : undefined,
+        recordingStartedAtMs: recordingStartedAtRef.current.transcript,
       },
     ));
   };
@@ -842,6 +992,7 @@ export const App = (): JSX.Element => {
     setSection('home');
     setMode('transcript');
     recordingActiveRef.current.transcript = true;
+    recordingStartedAtRef.current.transcript = Date.now();
     resetTranscriptAudioLevels();
     startAudioWarningTimer('transcriptSystem', 'No computer audio. Check settings.');
     publishTranscriptRecordingOverlay(
@@ -909,6 +1060,7 @@ export const App = (): JSX.Element => {
       );
       startTranscriptLivePreview();
     } catch (error) {
+      delete recordingStartedAtRef.current.transcript;
       const message = errorMessage(error);
       setTranscriptResult(actionResult('transcript', 'error', { message }));
       showOverlayWarning('transcript', message, 'error');
@@ -920,9 +1072,12 @@ export const App = (): JSX.Element => {
       return;
     }
 
+    stopTranscriptLivePreview();
+    await transcriptLiveSegmentCloseTaskRef.current;
+    const transcriptRunId = transcriptLiveRunIdRef.current;
     setTranscriptRecorder(null);
     recordingActiveRef.current.transcript = false;
-    stopTranscriptLivePreview();
+    delete recordingStartedAtRef.current.transcript;
     clearAudioWarningTimer('transcriptMic');
     clearAudioWarningTimer('transcriptSystem');
     setWaveform(defaultWaveform());
@@ -934,8 +1089,25 @@ export const App = (): JSX.Element => {
       progressLabel: 'Preparing transcript',
     }));
     try {
-      const audio = await transcriptRecorder.stop();
-      await transcribeAudio(audio, true);
+      const { audio, finalSegmentAudio } = transcriptRecorder.stopTranscript
+        ? await transcriptRecorder.stopTranscript()
+        : await transcriptRecorder.stop().then((audio) => ({ audio, finalSegmentAudio: audio }));
+      const text = await enqueueFinalTranscriptLiveSegmentAfterCurrentTask(
+        transcriptLivePreviewTaskRunIdRef.current === transcriptRunId ? transcriptLivePreviewTaskRef.current : null,
+        () => enqueueTranscriptLiveSegment(finalSegmentAudio),
+        () => drainTranscriptLiveSegments(transcriptRunId),
+      );
+      const nextResult = await api.transcript.save(audio, text);
+      setTranscriptResult(nextResult);
+      if (!nextResult.text) {
+        showOverlayWarning('transcript', nextResult.message);
+        setWhisperRuntime(await api.whisper.runtimeInfo());
+        await refreshHistoryAndModels();
+        return;
+      }
+      showCompletionOverlay('transcript', nextResult);
+      setWhisperRuntime(await api.whisper.runtimeInfo());
+      await refreshHistoryAndModels();
     } catch (error) {
       const message = errorMessage(error);
       setTranscriptResult(actionResult('transcript', 'error', { message }));
@@ -1007,6 +1179,13 @@ export const App = (): JSX.Element => {
   const copy = async (): Promise<void> => {
     await api.clipboard.write(result.text);
     showToast('info', appMessages.copiedToClipboard);
+  };
+
+  const exportResult = async (): Promise<void> => {
+    const exported = await api.text.export(result.text);
+    if (exported) {
+      showToast('success', 'Result exported.');
+    }
   };
 
   const deleteEntry = async (id: string): Promise<void> => {
@@ -1196,7 +1375,9 @@ export const App = (): JSX.Element => {
     overlayNoticeRef.current[overlayMode] = { message, messageType };
     clearOverlayWarningTimer(overlayMode);
     if (overlayMode === 'speak' && recordingActiveRef.current.speak) {
-      publishOverlayState(overlayRecording('speak', waveform.slice(-overlayWaveformSize), message, messageType));
+      publishOverlayState(overlayRecording('speak', waveform.slice(-overlayWaveformSize), message, messageType, 'recording', {
+        recordingStartedAtMs: recordingStartedAtRef.current.speak,
+      }));
     } else if (overlayMode === 'speak' && isSpeakProcessing) {
       publishOverlayState(overlayProcessing('speak', waveform.slice(-overlayWaveformSize), message, messageType));
     } else if (overlayMode === 'transcript' && recordingActiveRef.current.transcript) {
@@ -1217,7 +1398,9 @@ export const App = (): JSX.Element => {
       delete overlayNoticeRef.current[overlayMode];
       delete overlayWarningTimerRef.current[overlayMode];
       if (overlayMode === 'speak' && recordingActiveRef.current.speak) {
-        publishOverlayState(overlayRecording('speak', waveform.slice(-overlayWaveformSize)));
+        publishOverlayState(overlayRecording('speak', waveform.slice(-overlayWaveformSize), undefined, undefined, 'recording', {
+          recordingStartedAtMs: recordingStartedAtRef.current.speak,
+        }));
         return;
       }
       if (overlayMode === 'speak' && isSpeakProcessing) {
@@ -1451,6 +1634,7 @@ export const App = (): JSX.Element => {
         onImproveInputChange={setImproveInput}
         onImproveInputFocusChange={setIsImproveInputFocused}
         onCopyResult={() => void copy()}
+        onExportResult={() => void exportResult()}
         onStartTranscript={() => void startTranscript()}
         onStopTranscript={() => void stopTranscript()}
         onSettingsChange={(nextSettings) => void changeSettings(nextSettings)}
@@ -1505,7 +1689,6 @@ const settingsAreEqual = (left: SettingsType, right: SettingsType): boolean =>
   left.transcriptOutputDeviceId === right.transcriptOutputDeviceId &&
   left.transcriptOutputDeviceLabel === right.transcriptOutputDeviceLabel &&
   left.transcriptLiveChunkSeconds === right.transcriptLiveChunkSeconds &&
-  left.transcriptLiveOverlapSeconds === right.transcriptLiveOverlapSeconds &&
   left.silenceSensitivity === right.silenceSensitivity &&
   left.maxHistoryItems === right.maxHistoryItems &&
   left.hotkeys.speak === right.hotkeys.speak &&
@@ -1553,32 +1736,6 @@ const isSameActionProcessingBlock = (
 ): boolean =>
   (mode === 'speak' && message === 'Speak is already transcribing.') ||
   (mode === 'transcript' && message === 'Transcript is already transcribing.');
-
-const mergePreviewTranscriptText = (current: string, next: string): string => {
-  const left = current.trim();
-  const right = next.trim();
-  if (!left) {
-    return right;
-  }
-  if (!right) {
-    return left;
-  }
-  const leftWords = left.split(/\s+/);
-  const rightWords = right.split(/\s+/);
-  const maxOverlap = Math.min(80, leftWords.length, rightWords.length);
-  for (let count = maxOverlap; count >= 8; count -= 1) {
-    if (normalizePreviewWords(leftWords.slice(-count)) === normalizePreviewWords(rightWords.slice(0, count))) {
-      return `${leftWords.join(' ')} ${rightWords.slice(count).join(' ')}`.trim();
-    }
-  }
-  return `${left}\n${right}`.trim();
-};
-
-const normalizePreviewWords = (words: string[]): string =>
-  words
-    .map((word) => word.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ''))
-    .filter(Boolean)
-    .join(' ');
 
 const normalizeCopyResult = (
   mode: 'speak' | 'improve' | 'transcript',
