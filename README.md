@@ -29,7 +29,9 @@ Highlights:
 - see live microphone, computer audio, and VRAM status in the app footer;
 - keep local AI servers warm for faster repeated actions.
 
-https://github.com/user-attachments/assets/c29cba30-747c-47c4-8a58-f04f971fd74a
+
+https://github.com/user-attachments/assets/455399b8-c517-45f4-940e-141bff36a700
+
 
 ## 📥 Download
 
