@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultSettings } from '@shared/defaults';
+import { packageInfo } from '@shared/GlobalVars';
 
 const clipboardState = vi.hoisted(() => ({ text: '' }));
 const shortcuts = vi.hoisted(() => ({
@@ -360,7 +361,7 @@ describe('Core services', () => {
       },
     );
 
-    expect(fsState.files.get('C:\\test-user\\.voclyra\\cache\\system.json')).toContain('"version": "0.1.2"');
+    expect(fsState.files.get('C:\\test-user\\.voclyra\\cache\\system.json')).toContain(`"version": "${packageInfo.version}"`);
     expect(fsState.files.get('C:\\test-user\\.voclyra\\cache\\system.json')).toContain('"gpu": "NVIDIA GeForce RTX 5060 Ti"');
     expect(fsState.files.get('C:\\test-user\\.voclyra\\cache\\system.json')).toContain('"gpuVram": "NVIDIA GeForce RTX 5060 Ti: 16 GB total"');
     expect(fsState.files.get('C:\\test-user\\.voclyra\\cache\\system.json')).not.toContain('"gpuUsage"');

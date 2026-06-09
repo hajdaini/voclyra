@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/hajdaini/voclyra/releases"><img src="https://img.shields.io/github/v/release/hajdaini/voclyra?label=release" alt="Release"></a>
+  <a href="https://github.com/hajdaini/voclyra/releases"><img src="https://img.shields.io/badge/release-v0.1.23-blue" alt="Release"></a>
   <img src="https://img.shields.io/badge/AI-local-2ea44f" alt="Local AI">
   <img src="https://img.shields.io/badge/platform-Windows-0078D6" alt="Windows">
   <img src="https://img.shields.io/badge/TypeScript-strict-3178c6" alt="TypeScript">
