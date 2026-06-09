@@ -69,6 +69,7 @@ export const App = (): JSX.Element => {
   const [whisperModels, setWhisperModels] = useState<string[]>([]);
   const [availableWhisperModels, setAvailableWhisperModels] = useState<WhisperAvailableModel[]>([]);
   const [availableLlmModels, setAvailableLlmModels] = useState<LlmAvailableModel[]>([]);
+  const [deletingLlmModelIds, setDeletingLlmModelIds] = useState<Set<string>>(new Set());
   const [hardwareInfo, setHardwareInfo] = useState<HardwareInfo>({
     gpuName: 'Unknown GPU',
     gpuVramGb: null,
@@ -513,6 +514,7 @@ export const App = (): JSX.Element => {
   };
 
   const downloadLlmModel = async (id: LlmAvailableModel['id']): Promise<void> => {
+    markLlmModelDownloading(id);
     const nextAvailableLlmModels = await api.llm.downloadModel(id);
     setAvailableLlmModels(nextAvailableLlmModels);
     await loadModels();
@@ -524,6 +526,10 @@ export const App = (): JSX.Element => {
       showToast('error', validationError);
       return;
     }
+    const fileName = customLlmFileName(url);
+    if (fileName) {
+      markLlmModelDownloading(fileName);
+    }
     try {
       const nextAvailableLlmModels = await api.llm.downloadCustomModel(url);
       setAvailableLlmModels(nextAvailableLlmModels);
@@ -534,10 +540,52 @@ export const App = (): JSX.Element => {
     }
   };
 
-  const deleteLlmModel = async (id: LlmAvailableModel['id']): Promise<void> => {
-    const nextAvailableLlmModels = await api.llm.deleteModel(id);
-    setAvailableLlmModels(nextAvailableLlmModels);
-    await loadModels();
+  const markLlmModelDownloading = (id: LlmAvailableModel['id']): void => {
+    setAvailableLlmModels((models) => {
+      if (!models.some((model) => model.id === id)) {
+        return [
+          ...models,
+          {
+            id,
+            label: id,
+            fileName: id,
+            disk: 'Downloading',
+            memory: 'Custom GGUF model',
+            vramGb: 0,
+            state: 'downloading',
+            progress: 0,
+          },
+        ];
+      }
+      return models.map((model) =>
+        model.id === id
+          ? { ...model, state: 'downloading', progress: 0 }
+          : model,
+      );
+    });
+  };
+
+  const deleteLlmModel = (id: LlmAvailableModel['id']): void => {
+    if (deletingLlmModelIds.has(id)) {
+      return;
+    }
+    setDeletingLlmModelIds((current) => new Set(current).add(id));
+    void api.llm.deleteModel(id)
+      .then(async (nextAvailableLlmModels) => {
+        setAvailableLlmModels(nextAvailableLlmModels);
+        await loadModels();
+        showToast('success', 'Local AI model deleted.');
+      })
+      .catch((error) => {
+        showToast('error', errorMessage(error));
+      })
+      .finally(() => {
+        setDeletingLlmModelIds((current) => {
+          const next = new Set(current);
+          next.delete(id);
+          return next;
+        });
+      });
   };
 
   const startRecording = async (): Promise<void> => {
@@ -1621,6 +1669,7 @@ export const App = (): JSX.Element => {
         whisperModels={whisperModels}
         availableWhisperModels={availableWhisperModels}
         availableLlmModels={availableLlmModels}
+        deletingLlmModelIds={deletingLlmModelIds}
         hardwareInfo={hardwareInfo}
         settingsFocus={settingsFocus}
         onOpenSettings={() => {
@@ -1729,6 +1778,14 @@ const llmWarmupKey = (model: string, contextSize: SettingsType['llmContextSize']
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : 'Operation failed.';
+
+const customLlmFileName = (url: string): string => {
+  try {
+    return decodeURIComponent(new URL(url.trim()).pathname.split('/').pop() ?? '');
+  } catch {
+    return '';
+  }
+};
 
 const isSameActionProcessingBlock = (
   mode: 'speak' | 'transcript',

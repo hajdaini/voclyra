@@ -20,7 +20,7 @@ export const llmModelCatalog: Record<
     vramGb: estimateLlmVramGb(3.35),
   },
   'gemma4:e4b-it-qat': {
-    label: 'Gemma 4 E4B QAT',
+    label: 'Gemma 4 E4B QAT (Recommended)',
     fileName: 'gemma-4-E4B_q4_0-it.gguf',
     url: 'https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf/resolve/main/gemma-4-E4B_q4_0-it.gguf',
     disk: '5.15 GB',

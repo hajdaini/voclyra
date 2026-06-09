@@ -8,7 +8,7 @@ import { actionMessages } from '@shared/action-messages';
 import { actionBlockMessage } from '@shared/action-locks';
 import { actionOverlay, actionUi } from '@shared/action-ui';
 import { customLlmModelUrlError } from '@shared/custom-models';
-import { customModelUrlSchema, historyTitleUpdateSchema, idSchema, llmModelIdSchema, overlayStateSchema, settingsSchema, textSchema } from '@shared/schemas';
+import { customModelUrlSchema, historyTitleUpdateSchema, idSchema, llmDeleteModelIdSchema, llmModelIdSchema, overlayStateSchema, settingsSchema, textSchema } from '@shared/schemas';
 import { whisperModelIdSchema } from '@shared/schemas';
 import type { HomeMode, OverlayState, ResultState, Settings } from '@shared/types';
 import { ActivePasteService } from '@services/active-paste-service';
@@ -301,7 +301,7 @@ export const registerIpc = (): void => {
   });
 
   ipcMain.handle(channels.llmDeleteModel, (_event, value: unknown) => {
-    const id = llmModelIdSchema.parse(value);
+    const id = llmDeleteModelIdSchema.parse(value);
     return llmModelService.deleteModel(id);
   });
 

@@ -186,6 +186,18 @@ describe('Model downloads', () => {
     await expect(service.deleteModel('gemma4:e4b-it-qat')).resolves.toEqual(expect.any(Array));
   });
 
+  it('deletes a custom local model', async () => {
+    const { access } = await import('node:fs/promises');
+    const { LlmModelService } = await import('@services/llm-model-service');
+    const service = new LlmModelService();
+    const modelPath = service.modelPath('custom-model.gguf');
+    files.add(modelPath);
+
+    await expect(access(modelPath)).resolves.toBeUndefined();
+    await service.deleteModel('custom-model.gguf');
+    await expect(access(modelPath)).rejects.toThrow('missing');
+  });
+
   it('downloads a Whisper model', async () => {
     const { WhisperModelService } = await import('@services/whisper-model-service');
     const progress: unknown[] = [];

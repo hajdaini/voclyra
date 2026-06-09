@@ -60,6 +60,11 @@ export const llmModelIdSchema = z.enum([
   'gemma4:31b-it-qat',
 ]);
 
+export const llmDeleteModelIdSchema = z.string().refine(
+  (value) => llmModelIdSchema.safeParse(value).success || /^[\w.-]+\.gguf$/.test(value),
+  'Invalid local AI model.',
+);
+
 export const overlayStateSchema = z.object({
   active: z.boolean(),
   mode: z.enum(['speak', 'improve', 'transcript', 'additional-info']),

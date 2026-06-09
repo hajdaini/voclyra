@@ -37,6 +37,7 @@ type AppContentProps = {
   whisperModels: string[];
   availableWhisperModels: WhisperAvailableModel[];
   availableLlmModels: LlmAvailableModel[];
+  deletingLlmModelIds: Set<string>;
   hardwareInfo: HardwareInfo;
   settingsFocus: 'improveAi' | 'speechAi' | 'microphone' | 'history' | 'shortcuts' | null;
   onOpenSettings: () => void;
@@ -89,6 +90,7 @@ export const AppContent = ({
   whisperModels,
   availableWhisperModels,
   availableLlmModels,
+  deletingLlmModelIds,
   hardwareInfo,
   settingsFocus,
   onOpenSettings,
@@ -158,6 +160,7 @@ export const AppContent = ({
         whisperModels={whisperModels}
         availableWhisperModels={availableWhisperModels}
         availableLlmModels={availableLlmModels}
+        deletingLlmModelIds={deletingLlmModelIds}
         hardwareInfo={hardwareInfo}
         settingsFocus={settingsFocus}
         onSettingsChange={onSettingsChange}

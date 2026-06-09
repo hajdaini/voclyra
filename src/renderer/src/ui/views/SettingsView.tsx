@@ -9,6 +9,7 @@ import {
   Headphones,
   History as HistoryIcon,
   Keyboard,
+  LoaderCircle,
   MemoryStick,
   Mic,
   Pencil,
@@ -58,6 +59,7 @@ export type SettingsViewProps = {
   whisperModels: string[];
   availableWhisperModels: WhisperAvailableModel[];
   availableLlmModels: LlmAvailableModel[];
+  deletingLlmModelIds: Set<string>;
   hardwareInfo: HardwareInfo;
   onChange: (settings: SettingsType) => void;
   onRefreshModels: () => void;
@@ -79,6 +81,7 @@ export const SettingsView = ({
   whisperModels,
   availableWhisperModels,
   availableLlmModels,
+  deletingLlmModelIds,
   hardwareInfo,
   onChange,
   onRefreshModels,
@@ -554,8 +557,9 @@ export const SettingsView = ({
           </div>
           <GpuSummary hardwareInfo={hardwareInfo} />
           <div className="model-download-list compact-list">
-            {availableLlmModels.map((model) => {
+            {readyModelsFirst(availableLlmModels).map((model) => {
               const StateIcon = modelStateIcon[model.state];
+              const isDeleting = deletingLlmModelIds.has(model.id);
               return (
                 <article className="model-download-row" key={model.id}>
                   <div className="model-main">
@@ -582,11 +586,16 @@ export const SettingsView = ({
                       <button
                         className="model-delete-button"
                         type="button"
-                        title={`Delete ${model.label}`}
+                        title={isDeleting ? `Deleting ${model.label}` : `Delete ${model.label}`}
                         aria-label={`Delete ${model.label}`}
+                        disabled={isDeleting}
                         onClick={() => onDeleteLlmModel(model.id)}
                       >
-                        <Trash2 size={17} />
+                        {isDeleting ? (
+                          <LoaderCircle className="status-spinner-icon" size={17} aria-label={`Deleting ${model.label}`} />
+                        ) : (
+                          <Trash2 size={17} />
+                        )}
                       </button>
                     )}
                     {model.state === 'missing' && (
@@ -994,6 +1003,20 @@ const modelStateLabel = (model: WhisperAvailableModel | LlmAvailableModel): stri
   }
   return 'Available';
 };
+
+const readyModelsFirst = <T extends { state: 'ready' | 'missing' | 'downloading'; label: string; vramGb: number }>(models: T[]): T[] =>
+  [...models].sort((left, right) => {
+    if (left.state === 'ready' && right.state !== 'ready') {
+      return -1;
+    }
+    if (left.state !== 'ready' && right.state === 'ready') {
+      return 1;
+    }
+    if (left.vramGb !== right.vramGb) {
+      return left.vramGb - right.vramGb;
+    }
+    return left.label.localeCompare(right.label);
+  });
 
 type ShortcutInputProps = {
   value: string;
