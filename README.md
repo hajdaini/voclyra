@@ -24,6 +24,8 @@ No cloud transcription. No hosted correction API. Your data stays on your machin
 https://github.com/user-attachments/assets/455399b8-c517-45f4-940e-141bff36a700
 
 
+<a id="download"></a>
+
 ## 📥 Download
 
 Download the latest Windows installer from the [latest release](https://github.com/hajdaini/voclyra/releases/latest).
@@ -45,6 +47,8 @@ Install it like a normal desktop app, then open Voclyra and download the local m
 - [Build](#build)
 - [Sources](#sources)
 
+<a id="why-voclyra"></a>
+
 ## ⚡ Why Voclyra
 
 Writing is not just typing. It is capturing ideas, fixing mistakes, rewriting sentences, cleaning notes, and moving text between tools.
@@ -52,6 +56,8 @@ Writing is not just typing. It is capturing ideas, fixing mistakes, rewriting se
 The real slowdown is not only typing speed. It is stopping to fix mistakes, rewrite awkward sentences, clean dictated text, and move drafts between tools.
 
 Voclyra focuses on that gap: capture text quickly, then correct or rewrite it from a shortcut with a local model. Fast input matters, but fast cleanup is what makes the workflow useful.
+
+<a id="core-modes"></a>
 
 ## 🎛️ Core Modes
 
@@ -71,6 +77,8 @@ Long-form transcription for meetings, videos, courses, notes, or conversations, 
 
 Pick an audio file from the toolbar or File menu and transcribe it with the same local Whisper workflow.
 
+<a id="what-you-get"></a>
+
 ## 🧭 What You Get
 
 | Need | Voclyra gives you |
@@ -84,6 +92,8 @@ Pick an audio file from the toolbar or File menu and transcribe it with the same
 | Share text | Copy or export to a file |
 | Stay private | Local models, local audio, local history |
 
+<a id="how-to-use-it"></a>
+
 ## 🚀 How To Use It
 
 1. Open **Settings**.
@@ -93,6 +103,8 @@ Pick an audio file from the toolbar or File menu and transcribe it with the same
 5. Use **Speak**, **Improve**, **Transcript**, or **Import audio**.
 
 Voclyra runs local Whisper and llama.cpp servers, so models can stay warm and responses feel fast after startup.
+
+<a id="options"></a>
 
 ## ⚙️ Options
 
@@ -111,6 +123,8 @@ Useful settings include:
 - hardware, GPU, and runtime checks.
 
 There are more settings available, but the goal stays simple: make the app match the way you write.
+
+<a id="local-ai-stack"></a>
 
 ## 🧠 Local AI Stack
 
@@ -149,6 +163,8 @@ Smaller models are faster. Larger models can improve quality, but need more VRAM
 
 You can also download your own Hugging Face `.gguf` LLM model from **Settings**. Custom model downloads are limited to local AI text models; Whisper uses the built-in compatible model list.
 
+<a id="privacy"></a>
+
 ## 🔒 Privacy
 
 Voclyra is designed for local workflows:
@@ -162,6 +178,8 @@ Voclyra is designed for local workflows:
 - bounded debug logs
 
 Your voice, text, history, models, settings, and audio stay local.
+
+<a id="features"></a>
 
 ## ✅ Features
 
@@ -180,6 +198,8 @@ Your voice, text, history, models, settings, and audio stay local.
 - Custom shortcuts, tray mode, and launch-at-startup support
 - Guided local model setup with GPU/runtime status
 - Windows installer with optional user-data removal on uninstall
+
+<a id="storage"></a>
 
 ## 🗂️ Storage
 
@@ -208,6 +228,8 @@ resources/runtimes
 ```
 
 Models are not stored in Git because they can be large. Users can download or place models locally.
+
+<a id="build"></a>
 
 ## 🛠️ Build
 
@@ -316,6 +338,8 @@ npm run format         # Format the project with Prettier
 Voclyra is focused on Windows local AI workflows.
 
 The goal is simple: make dictation, transcription, and correction fast enough that writing feels lighter.
+
+<a id="sources"></a>
 
 ## 🔎 Sources
 
