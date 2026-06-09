@@ -21,15 +21,6 @@ Voclyra is an open-source Windows desktop app for fast dictation, transcription,
 
 No cloud transcription. No hosted correction API. Your data stays on your machine.
 
-Highlights:
-
-- download guided Whisper and LLM models from Settings;
-- use your own Hugging Face `.gguf` LLM models locally;
-- dictate, transcribe microphone + computer audio, improve text, and import audio files;
-- see live microphone, computer audio, and VRAM status in the app footer;
-- keep local AI servers warm for faster repeated actions.
-
-
 https://github.com/user-attachments/assets/455399b8-c517-45f4-940e-141bff36a700
 
 
