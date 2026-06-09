@@ -81,6 +81,70 @@
   background: var(--hover-bg);
 }
 
+.home-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.server-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.server-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.server-switch-track {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #232326;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+.server-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  display: grid;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: left 0.16s ease, background 0.16s ease;
+}
+
+.server-switch.on .server-switch-track {
+  border-color: rgba(255, 156, 77, 0.72);
+  background: rgba(255, 156, 77, 0.18);
+}
+
+.server-switch.on .server-switch-thumb {
+  left: 18px;
+  background: var(--primary);
+}
+
+.server-switch:has(input:disabled) {
+  opacity: 0.54;
+  cursor: default;
+}
+
 .home-model-button.download {
   border-color: rgba(255, 156, 77, 0.62);
   border-radius: 6px;

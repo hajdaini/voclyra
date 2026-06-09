@@ -6,10 +6,21 @@ import type { Settings } from '@shared/types';
 import { openSection, sendAppAction, showMainWindow } from './window';
 
 let tray: Tray | null = null;
+let traySettings: Settings = defaultSettings;
+let trayServerState = {
+  audioEnabled: true,
+  llmEnabled: true,
+};
+let trayServerHandlers = {
+  onAudioServerChange: (_enabled: boolean) => {},
+  onLlmServerChange: (_enabled: boolean) => {},
+};
 
-export const createTray = (settings: Settings = defaultSettings): Tray => {
+type TrayServerOptions = Partial<typeof trayServerState & typeof trayServerHandlers>;
+
+export const createTray = (settings: Settings = defaultSettings, serverOptions: TrayServerOptions = {}): Tray => {
   if (tray) {
-    updateTray(settings);
+    updateTray(settings, serverOptions);
     return tray;
   }
 
@@ -21,17 +32,35 @@ export const createTray = (settings: Settings = defaultSettings): Tray => {
   tray.setToolTip(packageInfo.productName);
   tray.on('click', showMainWindow);
   tray.on('double-click', showMainWindow);
-  updateTray(settings);
+  updateTray(settings, serverOptions);
 
   return tray;
 };
 
-export const updateTray = (settings: Settings): void => {
+export const updateTray = (settings: Settings = traySettings, serverOptions: TrayServerOptions = {}): void => {
+  traySettings = settings;
+  trayServerState = {
+    audioEnabled: serverOptions.audioEnabled ?? trayServerState.audioEnabled,
+    llmEnabled: serverOptions.llmEnabled ?? trayServerState.llmEnabled,
+  };
+  trayServerHandlers = {
+    onAudioServerChange: serverOptions.onAudioServerChange ?? trayServerHandlers.onAudioServerChange,
+    onLlmServerChange: serverOptions.onLlmServerChange ?? trayServerHandlers.onLlmServerChange,
+  };
   tray?.setContextMenu(
     Menu.buildFromTemplate([
       { label: `Speak (${formatShortcut(settings.hotkeys.speak)})`, click: () => sendAppAction('speak') },
       { label: `Improve (${formatShortcut(settings.hotkeys.improveText)})`, click: () => sendAppAction('improveText') },
       { label: `Transcript (${formatShortcut(settings.hotkeys.transcript)})`, click: () => sendAppAction('transcript') },
+      { type: 'separator' },
+      {
+        label: `${trayServerState.audioEnabled ? 'Stop' : 'Start'} audio server`,
+        click: () => trayServerHandlers.onAudioServerChange(!trayServerState.audioEnabled),
+      },
+      {
+        label: `${trayServerState.llmEnabled ? 'Stop' : 'Start'} LLM server`,
+        click: () => trayServerHandlers.onLlmServerChange(!trayServerState.llmEnabled),
+      },
       { type: 'separator' },
       { label: `Show ${packageInfo.productName}`, click: showMainWindow },
       { label: 'Settings', click: () => openSection('settings') },

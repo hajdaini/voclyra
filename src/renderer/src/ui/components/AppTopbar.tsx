@@ -9,12 +9,18 @@ type AppTopbarProps = {
   hotkeys: Hotkeys;
   hasRecording: boolean;
   isImproveProcessing: boolean;
+  audioServerEnabled: boolean;
+  llmServerEnabled: boolean;
+  audioServerBusy: boolean;
+  llmServerBusy: boolean;
   onOpenLogsFolder: () => void;
   onOpenSettings: () => void;
   onQuit: () => void;
   onSpeak: () => void;
   onImprove: () => void;
   onTranscript: () => void;
+  onAudioServerChange: (enabled: boolean) => void;
+  onLlmServerChange: (enabled: boolean) => void;
   onImportAudio: () => void;
   onOpenHelp: () => void;
   onStopRecording: () => void;
@@ -35,12 +41,18 @@ export const AppTopbar = ({
   hotkeys,
   hasRecording,
   isImproveProcessing,
+  audioServerEnabled,
+  llmServerEnabled,
+  audioServerBusy,
+  llmServerBusy,
   onOpenLogsFolder,
   onOpenSettings,
   onQuit,
   onSpeak,
   onImprove,
   onTranscript,
+  onAudioServerChange,
+  onLlmServerChange,
   onImportAudio,
   onOpenHelp,
   onStopRecording,
@@ -147,6 +159,13 @@ export const AppTopbar = ({
                   <span>Cancel recording</span>
                 </button>
               )}
+              <hr />
+              <button type="button" disabled={audioServerBusy} onClick={() => runAction(() => onAudioServerChange(!audioServerEnabled))}>
+                <span>{audioServerEnabled ? 'Stop audio server' : 'Start audio server'}</span>
+              </button>
+              <button type="button" disabled={llmServerBusy} onClick={() => runAction(() => onLlmServerChange(!llmServerEnabled))}>
+                <span>{llmServerEnabled ? 'Stop LLM server' : 'Start LLM server'}</span>
+              </button>
             </div>
           )}
         </div>

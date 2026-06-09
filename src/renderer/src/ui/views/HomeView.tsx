@@ -39,7 +39,13 @@ export type HomeViewProps = {
   hardwareInfo: HardwareInfo;
   whisperModelAvailable: boolean;
   llmModelAvailable: boolean;
+  audioServerEnabled: boolean;
+  llmServerEnabled: boolean;
+  audioServerBusy: boolean;
+  llmServerBusy: boolean;
   onOpenSettings: () => void;
+  onAudioServerChange: (enabled: boolean) => void;
+  onLlmServerChange: (enabled: boolean) => void;
   onModeChange: (mode: HomeMode) => void;
   onStartRecording: () => void;
   onStopRecording: () => void;
@@ -76,7 +82,13 @@ export const HomeView = ({
   hardwareInfo,
   whisperModelAvailable,
   llmModelAvailable,
+  audioServerEnabled,
+  llmServerEnabled,
+  audioServerBusy,
+  llmServerBusy,
   onOpenSettings,
+  onAudioServerChange,
+  onLlmServerChange,
   onModeChange,
   onStartRecording,
   onStopRecording,
@@ -145,15 +157,31 @@ export const HomeView = ({
               <span>Home</span>
             </h1>
           </div>
-          <button
-            className={`home-model-button ${showDownloadModelButton ? 'download' : ''}`}
-            type="button"
-            title={showDownloadModelButton ? 'Open model downloads' : 'Open model settings'}
-            onClick={onOpenSettings}
-          >
-            {showDownloadModelButton ? <Download size={17} /> : <Bot size={17} />}
-            <span>{showDownloadModelButton ? 'Download model' : 'Model settings'}</span>
-          </button>
+          <div className="home-heading-actions">
+            <ServerSwitch
+              label="Audio server"
+              checked={audioServerEnabled}
+              busy={audioServerBusy}
+              disabled={!audioServerEnabled && (!whisperRuntime.runtimeAvailable || !whisperModelAvailable)}
+              onChange={onAudioServerChange}
+            />
+            <ServerSwitch
+              label="LLM server"
+              checked={llmServerEnabled}
+              busy={llmServerBusy}
+              disabled={!llmServerEnabled && (!llmRuntime.runtimeAvailable || !llmModelAvailable)}
+              onChange={onLlmServerChange}
+            />
+            <button
+              className={`home-model-button ${showDownloadModelButton ? 'download' : ''}`}
+              type="button"
+              title={showDownloadModelButton ? 'Open model downloads' : 'Open model settings'}
+              onClick={onOpenSettings}
+            >
+              {showDownloadModelButton ? <Download size={17} /> : <Bot size={17} />}
+              <span>{showDownloadModelButton ? 'Download model' : 'Model settings'}</span>
+            </button>
+          </div>
         </div>
 
         <div className="home-actions">
@@ -394,6 +422,37 @@ export const HomeView = ({
     </div>
   );
 };
+
+type ServerSwitchProps = {
+  label: string;
+  checked: boolean;
+  busy: boolean;
+  disabled: boolean;
+  onChange: (enabled: boolean) => void;
+};
+
+const ServerSwitch = ({
+  label,
+  checked,
+  busy,
+  disabled,
+  onChange,
+}: ServerSwitchProps): JSX.Element => (
+  <label className={`server-switch ${checked ? 'on' : 'off'}`}>
+    <input
+      type="checkbox"
+      checked={checked}
+      disabled={disabled || busy}
+      onChange={(event) => onChange(event.target.checked)}
+    />
+    <span className="server-switch-track">
+      <span className="server-switch-thumb">
+        {busy && <LoaderCircle className="status-spinner-icon" size={12} aria-label={`${label} changing`} />}
+      </span>
+    </span>
+    <span>{label}</span>
+  </label>
+);
 
 const formatShortcut = (shortcut: string): string => shortcut.replace('CommandOrControl', 'Ctrl');
 

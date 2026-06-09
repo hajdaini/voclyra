@@ -28,6 +28,8 @@ correctionPrompt: [
   pasteAfterImprovement: false,
   improveAfterSpeak: false,
   improveSelectedText: false,
+  startAudioServerOnLaunch: true,
+  startLlmServerOnLaunch: true,
   startAtStartup: false,
   microphoneDeviceId: '',
   microphoneDeviceLabel: '',

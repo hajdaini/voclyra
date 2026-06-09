@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import { improveClipboardFromHotkey, registerIpc } from './ipc';
+import { improveClipboardFromHotkey, registerIpc, setServerEnabled } from './ipc';
 import { createTray, destroyTray } from './tray';
 import { createMainWindow, sendBackgroundAppAction, showMainWindow } from './window';
 import { ErrorLogService } from '@services/error-log-service';
@@ -82,7 +82,14 @@ void app.whenReady().then(async () => {
       improveText: () => void improveClipboardFromHotkey(),
       transcript: () => sendBackgroundAppAction('transcript'),
     });
-    createTray(runtimeSettings);
+    setServerEnabled('audio', runtimeSettings.startAudioServerOnLaunch, false);
+    setServerEnabled('llm', runtimeSettings.startLlmServerOnLaunch, false);
+    createTray(runtimeSettings, {
+      audioEnabled: runtimeSettings.startAudioServerOnLaunch,
+      llmEnabled: runtimeSettings.startLlmServerOnLaunch,
+      onAudioServerChange: (enabled) => setServerEnabled('audio', enabled),
+      onLlmServerChange: (enabled) => setServerEnabled('llm', enabled),
+    });
   });
 });
 

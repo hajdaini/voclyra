@@ -32,6 +32,10 @@ type AppContentProps = {
   runtimeInfoLoaded: boolean;
   whisperModelAvailable: boolean;
   llmModelAvailable: boolean;
+  audioServerEnabled: boolean;
+  llmServerEnabled: boolean;
+  audioServerBusy: boolean;
+  llmServerBusy: boolean;
   history: HistoryEntry[];
   llmModels: string[];
   whisperModels: string[];
@@ -41,6 +45,8 @@ type AppContentProps = {
   hardwareInfo: HardwareInfo;
   settingsFocus: 'improveAi' | 'speechAi' | 'microphone' | 'history' | 'shortcuts' | null;
   onOpenSettings: () => void;
+  onAudioServerChange: (enabled: boolean) => void;
+  onLlmServerChange: (enabled: boolean) => void;
   onModeChange: (mode: HomeMode) => void;
   onStartRecording: () => void;
   onStopRecording: () => void;
@@ -85,6 +91,10 @@ export const AppContent = ({
   runtimeInfoLoaded,
   whisperModelAvailable,
   llmModelAvailable,
+  audioServerEnabled,
+  llmServerEnabled,
+  audioServerBusy,
+  llmServerBusy,
   history,
   llmModels,
   whisperModels,
@@ -94,6 +104,8 @@ export const AppContent = ({
   hardwareInfo,
   settingsFocus,
   onOpenSettings,
+  onAudioServerChange,
+  onLlmServerChange,
   onModeChange,
   onStartRecording,
   onStopRecording,
@@ -139,7 +151,13 @@ export const AppContent = ({
         hardwareInfo={hardwareInfo}
         whisperModelAvailable={whisperModelAvailable}
         llmModelAvailable={llmModelAvailable}
+        audioServerEnabled={audioServerEnabled}
+        llmServerEnabled={llmServerEnabled}
+        audioServerBusy={audioServerBusy}
+        llmServerBusy={llmServerBusy}
         onOpenSettings={onOpenSettings}
+        onAudioServerChange={onAudioServerChange}
+        onLlmServerChange={onLlmServerChange}
         onModeChange={onModeChange}
         onStartRecording={onStartRecording}
         onStopRecording={onStopRecording}

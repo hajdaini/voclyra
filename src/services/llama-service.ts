@@ -50,6 +50,10 @@ export class LlamaService {
     });
   }
 
+  stopServer(): void {
+    this.server.stop();
+  }
+
   async improveText(
     modelPath: string,
     correctionPrompt: string,

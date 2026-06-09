@@ -4,6 +4,8 @@ export type HomeMode = 'speak' | 'improve' | 'transcript';
 
 export type OverlayMode = HomeMode | 'additional-info';
 
+export type LocalServerName = 'audio' | 'llm';
+
 export type LanguageMode = 'auto' | 'fr' | 'en' | 'es' | 'de' | 'it' | 'pt';
 
 export type WhisperQualityMode = 'fast' | 'balanced' | 'accurate';
@@ -30,6 +32,8 @@ export type Settings = {
   pasteAfterImprovement: boolean;
   improveAfterSpeak: boolean;
   improveSelectedText: boolean;
+  startAudioServerOnLaunch: boolean;
+  startLlmServerOnLaunch: boolean;
   startAtStartup: boolean;
   microphoneDeviceId: string;
   microphoneDeviceLabel: string;
@@ -215,6 +219,7 @@ export type AppApi = {
     deleteModel: (id: WhisperModelId) => Promise<WhisperAvailableModel[]>;
     runtimeInfo: () => Promise<WhisperRuntimeInfo>;
     warmup: (model: string) => Promise<void>;
+    stopServer: () => Promise<void>;
     onDownloadProgress: (callback: (progress: WhisperDownloadProgress) => void) => () => void;
   };
   llm: {
@@ -224,7 +229,12 @@ export type AppApi = {
     deleteModel: (id: LlmModelId) => Promise<LlmAvailableModel[]>;
     runtimeInfo: () => Promise<LlmRuntimeInfo>;
     warmup: (model: string) => Promise<void>;
+    stopServer: () => Promise<void>;
     onDownloadProgress: (callback: (progress: LlmDownloadProgress) => void) => () => void;
+  };
+  server: {
+    setEnabled: (server: LocalServerName, enabled: boolean) => Promise<void>;
+    onEnabledChanged: (callback: (state: { server: LocalServerName; enabled: boolean }) => void) => () => void;
   };
   hardware: {
     info: () => Promise<HardwareInfo>;

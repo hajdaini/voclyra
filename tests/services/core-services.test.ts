@@ -458,6 +458,27 @@ describe('Core services', () => {
     whisperServerService.stop();
   });
 
+  it('reuses a concurrent Whisper server startup', async () => {
+    const { whisperServerService } = await import('@services/whisper-server-service');
+    whisperServerService.stop();
+
+    await Promise.all([
+      whisperServerService.warmup('C:\\whisper-server.exe', 'C:\\model.bin', {
+        language: 'auto',
+        threads: 4,
+        qualityArgs: [],
+      }),
+      whisperServerService.warmup('C:\\whisper-server.exe', 'C:\\model.bin', {
+        language: 'auto',
+        threads: 4,
+        qualityArgs: [],
+      }),
+    ]);
+
+    expect(spawnState.calls.filter((call) => call.command === 'C:\\whisper-server.exe')).toHaveLength(1);
+    whisperServerService.stop();
+  });
+
   it('stores JSON and clears storage folders safely', async () => {
     const { AppStorage } = await import('@storage/app-storage');
     const storage = new AppStorage();

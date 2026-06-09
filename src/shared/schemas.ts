@@ -29,6 +29,8 @@ export const settingsSchema = z.object({
   pasteAfterImprovement: z.boolean(),
   improveAfterSpeak: z.boolean().default(false),
   improveSelectedText: z.boolean(),
+  startAudioServerOnLaunch: z.boolean(),
+  startLlmServerOnLaunch: z.boolean(),
   startAtStartup: z.boolean(),
   microphoneDeviceId: z.string().max(260),
   microphoneDeviceLabel: z.string().max(260),
@@ -65,6 +67,11 @@ export const llmDeleteModelIdSchema = z.string().refine(
   (value) => llmModelIdSchema.safeParse(value).success || /^[\w.-]+\.gguf$/.test(value),
   'Invalid local AI model.',
 );
+
+export const serverEnabledSchema = z.object({
+  server: z.enum(['audio', 'llm']),
+  enabled: z.boolean(),
+});
 
 export const overlayStateSchema = z.object({
   active: z.boolean(),

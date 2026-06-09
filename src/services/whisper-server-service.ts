@@ -67,6 +67,7 @@ export type WhisperServerDiagnostics = {
 
 export class WhisperServerService {
   private state: WhisperServerState | null = null;
+  private startup: Promise<WhisperServerState> | null = null;
   private readonly storage = new AppStorage();
 
   async transcribe(
@@ -199,6 +200,7 @@ export class WhisperServerService {
   stop(): void {
     this.state?.child.kill();
     this.state = null;
+    this.startup = null;
   }
 
   info(): { host: string; port: number; url: string } | null {
@@ -218,11 +220,18 @@ export class WhisperServerService {
       this.state.startupDurationMs = 0;
       return this.state;
     }
+    if (this.startup) {
+      const state = await this.startup;
+      if (state.key === nextKey) {
+        return state;
+      }
+    }
 
     this.stop();
-    const state = await this.startServer(key, nextKey);
-    this.state = state;
-    return state;
+    this.startup = this.startServer(key, nextKey).finally(() => {
+      this.startup = null;
+    });
+    return this.startup;
   }
 
   private async startServer(key: WhisperServerKey, stateKey: string): Promise<WhisperServerState> {
@@ -236,6 +245,7 @@ export class WhisperServerService {
       });
       if (state) {
         state.startupDurationMs = Date.now() - startedAt;
+        this.state = state;
         await this.appendServerLog(state);
         return state;
       }

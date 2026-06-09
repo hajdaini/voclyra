@@ -368,6 +368,28 @@ export const SettingsView = ({
             <HelpHint text="When enabled, Windows opens Voclyra automatically after you sign in." />
           </span>
         </label>
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={settings.startAudioServerOnLaunch}
+            onChange={(event) => onChange({ ...settings, startAudioServerOnLaunch: event.target.checked })}
+          />
+          <span className="settings-option-label">
+            Start audio server when Voclyra starts
+            <HelpHint text="When enabled, Voclyra starts the local audio server automatically on launch." />
+          </span>
+        </label>
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={settings.startLlmServerOnLaunch}
+            onChange={(event) => onChange({ ...settings, startLlmServerOnLaunch: event.target.checked })}
+          />
+          <span className="settings-option-label">
+            Start LLM server when Voclyra starts
+            <HelpHint text="When enabled, Voclyra starts the local LLM server automatically on launch." />
+          </span>
+        </label>
       </section>
 
       <section className="settings-section focused-target" ref={microphoneRef}>

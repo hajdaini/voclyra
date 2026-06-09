@@ -16,7 +16,13 @@ type AppHomeProps = {
   hardwareInfo: HardwareInfo;
   whisperModelAvailable: boolean;
   llmModelAvailable: boolean;
+  audioServerEnabled: boolean;
+  llmServerEnabled: boolean;
+  audioServerBusy: boolean;
+  llmServerBusy: boolean;
   onOpenSettings: () => void;
+  onAudioServerChange: (enabled: boolean) => void;
+  onLlmServerChange: (enabled: boolean) => void;
   onModeChange: (mode: HomeMode) => void;
   onStartRecording: () => void;
   onStopRecording: () => void;
@@ -44,7 +50,13 @@ export const AppHome = ({
   hardwareInfo,
   whisperModelAvailable,
   llmModelAvailable,
+  audioServerEnabled,
+  llmServerEnabled,
+  audioServerBusy,
+  llmServerBusy,
   onOpenSettings,
+  onAudioServerChange,
+  onLlmServerChange,
   onModeChange,
   onStartRecording,
   onStopRecording,
@@ -73,7 +85,13 @@ export const AppHome = ({
     hardwareInfo={hardwareInfo}
     whisperModelAvailable={whisperModelAvailable}
     llmModelAvailable={llmModelAvailable}
+    audioServerEnabled={audioServerEnabled}
+    llmServerEnabled={llmServerEnabled}
+    audioServerBusy={audioServerBusy}
+    llmServerBusy={llmServerBusy}
     onOpenSettings={onOpenSettings}
+    onAudioServerChange={onAudioServerChange}
+    onLlmServerChange={onLlmServerChange}
     onModeChange={onModeChange}
     onStartRecording={onStartRecording}
     onStopRecording={onStopRecording}

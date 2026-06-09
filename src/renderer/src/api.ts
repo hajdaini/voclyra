@@ -70,6 +70,7 @@ const fallbackApi: AppApi = {
         runtimeAvailable: false,
       }),
     warmup: () => Promise.resolve(),
+    stopServer: () => Promise.resolve(),
     onDownloadProgress: () => () => {},
   },
   llm: {
@@ -82,7 +83,12 @@ const fallbackApi: AppApi = {
         runtimeAvailable: false,
       }),
     warmup: () => Promise.resolve(),
+    stopServer: () => Promise.resolve(),
     onDownloadProgress: () => () => {},
+  },
+  server: {
+    setEnabled: () => Promise.resolve(),
+    onEnabledChanged: () => () => {},
   },
   hardware: {
     info: () =>

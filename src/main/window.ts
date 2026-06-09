@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { BrowserWindow, app, screen, shell } from 'electron';
 import { channels } from '@shared/channels';
 import { appAssetConfig, packageInfo } from '@shared/GlobalVars';
-import type { OverlayState, ResultState } from '@shared/types';
+import type { LocalServerName, OverlayState, ResultState } from '@shared/types';
 import { ErrorLogService } from '@services/error-log-service';
 import { applyWindowSecurity } from './security';
 
@@ -156,6 +156,10 @@ export const sendBackgroundAppAction = (action: 'speak' | 'transcript'): void =>
 
 export const sendImproveResult = (result: ResultState): void => {
   mainWindow?.webContents.send(channels.appImproveResult, result);
+};
+
+export const sendServerEnabledChanged = (server: LocalServerName, enabled: boolean): void => {
+  mainWindow?.webContents.send(channels.serverEnabledChanged, { server, enabled });
 };
 
 export const setOverlayState = (state: OverlayState): void => {

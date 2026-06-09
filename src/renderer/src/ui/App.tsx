@@ -103,6 +103,8 @@ export const App = (): JSX.Element => {
   const [isImproveProcessing, setIsImproveProcessing] = useState(false);
   const [isWhisperLoading, setIsWhisperLoading] = useState(false);
   const [isLlmLoading, setIsLlmLoading] = useState(false);
+  const [audioServerEnabled, setAudioServerEnabled] = useState(true);
+  const [llmServerEnabled, setLlmServerEnabled] = useState(true);
   const [waveform, setWaveform] = useState<number[]>(defaultWaveform);
   const [transcriptMicrophoneWaveform, setTranscriptMicrophoneWaveform] = useState<number[]>(defaultWaveform);
   const [transcriptSystemAudioWaveform, setTranscriptSystemAudioWaveform] = useState<number[]>(defaultWaveform);
@@ -120,6 +122,7 @@ export const App = (): JSX.Element => {
   const whisperWarmupRunRef = useRef(0);
   const llmWarmupModelRef = useRef<string | null>(null);
   const llmWarmupRunRef = useRef(0);
+  const improveRunRef = useRef(0);
   const [llmWarmupRevision, setLlmWarmupRevision] = useState(0);
   const loadingOverlayRef = useRef<Record<HomeMode, boolean>>({
     speak: false,
@@ -168,7 +171,8 @@ export const App = (): JSX.Element => {
     transcriptProcessing: isTranscriptProcessing,
     whisperLoading: isWhisperLoading,
   };
-  const currentActionBlockMessage = actionBlockMessage(mode, audioLockState);
+  const currentActionBlockMessage = serverBlockMessage(mode, audioServerEnabled, llmServerEnabled)
+    ?? actionBlockMessage(mode, audioLockState);
   const whisperModelAvailable = Boolean(settings.whisperModel && whisperModels.includes(settings.whisperModel));
   const llmModelAvailable = Boolean(settings.llmModel && llmModels.includes(settings.llmModel));
 
@@ -228,6 +232,10 @@ export const App = (): JSX.Element => {
       }
       settingsRef.current = nextSettings;
       setSettings(nextSettings);
+      setAudioServerEnabled(nextSettings.startAudioServerOnLaunch);
+      setLlmServerEnabled(nextSettings.startLlmServerOnLaunch);
+      void api.server.setEnabled('audio', nextSettings.startAudioServerOnLaunch);
+      void api.server.setEnabled('llm', nextSettings.startLlmServerOnLaunch);
       cancelInitialLoad = scheduleAfterFirstPaint(() => {
         if (!active) {
           return;
@@ -389,7 +397,7 @@ export const App = (): JSX.Element => {
   ]);
 
   useEffect(() => {
-    if (!whisperRuntime.runtimeAvailable || !whisperModelAvailable || !settings.whisperModel) {
+    if (!audioServerEnabled || !whisperRuntime.runtimeAvailable || !whisperModelAvailable || !settings.whisperModel) {
       whisperWarmupModelRef.current = null;
       whisperWarmupRunRef.current += 1;
       setIsWhisperLoading(false);
@@ -415,10 +423,10 @@ export const App = (): JSX.Element => {
           setIsWhisperLoading(false);
         }
       });
-  }, [settings.whisperModel, whisperModelAvailable, whisperRuntime.runtimeAvailable]);
+  }, [audioServerEnabled, settings.whisperModel, whisperModelAvailable, whisperRuntime.runtimeAvailable]);
 
   useEffect(() => {
-    if (!llmRuntime.runtimeAvailable || !llmModelAvailable || !settings.llmModel) {
+    if (!llmServerEnabled || !llmRuntime.runtimeAvailable || !llmModelAvailable || !settings.llmModel) {
       llmWarmupModelRef.current = null;
       llmWarmupRunRef.current += 1;
       setIsLlmLoading(false);
@@ -445,17 +453,28 @@ export const App = (): JSX.Element => {
           setIsLlmLoading(false);
         }
       });
-  }, [settings.llmModel, settings.llmContextSize, llmModelAvailable, llmRuntime.runtimeAvailable, llmWarmupRevision]);
+  }, [llmServerEnabled, settings.llmModel, settings.llmContextSize, llmModelAvailable, llmRuntime.runtimeAvailable, llmWarmupRevision]);
 
   useEffect(() => {
     if (!isWhisperLoading) {
+      if (!audioServerEnabled) {
+        setSpeakResult(actionResult('speak', 'warning', { message: 'Audio server stopped.' }));
+        setTranscriptResult(actionResult('transcript', 'warning', { message: 'Audio server stopped.' }));
+        loadingOverlayRef.current.speak = false;
+        loadingOverlayRef.current.transcript = false;
+        return;
+      }
       setSpeakResult((current) =>
-        current.status === 'ready' && current.message === actionUi('speak', 'loading').message
+        (
+          current.status === 'ready' && current.message === actionUi('speak', 'loading').message
+        ) || current.message === 'Audio server stopped.'
           ? speakFallbackResult
           : current,
       );
       setTranscriptResult((current) =>
-        current.status === 'ready' && current.message === actionUi('transcript', 'loading').message
+        (
+          current.status === 'ready' && current.message === actionUi('transcript', 'loading').message
+        ) || current.message === 'Audio server stopped.'
           ? transcriptFallbackResult
           : current,
       );
@@ -478,12 +497,19 @@ export const App = (): JSX.Element => {
       loadingOverlayRef.current.transcript = true;
       publishOverlayState(actionOverlay('transcript', 'loading'));
     }
-  }, [isWhisperLoading]);
+  }, [audioServerEnabled, isWhisperLoading]);
 
   useEffect(() => {
     if (!isLlmLoading) {
+      if (!llmServerEnabled) {
+        setImproveResult(actionResult('improve', 'warning', { message: 'LLM server stopped.' }));
+        loadingOverlayRef.current.improve = false;
+        return;
+      }
       setImproveResult((current) =>
-        current.status === 'ready' && current.message === actionUi('improve', 'loading').message
+        (
+          current.status === 'ready' && current.message === actionUi('improve', 'loading').message
+        ) || current.message === 'LLM server stopped.'
           ? improveFallbackResult
           : current,
       );
@@ -498,7 +524,7 @@ export const App = (): JSX.Element => {
       loadingOverlayRef.current.improve = true;
       publishOverlayState(actionOverlay('improve', 'loading'));
     }
-  }, [isLlmLoading]);
+  }, [isLlmLoading, llmServerEnabled]);
 
 
   const downloadWhisperModel = async (id: WhisperAvailableModel['id']): Promise<void> => {
@@ -589,6 +615,10 @@ export const App = (): JSX.Element => {
   };
 
   const startRecording = async (): Promise<void> => {
+    if (!audioServerEnabled) {
+      showOverlayWarning('speak', 'Audio server stopped.');
+      return;
+    }
     if (!whisperRuntime.runtimeAvailable) {
       setMode('speak');
       setSpeakResult(actionResult('speak', 'error', { message: actionMessages.whisperMissing }));
@@ -682,7 +712,7 @@ export const App = (): JSX.Element => {
       setWhisperRuntime(await api.whisper.runtimeInfo());
       await refreshHistoryAndModels();
       if (settingsRef.current.improveAfterSpeak) {
-        void improve(nextResult.text);
+        void improveAfterSpeak(nextResult.text);
       }
     } catch (error) {
       delete recordingStartedAtRef.current.speak;
@@ -735,11 +765,98 @@ export const App = (): JSX.Element => {
     showToast('success', 'Models refreshed.');
   };
 
+  const setAudioServerRunning = async (enabled: boolean): Promise<void> => {
+    setAudioServerEnabled(enabled);
+    await api.server.setEnabled('audio', enabled);
+    if (!enabled) {
+      if (recorder) {
+        await cancelRecording('speak');
+      }
+      if (transcriptRecorder) {
+        await cancelRecording('transcript');
+      }
+      whisperWarmupModelRef.current = null;
+      whisperWarmupRunRef.current += 1;
+      setIsWhisperLoading(false);
+      try {
+        await api.whisper.stopServer();
+        showToast('success', 'Audio server stopped.');
+      } catch (error) {
+        showToast('error', errorMessage(error));
+      }
+      return;
+    }
+    if (!whisperRuntime.runtimeAvailable || !whisperModelAvailable || !settingsRef.current.whisperModel) {
+      showToast('error', actionMessages.whisperModelMissing);
+      return;
+    }
+    const model = settingsRef.current.whisperModel;
+    setIsWhisperLoading(true);
+    whisperWarmupModelRef.current = model;
+    try {
+      await api.whisper.warmup(model);
+      showToast('success', 'Audio server started.');
+    } catch (error) {
+      if (whisperWarmupModelRef.current === model) {
+        whisperWarmupModelRef.current = null;
+      }
+      showToast('error', errorMessage(error));
+    } finally {
+      setIsWhisperLoading(false);
+    }
+  };
+
+  const setLlmServerRunning = async (enabled: boolean): Promise<void> => {
+    setLlmServerEnabled(enabled);
+    await api.server.setEnabled('llm', enabled);
+    if (!enabled) {
+      improveRunRef.current += 1;
+      if (isImproveProcessing) {
+        setIsImproveProcessing(false);
+        setImproveResult(actionResult('improve', 'warning', { message: 'LLM server stopped.' }));
+        showOverlayWarning('improve', 'LLM server stopped.');
+      }
+      llmWarmupModelRef.current = null;
+      llmWarmupRunRef.current += 1;
+      setIsLlmLoading(false);
+      try {
+        await api.llm.stopServer();
+        showToast('success', 'LLM server stopped.');
+      } catch (error) {
+        showToast('error', errorMessage(error));
+      }
+      return;
+    }
+    if (!llmRuntime.runtimeAvailable || !llmModelAvailable || !settingsRef.current.llmModel) {
+      showToast('error', actionMessages.llamaModelMissing);
+      return;
+    }
+    const warmupKey = llmWarmupKey(settingsRef.current.llmModel, settingsRef.current.llmContextSize);
+    const model = settingsRef.current.llmModel;
+    setIsLlmLoading(true);
+    llmWarmupModelRef.current = warmupKey;
+    try {
+      await api.llm.warmup(model);
+      showToast('success', 'LLM server started.');
+    } catch (error) {
+      if (llmWarmupModelRef.current === warmupKey) {
+        llmWarmupModelRef.current = null;
+      }
+      showToast('error', errorMessage(error));
+    } finally {
+      setIsLlmLoading(false);
+    }
+  };
+
   const improve = async (sourceOverride?: string): Promise<void> => {
     if (isImproveProcessing) {
       return;
     }
     setMode('improve');
+    if (!llmServerEnabled) {
+      showOverlayWarning('improve', 'LLM server stopped.');
+      return;
+    }
     const blockMessage = actionBlockMessage('improve', audioLockState);
     if (blockMessage) {
       showOverlayWarning('improve', blockMessage);
@@ -770,12 +887,17 @@ export const App = (): JSX.Element => {
       return;
     }
     setIsImproveProcessing(true);
+    const runId = improveRunRef.current + 1;
+    improveRunRef.current = runId;
     clearOverlayWarningTimer('improve');
     publishOverlayState(overlayProcessing('improve', [], undefined, undefined, {
       phase: 'thinking',
     }));
     try {
       const nextResult = await api.text.improve(sourceText);
+      if (improveRunRef.current !== runId) {
+        return;
+      }
       setImproveResult(normalizeCopyResult('improve', nextResult));
       showCopyToast(nextResult);
       if (!nextResult.text) {
@@ -786,12 +908,42 @@ export const App = (): JSX.Element => {
       showCompletionOverlay('improve', nextResult);
       await refreshHistoryAndModels();
     } catch (error) {
+      if (improveRunRef.current !== runId) {
+        return;
+      }
       const message = errorMessage(error);
       setImproveResult(actionResult('improve', 'error', { message }));
       showOverlayWarning('improve', message, 'error');
     } finally {
-      setIsImproveProcessing(false);
+      if (improveRunRef.current === runId) {
+        setIsImproveProcessing(false);
+      }
     }
+  };
+
+  const autoImproveBlockMessage = (): string | null => {
+    const serverMessage = serverBlockMessage('improve', audioServerEnabled, llmServerEnabled);
+    if (serverMessage) {
+      return serverMessage;
+    }
+    const blockMessage = actionBlockMessage('improve', audioLockState);
+    if (blockMessage) {
+      return blockMessage;
+    }
+    if (!llmRuntime.runtimeAvailable) {
+      return actionMessages.llamaMissing;
+    }
+    if (!llmModelAvailable) {
+      return actionMessages.llamaModelMissing;
+    }
+    return null;
+  };
+
+  const improveAfterSpeak = async (text: string): Promise<void> => {
+    if (autoImproveBlockMessage()) {
+      return;
+    }
+    await improve(text);
   };
 
   const resetTranscriptAudioLevels = (): void => {
@@ -1018,6 +1170,11 @@ export const App = (): JSX.Element => {
   };
 
   const startTranscript = async (): Promise<void> => {
+    if (!audioServerEnabled) {
+      setMode('transcript');
+      showOverlayWarning('transcript', 'Audio server stopped.');
+      return;
+    }
     if (!whisperRuntime.runtimeAvailable) {
       setSection('home');
       setMode('transcript');
@@ -1533,6 +1690,39 @@ export const App = (): JSX.Element => {
 
   useEffect(() => api.actions.onSection(setSection), []);
 
+  useEffect(() => api.server.onEnabledChanged(({ server, enabled }) => {
+    if (server === 'audio') {
+      setAudioServerEnabled(enabled);
+      if (!enabled) {
+        if (recorder) {
+          void cancelRecording('speak');
+        }
+        if (transcriptRecorder) {
+          void cancelRecording('transcript');
+        }
+        whisperWarmupModelRef.current = null;
+        whisperWarmupRunRef.current += 1;
+        setIsWhisperLoading(false);
+        showToast('success', 'Audio server stopped.');
+      }
+      return;
+    }
+
+    setLlmServerEnabled(enabled);
+    if (!enabled) {
+      improveRunRef.current += 1;
+      if (isImproveProcessing) {
+        setIsImproveProcessing(false);
+        setImproveResult(actionResult('improve', 'warning', { message: 'LLM server stopped.' }));
+        showOverlayWarning('improve', 'LLM server stopped.');
+      }
+      llmWarmupModelRef.current = null;
+      llmWarmupRunRef.current += 1;
+      setIsLlmLoading(false);
+      showToast('success', 'LLM server stopped.');
+    }
+  }), [recorder, transcriptRecorder, isImproveProcessing]);
+
   useEffect(() => {
     const removeSpeakListener = api.actions.onSpeak(() => {
       if (isShortcutEditing) {
@@ -1540,6 +1730,11 @@ export const App = (): JSX.Element => {
       }
       if (recorder) {
         void stopRecording();
+        return;
+      }
+      const serverMessage = serverBlockMessage('speak', audioServerEnabled, llmServerEnabled);
+      if (serverMessage) {
+        showOverlayWarning('speak', serverMessage);
         return;
       }
       const blockMessage = actionBlockMessage('speak', audioLockState);
@@ -1557,6 +1752,11 @@ export const App = (): JSX.Element => {
         return;
       }
       if (isImproveProcessing) {
+        return;
+      }
+      const serverMessage = serverBlockMessage('improve', audioServerEnabled, llmServerEnabled);
+      if (serverMessage) {
+        showOverlayWarning('improve', serverMessage);
         return;
       }
       void improve();
@@ -1578,6 +1778,11 @@ export const App = (): JSX.Element => {
       }
       if (transcriptRecorder) {
         void stopTranscript();
+        return;
+      }
+      const serverMessage = serverBlockMessage('transcript', audioServerEnabled, llmServerEnabled);
+      if (serverMessage) {
+        showOverlayWarning('transcript', serverMessage);
         return;
       }
       const blockMessage = actionBlockMessage('transcript', audioLockState);
@@ -1609,6 +1814,8 @@ export const App = (): JSX.Element => {
     isSpeakProcessing,
     isTranscriptProcessing,
     isImproveProcessing,
+    audioServerEnabled,
+    llmServerEnabled,
     isWhisperLoading,
     isLlmLoading,
     waveform,
@@ -1620,6 +1827,10 @@ export const App = (): JSX.Element => {
         hotkeys={settings.hotkeys}
         hasRecording={Boolean(recorder || transcriptRecorder)}
         isImproveProcessing={isImproveProcessing}
+        audioServerEnabled={audioServerEnabled}
+        llmServerEnabled={llmServerEnabled}
+        audioServerBusy={isWhisperLoading}
+        llmServerBusy={isLlmLoading}
         onOpenLogsFolder={() => void api.app.openLogsFolder()}
         onOpenSettings={() => {
           setSection('settings');
@@ -1629,6 +1840,8 @@ export const App = (): JSX.Element => {
         onSpeak={() => void (recorder ? stopRecording() : startRecording())}
         onImprove={() => void improve()}
         onTranscript={() => void (transcriptRecorder ? stopTranscript() : startTranscript())}
+        onAudioServerChange={(enabled) => void setAudioServerRunning(enabled)}
+        onLlmServerChange={(enabled) => void setLlmServerRunning(enabled)}
         onImportAudio={() => void importAudio()}
         onOpenHelp={() => void api.app.openHelp()}
         onStopRecording={stopActiveRecording}
@@ -1667,6 +1880,10 @@ export const App = (): JSX.Element => {
         runtimeInfoLoaded={runtimeInfoLoaded}
         whisperModelAvailable={whisperModelAvailable}
         llmModelAvailable={llmModelAvailable}
+        audioServerEnabled={audioServerEnabled}
+        llmServerEnabled={llmServerEnabled}
+        audioServerBusy={isWhisperLoading}
+        llmServerBusy={isLlmLoading}
         history={history}
         llmModels={llmModels}
         whisperModels={whisperModels}
@@ -1678,6 +1895,8 @@ export const App = (): JSX.Element => {
         onOpenSettings={() => {
           openSettingsFocus(mode === 'improve' ? 'improveAi' : 'speechAi');
         }}
+        onAudioServerChange={(enabled) => void setAudioServerRunning(enabled)}
+        onLlmServerChange={(enabled) => void setLlmServerRunning(enabled)}
         onModeChange={changeMode}
         onStartRecording={() => void startRecording()}
         onStopRecording={() => void stopRecording()}
@@ -1736,6 +1955,8 @@ const settingsAreEqual = (left: SettingsType, right: SettingsType): boolean =>
   left.pasteAfterImprovement === right.pasteAfterImprovement &&
   left.improveAfterSpeak === right.improveAfterSpeak &&
   left.improveSelectedText === right.improveSelectedText &&
+  left.startAudioServerOnLaunch === right.startAudioServerOnLaunch &&
+  left.startLlmServerOnLaunch === right.startLlmServerOnLaunch &&
   left.startAtStartup === right.startAtStartup &&
   left.microphoneDeviceId === right.microphoneDeviceId &&
   left.microphoneDeviceLabel === right.microphoneDeviceLabel &&
@@ -1782,6 +2003,20 @@ const llmWarmupKey = (model: string, contextSize: SettingsType['llmContextSize']
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : 'Operation failed.';
+
+const serverBlockMessage = (
+  mode: HomeMode,
+  audioServerEnabled: boolean,
+  llmServerEnabled: boolean,
+): string | null => {
+  if ((mode === 'speak' || mode === 'transcript') && !audioServerEnabled) {
+    return 'Audio server stopped.';
+  }
+  if (mode === 'improve' && !llmServerEnabled) {
+    return 'LLM server stopped.';
+  }
+  return null;
+};
 
 const customLlmFileName = (url: string): string => {
   try {

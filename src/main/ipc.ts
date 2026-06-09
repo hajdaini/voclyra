@@ -8,9 +8,9 @@ import { actionMessages } from '@shared/action-messages';
 import { actionBlockMessage } from '@shared/action-locks';
 import { actionOverlay, actionUi } from '@shared/action-ui';
 import { customLlmModelUrlError } from '@shared/custom-models';
-import { customModelUrlSchema, historyTitleUpdateSchema, idSchema, llmDeleteModelIdSchema, llmModelIdSchema, overlayStateSchema, settingsSchema, textSchema } from '@shared/schemas';
+import { customModelUrlSchema, historyTitleUpdateSchema, idSchema, llmDeleteModelIdSchema, llmModelIdSchema, overlayStateSchema, serverEnabledSchema, settingsSchema, textSchema } from '@shared/schemas';
 import { whisperModelIdSchema } from '@shared/schemas';
-import type { HomeMode, OverlayState, ResultState, Settings } from '@shared/types';
+import type { HomeMode, LocalServerName, OverlayState, ResultState, Settings } from '@shared/types';
 import { ActivePasteService } from '@services/active-paste-service';
 import { AudioCaptureHelperService } from '@services/audio-capture-helper-service';
 import { HistoryService } from '@services/history-service';
@@ -33,12 +33,17 @@ import {
   resizeOverlayToContent,
   sendBackgroundAppAction,
   sendImproveResult,
+  sendServerEnabledChanged,
   setOverlayState,
   stopFromOverlay,
 } from './window';
 import { updateTray } from './tray';
 
 let settings: Settings = defaultSettings;
+const serverEnabledState = {
+  audio: true,
+  llm: true,
+};
 const activePasteService = new ActivePasteService();
 const audioCaptureHelperService = new AudioCaptureHelperService();
 const historyService = new HistoryService();
@@ -58,6 +63,23 @@ let transcriptLogSessionId = '';
 let transcriptLogChunk = 0;
 const progressUpdateState = new Map<HomeMode, { at: number; key: string }>();
 const helpUrl = 'https://github.com/hajdaini/voclyra#readme';
+
+export const setServerEnabled = (server: LocalServerName, enabled: boolean, notifyRenderer = true): void => {
+  serverEnabledState[server] = enabled;
+  if (!enabled && server === 'audio') {
+    whisperService.stopServer();
+  }
+  if (!enabled && server === 'llm') {
+    llamaService.stopServer();
+  }
+  updateTray(settings, {
+    audioEnabled: serverEnabledState.audio,
+    llmEnabled: serverEnabledState.llm,
+  });
+  if (notifyRenderer) {
+    sendServerEnabledChanged(server, enabled);
+  }
+};
 
 const mainActionLockState = () => ({
   speakRecording: false,
@@ -125,6 +147,10 @@ const showProcessingProgress = (
 };
 
 export const improveClipboardFromHotkey = async (): Promise<void> => {
+  if (!serverEnabledState.llm) {
+    showImproveBlocked('LLM server stopped.');
+    return;
+  }
   const blockMessage = actionBlockMessage('improve', mainActionLockState());
   if (blockMessage) {
     return;
@@ -265,6 +291,10 @@ export const registerIpc = (): void => {
     await whisperService.warmup(model);
   });
 
+  ipcMain.handle(channels.whisperStopServer, () => {
+    whisperService.stopServer();
+  });
+
   ipcMain.handle(channels.llmAvailableModels, () => llmModelService.availableModels());
 
   ipcMain.handle(channels.llmRuntimeInfo, () => llamaService.runtimeInfo());
@@ -276,6 +306,15 @@ export const registerIpc = (): void => {
       return;
     }
     await llamaService.warmup(llmModelService.modelPath(model));
+  });
+
+  ipcMain.handle(channels.llmStopServer, () => {
+    llamaService.stopServer();
+  });
+
+  ipcMain.handle(channels.serverSetEnabled, (_event, value: unknown) => {
+    const nextState = serverEnabledSchema.parse(value);
+    setServerEnabled(nextState.server, nextState.enabled, false);
   });
 
   ipcMain.handle(channels.hardwareInfo, () => hardwareService.info());
@@ -353,7 +392,7 @@ export const registerIpc = (): void => {
     }
   });
 
-  ipcMain.handle(channels.dictationStop, () => ready('', 'Dictation stopped.'));
+  ipcMain.handle(channels.dictationStop, () => ready('', 'Speak stopped.'));
 
   ipcMain.handle(channels.audioCaptureStart, async (event, value: unknown) => {
     if (value !== 'speak' && value !== 'transcript') {

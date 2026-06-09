@@ -76,6 +76,10 @@ export class WhisperService {
     });
   }
 
+  stopServer(): void {
+    this.server.stop();
+  }
+
   private modelRoots(): string[] {
     return [join(homedir(), appStorageConfig.directoryName, 'models', 'whisper')];
   }

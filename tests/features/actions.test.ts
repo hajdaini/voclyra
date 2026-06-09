@@ -38,6 +38,7 @@ const llamaMock = {
   improveText: vi.fn(async () => ({ text: 'Corrected text.', tokensGenerated: 12, tokensPerSecond: 24 })),
   runtimeInfo: vi.fn(async () => ({ runtimeAvailable: true })),
   warmup: vi.fn(async () => {}),
+  stopServer: vi.fn(() => {}),
 };
 const llmModelMock = {
   downloadedModelNames: vi.fn(async () => ['model.gguf']),
@@ -62,6 +63,7 @@ const whisperMock = {
   listModels: vi.fn(async () => []),
   runtimeInfo: vi.fn(async () => ({ runtimeAvailable: true })),
   warmup: vi.fn(async () => {}),
+  stopServer: vi.fn(() => {}),
 };
 const overlayMock = {
   setOverlayState: vi.fn(),
@@ -156,6 +158,7 @@ vi.mock('@services/llama-service', () => ({
     improveText = llamaMock.improveText;
     runtimeInfo = llamaMock.runtimeInfo;
     warmup = llamaMock.warmup;
+    stopServer = llamaMock.stopServer;
   },
 }));
 
@@ -196,6 +199,7 @@ vi.mock('@services/whisper-service', () => ({
     listModels = whisperMock.listModels;
     runtimeInfo = whisperMock.runtimeInfo;
     warmup = whisperMock.warmup;
+    stopServer = whisperMock.stopServer;
   },
 }));
 
@@ -234,6 +238,8 @@ const setup = async (): Promise<void> => {
     pasteAfterImprovement: false,
     improveAfterSpeak: false,
     improveSelectedText: false,
+    startAudioServerOnLaunch: true,
+    startLlmServerOnLaunch: true,
     startAtStartup: false,
     microphoneDeviceId: '',
     microphoneDeviceLabel: '',
@@ -444,6 +450,14 @@ describe('App actions', () => {
       memoryTotalGb: 15.9,
       utilizationPercent: 47,
     });
+  });
+
+  it('stops local model servers through IPC', () => {
+    expect(handlers.get(channels.whisperStopServer)?.({})).toBeUndefined();
+    expect(handlers.get(channels.llmStopServer)?.({})).toBeUndefined();
+
+    expect(whisperMock.stopServer).toHaveBeenCalledTimes(1);
+    expect(llamaMock.stopServer).toHaveBeenCalledTimes(1);
   });
 
   it('opens the GitHub README from Help', async () => {

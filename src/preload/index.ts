@@ -109,6 +109,7 @@ const api: AppApi = {
     runtimeInfo: () =>
       ipcRenderer.invoke(channels.whisperRuntimeInfo) as ReturnType<AppApi['whisper']['runtimeInfo']>,
     warmup: (model) => ipcRenderer.invoke(channels.whisperWarmup, model) as ReturnType<AppApi['whisper']['warmup']>,
+    stopServer: () => ipcRenderer.invoke(channels.whisperStopServer) as ReturnType<AppApi['whisper']['stopServer']>,
     onDownloadProgress: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, progress: WhisperDownloadProgress): void => {
         callback(progress);
@@ -131,6 +132,7 @@ const api: AppApi = {
     runtimeInfo: () =>
       ipcRenderer.invoke(channels.llmRuntimeInfo) as ReturnType<AppApi['llm']['runtimeInfo']>,
     warmup: (model) => ipcRenderer.invoke(channels.llmWarmup, model) as ReturnType<AppApi['llm']['warmup']>,
+    stopServer: () => ipcRenderer.invoke(channels.llmStopServer) as ReturnType<AppApi['llm']['stopServer']>,
     onDownloadProgress: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, progress: LlmDownloadProgress): void => {
         callback(progress);
@@ -138,6 +140,28 @@ const api: AppApi = {
       ipcRenderer.on(channels.llmDownloadProgress, listener);
       return () => {
         ipcRenderer.removeListener(channels.llmDownloadProgress, listener);
+      };
+    },
+  },
+  server: {
+    setEnabled: (server, enabled) =>
+      ipcRenderer.invoke(channels.serverSetEnabled, { server, enabled }) as ReturnType<AppApi['server']['setEnabled']>,
+    onEnabledChanged: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, value: unknown): void => {
+        if (
+          value &&
+          typeof value === 'object' &&
+          'server' in value &&
+          'enabled' in value &&
+          (value.server === 'audio' || value.server === 'llm') &&
+          typeof value.enabled === 'boolean'
+        ) {
+          callback({ server: value.server, enabled: value.enabled });
+        }
+      };
+      ipcRenderer.on(channels.serverEnabledChanged, listener);
+      return () => {
+        ipcRenderer.removeListener(channels.serverEnabledChanged, listener);
       };
     },
   },
