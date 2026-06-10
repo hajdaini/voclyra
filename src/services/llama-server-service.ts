@@ -4,11 +4,13 @@ import { appendFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DebugLogBuffer, errorDiagnostics } from '@services/debug-log-buffer';
 import { AppStorage } from '@storage/app-storage';
+import type { LlmPerformanceMode } from '@shared/types';
 
 type LlamaServerKey = {
   executable: string;
   modelPath: string;
   mode: 'auto' | 'cpu';
+  performanceMode: LlmPerformanceMode;
   contextSize: number;
 };
 
@@ -75,6 +77,7 @@ export class LlamaServerService {
     prompt: string,
     options: {
       mode: 'auto' | 'cpu';
+      performanceMode: LlmPerformanceMode;
       maxTokens: number;
       contextSize: number;
       temperature: number;
@@ -85,6 +88,7 @@ export class LlamaServerService {
       executable,
       modelPath,
       mode: options.mode,
+      performanceMode: options.performanceMode,
       contextSize: options.contextSize,
     });
     const endpoint = '/v1/chat/completions';
@@ -184,6 +188,7 @@ export class LlamaServerService {
     modelPath: string,
     options: {
       mode: 'auto' | 'cpu';
+      performanceMode: LlmPerformanceMode;
       contextSize: number;
     },
   ): Promise<void> {
@@ -191,6 +196,7 @@ export class LlamaServerService {
       executable,
       modelPath,
       mode: options.mode,
+      performanceMode: options.performanceMode,
       contextSize: options.contextSize,
     });
     await this.waitUntilCompletionReady(server);
@@ -310,6 +316,9 @@ export class LlamaServerService {
       args.push('-ngl', 'auto');
     } else {
       args.push('-ngl', '0');
+    }
+    if (key.performanceMode === 'fast') {
+      args.push('-t', '6', '-tb', '6', '-b', '2048', '-ub', '512', '-fa', 'auto', '-kvo', '--mmap');
     }
     return args;
   }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type JSX, type KeyboardEvent, type Ref } from 'react';
 import {
+  Bot,
   Check,
   CheckCircle2,
   CircleDashed,
@@ -51,6 +52,13 @@ type AudioCaptureTest = {
   context?: AudioContext;
   oscillator?: OscillatorNode;
   audio?: HTMLAudioElement;
+};
+
+type SettingsTab = 'general' | 'audio' | 'ai' | 'shortcuts';
+
+type RemoteTestStatus = {
+  tone: 'success' | 'error';
+  message: string;
 };
 
 export type SettingsViewProps = {
@@ -114,11 +122,45 @@ export const SettingsView = ({
   const [microphoneTestError, setMicrophoneTestError] = useState('');
   const [outputTestError, setOutputTestError] = useState('');
   const [customLlmUrl, setCustomLlmUrl] = useState('');
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
+  const [remoteSpeechTestStatus, setRemoteSpeechTestStatus] = useState<RemoteTestStatus | null>(null);
+  const [remoteImproveTestStatus, setRemoteImproveTestStatus] = useState<RemoteTestStatus | null>(null);
+  const [testingRemoteSpeech, setTestingRemoteSpeech] = useState(false);
+  const [testingRemoteImprove, setTestingRemoteImprove] = useState(false);
+  const localSpeechRuntimeDisabled = !settings.useLocalSpeechRuntime;
+  const localImproveRuntimeDisabled = !settings.useLocalImproveRuntime;
+
+  const testRemoteSpeech = async (): Promise<void> => {
+    setTestingRemoteSpeech(true);
+    setRemoteSpeechTestStatus(null);
+    try {
+      await api.remote.testSpeech();
+      setRemoteSpeechTestStatus({ tone: 'success', message: 'Speech server connected.' });
+    } catch (error) {
+      setRemoteSpeechTestStatus({ tone: 'error', message: errorMessage(error) });
+    } finally {
+      setTestingRemoteSpeech(false);
+    }
+  };
+
+  const testRemoteImprove = async (): Promise<void> => {
+    setTestingRemoteImprove(true);
+    setRemoteImproveTestStatus(null);
+    try {
+      await api.remote.testImprove();
+      setRemoteImproveTestStatus({ tone: 'success', message: 'Improve server connected.' });
+    } catch (error) {
+      setRemoteImproveTestStatus({ tone: 'error', message: errorMessage(error) });
+    } finally {
+      setTestingRemoteImprove(false);
+    }
+  };
 
   useEffect(() => {
     if (!focusSection) {
       return;
     }
+    setSettingsTab(focusSection === 'microphone' ? 'audio' : focusSection === 'history' ? 'general' : focusSection === 'shortcuts' ? 'shortcuts' : 'ai');
     if (focusSection === 'improveAi') {
       improveAiRef.current?.scrollIntoView({ block: 'center' });
     } else if (focusSection === 'speechAi') {
@@ -311,6 +353,14 @@ export const SettingsView = ({
         </button>
       </div>
 
+      <div className="settings-tabs" role="tablist" aria-label="Settings sections">
+        <SettingsTabButton active={settingsTab === 'general'} icon={Settings2} label="General" onClick={() => setSettingsTab('general')} />
+        <SettingsTabButton active={settingsTab === 'audio'} icon={Mic} label="Audio" onClick={() => setSettingsTab('audio')} />
+        <SettingsTabButton active={settingsTab === 'ai'} icon={Bot} label="AI" onClick={() => setSettingsTab('ai')} />
+        <SettingsTabButton active={settingsTab === 'shortcuts'} icon={Keyboard} label="Shortcuts" onClick={() => setSettingsTab('shortcuts')} />
+      </div>
+
+      {settingsTab === 'general' && (
       <section className="settings-section">
         <SectionTitle icon={Settings2} title="General" />
         <label className="settings-checkbox">
@@ -372,6 +422,7 @@ export const SettingsView = ({
           <input
             type="checkbox"
             checked={settings.startAudioServerOnLaunch}
+            disabled={localSpeechRuntimeDisabled}
             onChange={(event) => onChange({ ...settings, startAudioServerOnLaunch: event.target.checked })}
           />
           <span className="settings-option-label">
@@ -383,6 +434,7 @@ export const SettingsView = ({
           <input
             type="checkbox"
             checked={settings.startLlmServerOnLaunch}
+            disabled={localImproveRuntimeDisabled}
             onChange={(event) => onChange({ ...settings, startLlmServerOnLaunch: event.target.checked })}
           />
           <span className="settings-option-label">
@@ -391,7 +443,9 @@ export const SettingsView = ({
           </span>
         </label>
       </section>
+      )}
 
+      {settingsTab === 'audio' && (
       <section className="settings-section focused-target" ref={microphoneRef}>
         <SectionTitle icon={Mic} title="Audio settings" />
         <label>
@@ -507,7 +561,9 @@ export const SettingsView = ({
           </select>
         </label>
       </section>
+      )}
 
+      {settingsTab === 'general' && (
       <section className="settings-section focused-target" ref={historyRef}>
         <SectionTitle icon={HistoryIcon} title="History settings" />
         <label className="compact-number-field">
@@ -530,15 +586,81 @@ export const SettingsView = ({
           />
         </label>
       </section>
+      )}
 
+      {settingsTab === 'ai' && (
+      <>
       <section className="settings-section focused-target" ref={improveAiRef}>
         <div className="settings-title-row">
           <SectionTitle icon={Wand2} title="Improve AI" />
-          <button type="button" title="Refresh models" onClick={onRefreshModels}>
+          {settings.useLocalImproveRuntime && <button type="button" title="Refresh models" onClick={onRefreshModels}>
             <RefreshCw size={17} />
             <span>Refresh models</span>
-          </button>
+          </button>}
         </div>
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={settings.useLocalImproveRuntime}
+            onChange={(event) => onChange({
+              ...settings,
+              useLocalImproveRuntime: event.target.checked,
+              useLocalRuntime: settings.useLocalSpeechRuntime && event.target.checked,
+            })}
+          />
+          <span className="settings-option-label">
+            Use local Improve runtime
+            <HelpHint text="When disabled, Improve uses the remote OpenAI-compatible Improve server." />
+          </span>
+        </label>
+        {!settings.useLocalImproveRuntime && (
+          <div className="remote-runtime-panel">
+            <div className="remote-runtime-card">
+              <h3>Improve server</h3>
+              <label>
+                <span className="field-label">Server URL</span>
+                <input
+                  type="url"
+                  value={settings.remoteImproveBaseUrl}
+                  placeholder="http://localhost:1234/v1"
+                  onChange={(event) => onChange({ ...settings, remoteImproveBaseUrl: event.target.value })}
+                />
+              </label>
+              <label>
+                <span className="field-label">API key</span>
+                <input
+                  type="password"
+                  value={settings.remoteImproveApiKey}
+                  onChange={(event) => onChange({ ...settings, remoteImproveApiKey: event.target.value })}
+                />
+              </label>
+              <label>
+                <span className="field-label">Text model</span>
+                <input
+                  value={settings.remoteImproveModel}
+                  placeholder="gemma-4-e4b-it-qat"
+                  onChange={(event) => onChange({ ...settings, remoteImproveModel: event.target.value })}
+                />
+              </label>
+              <label>
+                <span className="field-label">
+                  Correction prompt
+                  <HelpHint text="Instruction sent to the remote model for Improve. It uses the same prompt format as local Improve." />
+                </span>
+                <textarea
+                  value={settings.correctionPrompt}
+                  onChange={(event) => onChange({ ...settings, correctionPrompt: event.target.value })}
+                />
+              </label>
+              <button type="button" disabled={testingRemoteImprove} onClick={() => void testRemoteImprove()}>
+                {testingRemoteImprove ? <LoaderCircle className="status-spinner-icon" size={16} /> : <CheckCircle2 size={16} />}
+                <span>Test improve server</span>
+              </button>
+              {remoteImproveTestStatus && <span className={`remote-test-status ${remoteImproveTestStatus.tone}`}>{remoteImproveTestStatus.message}</span>}
+            </div>
+          </div>
+        )}
+        {settings.useLocalImproveRuntime && (
         <div className="model-settings-group">
           <div className="settings-grid models-select-grid">
             <label>
@@ -548,7 +670,7 @@ export const SettingsView = ({
               </span>
               <select
                 value={settings.llmModel}
-                disabled={llmModels.length === 0 && !settings.llmModel}
+                disabled={localImproveRuntimeDisabled || (llmModels.length === 0 && !settings.llmModel)}
                 onChange={(event) => onChange({ ...settings, llmModel: event.target.value })}
               >
                 {llmModels.length === 0 && (
@@ -571,6 +693,7 @@ export const SettingsView = ({
             <input
               type="url"
               value={customLlmUrl}
+              disabled={localImproveRuntimeDisabled}
               onChange={(event) => setCustomLlmUrl(event.target.value)}
               placeholder="https://huggingface.co/.../resolve/.../model.gguf"
               aria-label="Custom local AI model URL"
@@ -578,7 +701,7 @@ export const SettingsView = ({
             <button
               type="button"
               title="Download custom local AI model"
-              disabled={!customLlmUrl.trim()}
+              disabled={localImproveRuntimeDisabled || !customLlmUrl.trim()}
               onClick={() => {
                 onDownloadCustomLlmModel(customLlmUrl);
                 setCustomLlmUrl('');
@@ -621,8 +744,12 @@ export const SettingsView = ({
                         type="button"
                         title={isDeleting ? `Deleting ${model.label}` : `Delete ${model.label}`}
                         aria-label={`Delete ${model.label}`}
-                        disabled={isDeleting}
-                        onClick={() => onDeleteLlmModel(model.id)}
+                        disabled={localImproveRuntimeDisabled || isDeleting}
+                        onClick={() => {
+                          if (!localImproveRuntimeDisabled) {
+                            onDeleteLlmModel(model.id);
+                          }
+                        }}
                       >
                         {isDeleting ? (
                           <LoaderCircle className="status-spinner-icon" size={17} aria-label={`Deleting ${model.label}`} />
@@ -636,6 +763,7 @@ export const SettingsView = ({
                         type="button"
                         title={`Download ${model.label}`}
                         aria-label={`Download ${model.label}`}
+                        disabled={localImproveRuntimeDisabled}
                         onClick={() => onDownloadLlmModel(model.id)}
                       >
                         <Download size={17} />
@@ -650,11 +778,28 @@ export const SettingsView = ({
           <div className="settings-grid models-select-grid">
             <label>
               <span className="field-label">
+                Local performance
+                <HelpHint text="Balanced keeps the current conservative llama.cpp launch. Fast GPU uses larger batches and explicit GPU cache options." />
+              </span>
+              <select
+                value={settings.llmPerformanceMode}
+                disabled={localImproveRuntimeDisabled}
+                onChange={(event) =>
+                  onChange({ ...settings, llmPerformanceMode: event.target.value as SettingsType['llmPerformanceMode'] })
+                }
+              >
+                <option value="balanced">Balanced</option>
+                <option value="fast">Fast GPU</option>
+              </select>
+            </label>
+            <label>
+              <span className="field-label">
                 Context size
                 <HelpHint text="Controls how much text the model can consider. Smaller is faster; larger handles longer inputs better." />
               </span>
               <select
                 value={settings.llmContextSize}
+                disabled={localImproveRuntimeDisabled}
                 onChange={(event) =>
                   onChange({ ...settings, llmContextSize: Number(event.target.value) as SettingsType['llmContextSize'] })
                 }
@@ -682,6 +827,7 @@ export const SettingsView = ({
                 max={1}
                 step={0.05}
                 value={settings.llmTemperature}
+                disabled={localImproveRuntimeDisabled}
                 onChange={(event) =>
                   onChange({
                     ...settings,
@@ -698,20 +844,75 @@ export const SettingsView = ({
             </span>
             <textarea
               value={settings.correctionPrompt}
+              disabled={localImproveRuntimeDisabled}
               onChange={(event) => onChange({ ...settings, correctionPrompt: event.target.value })}
             />
           </label>
         </div>
+        )}
       </section>
 
       <section className="settings-section focused-target" ref={speechAiRef}>
         <div className="settings-title-row">
           <SectionTitle icon={Headphones} title="Speak and Transcript AI" />
-          <button type="button" title="Refresh models" onClick={onRefreshModels}>
+          {settings.useLocalSpeechRuntime && <button type="button" title="Refresh models" onClick={onRefreshModels}>
             <RefreshCw size={17} />
             <span>Refresh models</span>
-          </button>
+          </button>}
         </div>
+        <label className="settings-checkbox">
+          <input
+            type="checkbox"
+            checked={settings.useLocalSpeechRuntime}
+            onChange={(event) => onChange({
+              ...settings,
+              useLocalSpeechRuntime: event.target.checked,
+              useLocalRuntime: event.target.checked && settings.useLocalImproveRuntime,
+            })}
+          />
+          <span className="settings-option-label">
+            Use local Speech runtime
+            <HelpHint text="When disabled, Speak and Transcript use the remote OpenAI-compatible speech server." />
+          </span>
+        </label>
+        {!settings.useLocalSpeechRuntime && (
+          <div className="remote-runtime-panel">
+            <div className="remote-runtime-card">
+              <h3>Speech server</h3>
+              <label>
+                <span className="field-label">Server URL</span>
+                <input
+                  type="url"
+                  value={settings.remoteSpeechBaseUrl}
+                  placeholder="https://server.example/v1"
+                  onChange={(event) => onChange({ ...settings, remoteSpeechBaseUrl: event.target.value })}
+                />
+              </label>
+              <label>
+                <span className="field-label">API key</span>
+                <input
+                  type="password"
+                  value={settings.remoteSpeechApiKey}
+                  onChange={(event) => onChange({ ...settings, remoteSpeechApiKey: event.target.value })}
+                />
+              </label>
+              <label>
+                <span className="field-label">Transcription model</span>
+                <input
+                  value={settings.remoteSpeechModel}
+                  placeholder="whisper-large-v3"
+                  onChange={(event) => onChange({ ...settings, remoteSpeechModel: event.target.value })}
+                />
+              </label>
+              <button type="button" disabled={testingRemoteSpeech} onClick={() => void testRemoteSpeech()}>
+                {testingRemoteSpeech ? <LoaderCircle className="status-spinner-icon" size={16} /> : <CheckCircle2 size={16} />}
+                <span>Test speech server</span>
+              </button>
+              {remoteSpeechTestStatus && <span className={`remote-test-status ${remoteSpeechTestStatus.tone}`}>{remoteSpeechTestStatus.message}</span>}
+            </div>
+          </div>
+        )}
+        {settings.useLocalSpeechRuntime && (
         <div className="model-settings-group">
           <div className="settings-grid models-select-grid">
             <label>
@@ -721,7 +922,7 @@ export const SettingsView = ({
               </span>
               <select
                 value={settings.whisperModel}
-                disabled={whisperModels.length === 0 && !settings.whisperModel}
+                disabled={localSpeechRuntimeDisabled || (whisperModels.length === 0 && !settings.whisperModel)}
                 onChange={(event) => onChange({ ...settings, whisperModel: event.target.value })}
               >
                 {whisperModels.length === 0 && (
@@ -772,6 +973,7 @@ export const SettingsView = ({
                         type="button"
                         title={`Delete ${model.label}`}
                         aria-label={`Delete ${model.label}`}
+                        disabled={localSpeechRuntimeDisabled}
                         onClick={() => onDeleteWhisperModel(model.id)}
                       >
                         <Trash2 size={17} />
@@ -782,6 +984,7 @@ export const SettingsView = ({
                         type="button"
                         title={`Download ${model.label}`}
                         aria-label={`Download ${model.label}`}
+                        disabled={localSpeechRuntimeDisabled}
                         onClick={() => onDownloadWhisperModel(model.id)}
                       >
                         <Download size={17} />
@@ -801,6 +1004,7 @@ export const SettingsView = ({
               </span>
               <select
                 value={settings.whisperLanguage}
+                disabled={localSpeechRuntimeDisabled}
                 onChange={(event) =>
                   onChange({ ...settings, whisperLanguage: event.target.value as SettingsType['whisperLanguage'] })
                 }
@@ -821,6 +1025,7 @@ export const SettingsView = ({
               </span>
               <select
                 value={settings.whisperQualityMode}
+                disabled={localSpeechRuntimeDisabled}
                 onChange={(event) =>
                   onChange({
                     ...settings,
@@ -844,6 +1049,7 @@ export const SettingsView = ({
                   max={300}
                   step={5}
                   value={settings.transcriptLiveChunkSeconds}
+                  disabled={localSpeechRuntimeDisabled}
                   onChange={(event) =>
                     onChange({
                       ...settings,
@@ -854,8 +1060,12 @@ export const SettingsView = ({
             </label>
           </div>
         </div>
+        )}
       </section>
+      </>
+      )}
 
+      {settingsTab === 'shortcuts' && (
       <section className="settings-section focused-target" ref={shortcutsRef}>
         <SectionTitle icon={Keyboard} title="Shortcuts" />
         <div className="settings-grid shortcut-grid">
@@ -913,6 +1123,7 @@ export const SettingsView = ({
           </label>
         </div>
       </section>
+      )}
     </section>
   );
 };
@@ -939,6 +1150,23 @@ const HelpHint = ({ text }: { text: string }): JSX.Element => (
   <span className="settings-help-hint" title={text} aria-label={text} tabIndex={0}>
     <CircleHelp size={14} />
   </span>
+);
+
+const SettingsTabButton = ({
+  active,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+}): JSX.Element => (
+  <button className={active ? 'active' : ''} type="button" role="tab" aria-selected={active} onClick={onClick}>
+    <Icon size={15} />
+    <span>{label}</span>
+  </button>
 );
 
 const GpuSummary = ({ hardwareInfo }: { hardwareInfo: HardwareInfo }): JSX.Element => (
@@ -1000,6 +1228,7 @@ const vramStatus = (
 
 const formatGb = (value: number): string => `${Number.isInteger(value) ? value : value.toFixed(1)} GB`;
 const formatGbValue = (value: number): string => `${Number.isInteger(value) ? value : value.toFixed(1)}`;
+const errorMessage = (error: unknown): string => error instanceof Error ? error.message : 'Operation failed.';
 
 const stopAudioCaptureTest = (test: AudioCaptureTest | null): void => {
   if (!test) {

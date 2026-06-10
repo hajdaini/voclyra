@@ -10,6 +10,8 @@ export type LanguageMode = 'auto' | 'fr' | 'en' | 'es' | 'de' | 'it' | 'pt';
 
 export type WhisperQualityMode = 'fast' | 'balanced' | 'accurate';
 
+export type LlmPerformanceMode = 'balanced' | 'fast';
+
 export type SilenceSensitivity = 'low' | 'normal' | 'high';
 
 export type LlmContextSize = 512 | 1024 | 2048 | 3072 | 4096 | 6144 | 8192 | 12288 | 16384 | 32768;
@@ -21,10 +23,20 @@ export type Hotkeys = {
 };
 
 export type Settings = {
+  useLocalRuntime: boolean;
+  useLocalSpeechRuntime: boolean;
+  useLocalImproveRuntime: boolean;
+  remoteSpeechBaseUrl: string;
+  remoteSpeechApiKey: string;
+  remoteSpeechModel: string;
+  remoteImproveBaseUrl: string;
+  remoteImproveApiKey: string;
+  remoteImproveModel: string;
   llmModel: string;
   whisperModel: string;
   whisperLanguage: LanguageMode;
   whisperQualityMode: WhisperQualityMode;
+  llmPerformanceMode: LlmPerformanceMode;
   llmContextSize: LlmContextSize;
   llmTemperature: number;
   correctionPrompt: string;
@@ -235,6 +247,10 @@ export type AppApi = {
   server: {
     setEnabled: (server: LocalServerName, enabled: boolean) => Promise<void>;
     onEnabledChanged: (callback: (state: { server: LocalServerName; enabled: boolean }) => void) => () => void;
+  };
+  remote: {
+    testSpeech: () => Promise<void>;
+    testImprove: () => Promise<void>;
   };
   hardware: {
     info: () => Promise<HardwareInfo>;

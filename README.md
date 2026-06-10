@@ -189,6 +189,7 @@ Your voice, text, history, models, settings, and audio stay local.
 - Audio import for existing recordings
 - Multilingual speech-to-text without cloud transcription
 - Private local AI workflow powered by Whisper and llama.cpp
+- Optional OpenAI-compatible remote servers for Speech and Improve
 - Custom Hugging Face `.gguf` LLM model downloads
 - Searchable history with favorites, titles, audio replay, and text export
 - Flexible microphone and computer audio capture, including all active Windows outputs

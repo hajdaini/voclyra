@@ -165,6 +165,10 @@ const api: AppApi = {
       };
     },
   },
+  remote: {
+    testSpeech: () => ipcRenderer.invoke(channels.remoteTestSpeech) as ReturnType<AppApi['remote']['testSpeech']>,
+    testImprove: () => ipcRenderer.invoke(channels.remoteTestImprove) as ReturnType<AppApi['remote']['testImprove']>,
+  },
   hardware: {
     info: () => ipcRenderer.invoke(channels.hardwareInfo) as ReturnType<AppApi['hardware']['info']>,
     usage: () => ipcRenderer.invoke(channels.hardwareUsage) as ReturnType<AppApi['hardware']['usage']>,

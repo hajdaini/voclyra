@@ -13,6 +13,8 @@ type AppTopbarProps = {
   llmServerEnabled: boolean;
   audioServerBusy: boolean;
   llmServerBusy: boolean;
+  useLocalSpeechRuntime: boolean;
+  useLocalImproveRuntime: boolean;
   onOpenLogsFolder: () => void;
   onOpenSettings: () => void;
   onQuit: () => void;
@@ -45,6 +47,8 @@ export const AppTopbar = ({
   llmServerEnabled,
   audioServerBusy,
   llmServerBusy,
+  useLocalSpeechRuntime,
+  useLocalImproveRuntime,
   onOpenLogsFolder,
   onOpenSettings,
   onQuit,
@@ -160,10 +164,10 @@ export const AppTopbar = ({
                 </button>
               )}
               <hr />
-              <button type="button" disabled={audioServerBusy} onClick={() => runAction(() => onAudioServerChange(!audioServerEnabled))}>
+              <button type="button" disabled={!useLocalSpeechRuntime || audioServerBusy} onClick={() => runAction(() => onAudioServerChange(!audioServerEnabled))}>
                 <span>{audioServerEnabled ? 'Stop audio server' : 'Start audio server'}</span>
               </button>
-              <button type="button" disabled={llmServerBusy} onClick={() => runAction(() => onLlmServerChange(!llmServerEnabled))}>
+              <button type="button" disabled={!useLocalImproveRuntime || llmServerBusy} onClick={() => runAction(() => onLlmServerChange(!llmServerEnabled))}>
                 <span>{llmServerEnabled ? 'Stop LLM server' : 'Start LLM server'}</span>
               </button>
             </div>

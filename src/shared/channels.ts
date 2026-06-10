@@ -51,6 +51,8 @@ export const channels = {
   llmStopServer: 'llm:stopServer',
   serverSetEnabled: 'server:setEnabled',
   serverEnabledChanged: 'server:enabledChanged',
+  remoteTestSpeech: 'remote:testSpeech',
+  remoteTestImprove: 'remote:testImprove',
   hardwareInfo: 'hardware:info',
   hardwareUsage: 'hardware:usage',
   appSpeak: 'app:speak',

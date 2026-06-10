@@ -1,10 +1,20 @@
 import type { HistoryEntry, Settings } from './types';
 
 export const defaultSettings: Settings = {
+  useLocalRuntime: true,
+  useLocalSpeechRuntime: true,
+  useLocalImproveRuntime: true,
+  remoteSpeechBaseUrl: '',
+  remoteSpeechApiKey: '',
+  remoteSpeechModel: '',
+  remoteImproveBaseUrl: '',
+  remoteImproveApiKey: '',
+  remoteImproveModel: '',
   llmModel: '',
   whisperModel: '',
   whisperLanguage: 'auto',
   whisperQualityMode: 'accurate',
+  llmPerformanceMode: 'fast',
   llmContextSize: 4096,
   llmTemperature: 0.1,
 correctionPrompt: [

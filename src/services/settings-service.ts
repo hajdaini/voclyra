@@ -9,7 +9,7 @@ export class SettingsService {
   async get(): Promise<Settings> {
     const rawSettings = await this.storage.readJson<unknown>('settings.json', defaultSettings);
     const isFallbackSettings = rawSettings === defaultSettings;
-    const settingsInput = isSettingsObject(rawSettings) ? { ...defaultSettings, ...withoutStartupSetting(rawSettings) } : rawSettings;
+    const settingsInput = isSettingsObject(rawSettings) ? normalizeSettingsInput(rawSettings) : rawSettings;
     const parsedSettings = settingsSchema.safeParse(settingsInput);
 
     if (!parsedSettings.success) {
@@ -26,12 +26,28 @@ export class SettingsService {
   }
 
   save(settings: Settings): Promise<Settings> {
-    return this.storage.writeJson('settings.json', withoutStartupSetting(settings)).then(() => settings);
+    const normalized = {
+      ...settings,
+      useLocalRuntime: settings.useLocalSpeechRuntime && settings.useLocalImproveRuntime,
+    };
+    return this.storage.writeJson('settings.json', withoutStartupSetting(normalized)).then(() => normalized);
   }
 }
 
 const isSettingsObject = (value: unknown): value is Partial<Settings> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const normalizeSettingsInput = (rawSettings: Partial<Settings>): Settings => {
+  const input = { ...defaultSettings, ...withoutStartupSetting(rawSettings) };
+  if (!('useLocalSpeechRuntime' in rawSettings)) {
+    input.useLocalSpeechRuntime = input.useLocalRuntime;
+  }
+  if (!('useLocalImproveRuntime' in rawSettings)) {
+    input.useLocalImproveRuntime = input.useLocalRuntime;
+  }
+  input.useLocalRuntime = input.useLocalSpeechRuntime && input.useLocalImproveRuntime;
+  return input;
+};
 
 const withoutStartupSetting = (settings: Partial<Settings>): Omit<Partial<Settings>, 'startAtStartup'> => {
   const { startAtStartup: _startAtStartup, ...rest } = settings;

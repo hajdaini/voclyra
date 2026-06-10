@@ -90,6 +90,10 @@ const fallbackApi: AppApi = {
     setEnabled: () => Promise.resolve(),
     onEnabledChanged: () => () => {},
   },
+  remote: {
+    testSpeech: () => Promise.resolve(),
+    testImprove: () => Promise.resolve(),
+  },
   hardware: {
     info: () =>
       Promise.resolve({

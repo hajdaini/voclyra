@@ -162,6 +162,10 @@ export const App = (): JSX.Element => {
   const transcriptSystemAudioWaveformRef = useRef<number[]>(defaultWaveform());
   const result =
     mode === 'speak' ? speakResult : mode === 'improve' ? improveResult : transcriptResult;
+  const useLocalSpeechRuntime = settings.useLocalSpeechRuntime;
+  const useLocalImproveRuntime = settings.useLocalImproveRuntime;
+  const remoteSpeechReady = Boolean(settings.remoteSpeechBaseUrl.trim() && settings.remoteSpeechModel.trim());
+  const remoteImproveReady = Boolean(settings.remoteImproveBaseUrl.trim() && settings.remoteImproveModel.trim());
   const audioLockState = {
     speakRecording: Boolean(recorder),
     speakProcessing: isSpeakProcessing,
@@ -171,10 +175,14 @@ export const App = (): JSX.Element => {
     transcriptProcessing: isTranscriptProcessing,
     whisperLoading: isWhisperLoading,
   };
-  const currentActionBlockMessage = serverBlockMessage(mode, audioServerEnabled, llmServerEnabled)
+  const currentActionBlockMessage = serverBlockMessage(mode, useLocalSpeechRuntime, useLocalImproveRuntime, audioServerEnabled, llmServerEnabled)
     ?? actionBlockMessage(mode, audioLockState);
-  const whisperModelAvailable = Boolean(settings.whisperModel && whisperModels.includes(settings.whisperModel));
-  const llmModelAvailable = Boolean(settings.llmModel && llmModels.includes(settings.llmModel));
+  const localWhisperModelAvailable = Boolean(settings.whisperModel && whisperModels.includes(settings.whisperModel));
+  const localLlmModelAvailable = Boolean(settings.llmModel && llmModels.includes(settings.llmModel));
+  const whisperModelAvailable = useLocalSpeechRuntime ? localWhisperModelAvailable : remoteSpeechReady;
+  const llmModelAvailable = useLocalImproveRuntime ? localLlmModelAvailable : remoteImproveReady;
+  const effectiveWhisperRuntime = useLocalSpeechRuntime ? whisperRuntime : { runtimeAvailable: remoteSpeechReady };
+  const effectiveLlmRuntime = useLocalImproveRuntime ? llmRuntime : { runtimeAvailable: remoteImproveReady };
 
   const publishOverlayState = (state: OverlayState): void => {
     if (state.active && state.status !== 'done') {
@@ -232,10 +240,12 @@ export const App = (): JSX.Element => {
       }
       settingsRef.current = nextSettings;
       setSettings(nextSettings);
-      setAudioServerEnabled(nextSettings.startAudioServerOnLaunch);
-      setLlmServerEnabled(nextSettings.startLlmServerOnLaunch);
-      void api.server.setEnabled('audio', nextSettings.startAudioServerOnLaunch);
-      void api.server.setEnabled('llm', nextSettings.startLlmServerOnLaunch);
+      const initialAudioServerEnabled = nextSettings.useLocalSpeechRuntime && nextSettings.startAudioServerOnLaunch;
+      const initialLlmServerEnabled = nextSettings.useLocalImproveRuntime && nextSettings.startLlmServerOnLaunch;
+      setAudioServerEnabled(initialAudioServerEnabled);
+      setLlmServerEnabled(initialLlmServerEnabled);
+      void api.server.setEnabled('audio', initialAudioServerEnabled);
+      void api.server.setEnabled('llm', initialLlmServerEnabled);
       cancelInitialLoad = scheduleAfterFirstPaint(() => {
         if (!active) {
           return;
@@ -397,7 +407,7 @@ export const App = (): JSX.Element => {
   ]);
 
   useEffect(() => {
-    if (!audioServerEnabled || !whisperRuntime.runtimeAvailable || !whisperModelAvailable || !settings.whisperModel) {
+    if (!useLocalSpeechRuntime || !audioServerEnabled || !whisperRuntime.runtimeAvailable || !localWhisperModelAvailable || !settings.whisperModel) {
       whisperWarmupModelRef.current = null;
       whisperWarmupRunRef.current += 1;
       setIsWhisperLoading(false);
@@ -423,16 +433,16 @@ export const App = (): JSX.Element => {
           setIsWhisperLoading(false);
         }
       });
-  }, [audioServerEnabled, settings.whisperModel, whisperModelAvailable, whisperRuntime.runtimeAvailable]);
+  }, [audioServerEnabled, useLocalSpeechRuntime, settings.whisperModel, localWhisperModelAvailable, whisperRuntime.runtimeAvailable]);
 
   useEffect(() => {
-    if (!llmServerEnabled || !llmRuntime.runtimeAvailable || !llmModelAvailable || !settings.llmModel) {
+    if (!useLocalImproveRuntime || !llmServerEnabled || !llmRuntime.runtimeAvailable || !localLlmModelAvailable || !settings.llmModel) {
       llmWarmupModelRef.current = null;
       llmWarmupRunRef.current += 1;
       setIsLlmLoading(false);
       return;
     }
-    const warmupKey = llmWarmupKey(settings.llmModel, settings.llmContextSize);
+    const warmupKey = llmWarmupKey(settings.llmModel, settings.llmContextSize, settings.llmPerformanceMode);
     if (llmWarmupModelRef.current === warmupKey) {
       return;
     }
@@ -453,7 +463,7 @@ export const App = (): JSX.Element => {
           setIsLlmLoading(false);
         }
       });
-  }, [llmServerEnabled, settings.llmModel, settings.llmContextSize, llmModelAvailable, llmRuntime.runtimeAvailable, llmWarmupRevision]);
+  }, [llmServerEnabled, useLocalImproveRuntime, settings.llmModel, settings.llmContextSize, settings.llmPerformanceMode, localLlmModelAvailable, llmRuntime.runtimeAvailable, llmWarmupRevision]);
 
   useEffect(() => {
     if (!isWhisperLoading) {
@@ -615,11 +625,18 @@ export const App = (): JSX.Element => {
   };
 
   const startRecording = async (): Promise<void> => {
-    if (!audioServerEnabled) {
+    if (useLocalSpeechRuntime && !audioServerEnabled) {
       showOverlayWarning('speak', 'Audio server stopped.');
       return;
     }
-    if (!whisperRuntime.runtimeAvailable) {
+    if (!useLocalSpeechRuntime && !remoteSpeechReady) {
+      const message = 'Remote speech server settings missing.';
+      setMode('speak');
+      setSpeakResult(actionResult('speak', 'error', { message }));
+      showOverlayWarning('speak', message, 'error');
+      return;
+    }
+    if (!effectiveWhisperRuntime.runtimeAvailable) {
       setMode('speak');
       setSpeakResult(actionResult('speak', 'error', { message: actionMessages.whisperMissing }));
       showOverlayWarning('speak', actionMessages.whisperMissing, 'error');
@@ -766,6 +783,10 @@ export const App = (): JSX.Element => {
   };
 
   const setAudioServerRunning = async (enabled: boolean): Promise<void> => {
+    if (!settingsRef.current.useLocalSpeechRuntime) {
+      showToast('error', 'Local runtime is disabled.');
+      return;
+    }
     setAudioServerEnabled(enabled);
     await api.server.setEnabled('audio', enabled);
     if (!enabled) {
@@ -786,7 +807,7 @@ export const App = (): JSX.Element => {
       }
       return;
     }
-    if (!whisperRuntime.runtimeAvailable || !whisperModelAvailable || !settingsRef.current.whisperModel) {
+    if (!whisperRuntime.runtimeAvailable || !localWhisperModelAvailable || !settingsRef.current.whisperModel) {
       showToast('error', actionMessages.whisperModelMissing);
       return;
     }
@@ -807,6 +828,10 @@ export const App = (): JSX.Element => {
   };
 
   const setLlmServerRunning = async (enabled: boolean): Promise<void> => {
+    if (!settingsRef.current.useLocalImproveRuntime) {
+      showToast('error', 'Local runtime is disabled.');
+      return;
+    }
     setLlmServerEnabled(enabled);
     await api.server.setEnabled('llm', enabled);
     if (!enabled) {
@@ -827,11 +852,11 @@ export const App = (): JSX.Element => {
       }
       return;
     }
-    if (!llmRuntime.runtimeAvailable || !llmModelAvailable || !settingsRef.current.llmModel) {
+    if (!llmRuntime.runtimeAvailable || !localLlmModelAvailable || !settingsRef.current.llmModel) {
       showToast('error', actionMessages.llamaModelMissing);
       return;
     }
-    const warmupKey = llmWarmupKey(settingsRef.current.llmModel, settingsRef.current.llmContextSize);
+    const warmupKey = llmWarmupKey(settingsRef.current.llmModel, settingsRef.current.llmContextSize, settingsRef.current.llmPerformanceMode);
     const model = settingsRef.current.llmModel;
     setIsLlmLoading(true);
     llmWarmupModelRef.current = warmupKey;
@@ -853,8 +878,14 @@ export const App = (): JSX.Element => {
       return;
     }
     setMode('improve');
-    if (!llmServerEnabled) {
+    if (useLocalImproveRuntime && !llmServerEnabled) {
       showOverlayWarning('improve', 'LLM server stopped.');
+      return;
+    }
+    if (!useLocalImproveRuntime && !remoteImproveReady) {
+      const message = 'Remote improve server settings missing.';
+      setImproveResult(actionResult('improve', 'error', { message }));
+      showOverlayWarning('improve', message, 'error');
       return;
     }
     const blockMessage = actionBlockMessage('improve', audioLockState);
@@ -862,7 +893,7 @@ export const App = (): JSX.Element => {
       showOverlayWarning('improve', blockMessage);
       return;
     }
-    if (!llmRuntime.runtimeAvailable) {
+    if (!effectiveLlmRuntime.runtimeAvailable) {
       setImproveResult(actionResult('improve', 'error', { message: actionMessages.llamaMissing }));
       showOverlayWarning('improve', actionMessages.llamaMissing, 'error');
       return;
@@ -922,7 +953,7 @@ export const App = (): JSX.Element => {
   };
 
   const autoImproveBlockMessage = (): string | null => {
-    const serverMessage = serverBlockMessage('improve', audioServerEnabled, llmServerEnabled);
+    const serverMessage = serverBlockMessage('improve', useLocalSpeechRuntime, useLocalImproveRuntime, audioServerEnabled, llmServerEnabled);
     if (serverMessage) {
       return serverMessage;
     }
@@ -930,7 +961,10 @@ export const App = (): JSX.Element => {
     if (blockMessage) {
       return blockMessage;
     }
-    if (!llmRuntime.runtimeAvailable) {
+    if (!useLocalImproveRuntime && !remoteImproveReady) {
+      return 'Remote improve server settings missing.';
+    }
+    if (!effectiveLlmRuntime.runtimeAvailable) {
       return actionMessages.llamaMissing;
     }
     if (!llmModelAvailable) {
@@ -1170,12 +1204,20 @@ export const App = (): JSX.Element => {
   };
 
   const startTranscript = async (): Promise<void> => {
-    if (!audioServerEnabled) {
+    if (useLocalSpeechRuntime && !audioServerEnabled) {
       setMode('transcript');
       showOverlayWarning('transcript', 'Audio server stopped.');
       return;
     }
-    if (!whisperRuntime.runtimeAvailable) {
+    if (!useLocalSpeechRuntime && !remoteSpeechReady) {
+      const message = 'Remote speech server settings missing.';
+      setSection('home');
+      setMode('transcript');
+      setTranscriptResult(actionResult('transcript', 'error', { message }));
+      showOverlayWarning('transcript', message, 'error');
+      return;
+    }
+    if (!effectiveWhisperRuntime.runtimeAvailable) {
       setSection('home');
       setMode('transcript');
       setTranscriptResult(actionResult('transcript', 'error', { message: actionMessages.whisperMissing }));
@@ -1326,7 +1368,15 @@ export const App = (): JSX.Element => {
   };
 
   const importAudio = async (): Promise<void> => {
-    if (!whisperRuntime.runtimeAvailable) {
+    if (!useLocalSpeechRuntime && !remoteSpeechReady) {
+      const message = 'Remote speech server settings missing.';
+      setSection('home');
+      setMode('transcript');
+      setTranscriptResult(actionResult('transcript', 'error', { message }));
+      showOverlayWarning('transcript', message, 'error');
+      return;
+    }
+    if (!effectiveWhisperRuntime.runtimeAvailable) {
       setSection('home');
       setMode('transcript');
       setTranscriptResult(actionResult('transcript', 'error', { message: actionMessages.whisperMissing }));
@@ -1443,6 +1493,14 @@ export const App = (): JSX.Element => {
     const saved = settingsAreEqual(nextSettings, savedSettings);
     settingsRef.current = savedSettings;
     setSettings(savedSettings);
+    if (!savedSettings.useLocalSpeechRuntime) {
+      setAudioServerEnabled(false);
+      setIsWhisperLoading(false);
+    }
+    if (!savedSettings.useLocalImproveRuntime) {
+      setLlmServerEnabled(false);
+      setIsLlmLoading(false);
+    }
     if (!saved) {
       showToast('error', 'This shortcut cannot be used.');
       return;
@@ -1460,8 +1518,10 @@ export const App = (): JSX.Element => {
       return;
     }
     if (
-      savedSettings.llmModel !== previousSettings.llmModel ||
-      savedSettings.llmContextSize !== previousSettings.llmContextSize
+      savedSettings.useLocalImproveRuntime &&
+      (savedSettings.llmModel !== previousSettings.llmModel ||
+      savedSettings.llmContextSize !== previousSettings.llmContextSize ||
+      savedSettings.llmPerformanceMode !== previousSettings.llmPerformanceMode)
     ) {
       llmWarmupModelRef.current = null;
       setLlmWarmupRevision((current) => current + 1);
@@ -1732,7 +1792,7 @@ export const App = (): JSX.Element => {
         void stopRecording();
         return;
       }
-      const serverMessage = serverBlockMessage('speak', audioServerEnabled, llmServerEnabled);
+      const serverMessage = serverBlockMessage('speak', useLocalSpeechRuntime, useLocalImproveRuntime, audioServerEnabled, llmServerEnabled);
       if (serverMessage) {
         showOverlayWarning('speak', serverMessage);
         return;
@@ -1754,7 +1814,7 @@ export const App = (): JSX.Element => {
       if (isImproveProcessing) {
         return;
       }
-      const serverMessage = serverBlockMessage('improve', audioServerEnabled, llmServerEnabled);
+      const serverMessage = serverBlockMessage('improve', useLocalSpeechRuntime, useLocalImproveRuntime, audioServerEnabled, llmServerEnabled);
       if (serverMessage) {
         showOverlayWarning('improve', serverMessage);
         return;
@@ -1780,7 +1840,7 @@ export const App = (): JSX.Element => {
         void stopTranscript();
         return;
       }
-      const serverMessage = serverBlockMessage('transcript', audioServerEnabled, llmServerEnabled);
+      const serverMessage = serverBlockMessage('transcript', useLocalSpeechRuntime, useLocalImproveRuntime, audioServerEnabled, llmServerEnabled);
       if (serverMessage) {
         showOverlayWarning('transcript', serverMessage);
         return;
@@ -1814,6 +1874,8 @@ export const App = (): JSX.Element => {
     isSpeakProcessing,
     isTranscriptProcessing,
     isImproveProcessing,
+    useLocalSpeechRuntime,
+    useLocalImproveRuntime,
     audioServerEnabled,
     llmServerEnabled,
     isWhisperLoading,
@@ -1831,6 +1893,8 @@ export const App = (): JSX.Element => {
         llmServerEnabled={llmServerEnabled}
         audioServerBusy={isWhisperLoading}
         llmServerBusy={isLlmLoading}
+        useLocalSpeechRuntime={useLocalSpeechRuntime}
+        useLocalImproveRuntime={useLocalImproveRuntime}
         onOpenLogsFolder={() => void api.app.openLogsFolder()}
         onOpenSettings={() => {
           setSection('settings');
@@ -1875,8 +1939,8 @@ export const App = (): JSX.Element => {
         isRecording={mode === 'transcript' ? Boolean(transcriptRecorder) : Boolean(recorder)}
         actionBlockMessage={currentActionBlockMessage}
         settings={settings}
-        whisperRuntime={whisperRuntime}
-        llmRuntime={llmRuntime}
+        whisperRuntime={effectiveWhisperRuntime}
+        llmRuntime={effectiveLlmRuntime}
         runtimeInfoLoaded={runtimeInfoLoaded}
         whisperModelAvailable={whisperModelAvailable}
         llmModelAvailable={llmModelAvailable}
@@ -1944,10 +2008,20 @@ export const App = (): JSX.Element => {
 };
 
 const settingsAreEqual = (left: SettingsType, right: SettingsType): boolean =>
+  left.useLocalRuntime === right.useLocalRuntime &&
+  left.useLocalSpeechRuntime === right.useLocalSpeechRuntime &&
+  left.useLocalImproveRuntime === right.useLocalImproveRuntime &&
+  left.remoteSpeechBaseUrl === right.remoteSpeechBaseUrl &&
+  left.remoteSpeechApiKey === right.remoteSpeechApiKey &&
+  left.remoteSpeechModel === right.remoteSpeechModel &&
+  left.remoteImproveBaseUrl === right.remoteImproveBaseUrl &&
+  left.remoteImproveApiKey === right.remoteImproveApiKey &&
+  left.remoteImproveModel === right.remoteImproveModel &&
   left.llmModel === right.llmModel &&
   left.whisperModel === right.whisperModel &&
   left.whisperLanguage === right.whisperLanguage &&
   left.whisperQualityMode === right.whisperQualityMode &&
+  left.llmPerformanceMode === right.llmPerformanceMode &&
   left.llmContextSize === right.llmContextSize &&
   left.llmTemperature === right.llmTemperature &&
   left.correctionPrompt === right.correctionPrompt &&
@@ -1998,21 +2072,26 @@ const scheduleAfterFirstPaint = (callback: () => void): (() => void) => {
   };
 };
 
-const llmWarmupKey = (model: string, contextSize: SettingsType['llmContextSize']): string =>
-  `${model}:${contextSize}`;
+const llmWarmupKey = (
+  model: string,
+  contextSize: SettingsType['llmContextSize'],
+  performanceMode: SettingsType['llmPerformanceMode'],
+): string => `${model}:${contextSize}:${performanceMode}`;
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : 'Operation failed.';
 
 const serverBlockMessage = (
   mode: HomeMode,
+  useLocalSpeechRuntime: boolean,
+  useLocalImproveRuntime: boolean,
   audioServerEnabled: boolean,
   llmServerEnabled: boolean,
 ): string | null => {
-  if ((mode === 'speak' || mode === 'transcript') && !audioServerEnabled) {
+  if ((mode === 'speak' || mode === 'transcript') && useLocalSpeechRuntime && !audioServerEnabled) {
     return 'Audio server stopped.';
   }
-  if (mode === 'improve' && !llmServerEnabled) {
+  if (mode === 'improve' && useLocalImproveRuntime && !llmServerEnabled) {
     return 'LLM server stopped.';
   }
   return null;

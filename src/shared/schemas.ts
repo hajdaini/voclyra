@@ -7,10 +7,20 @@ export const hotkeysSchema = z.object({
 });
 
 export const settingsSchema = z.object({
+  useLocalRuntime: z.boolean().default(true),
+  useLocalSpeechRuntime: z.boolean().default(true),
+  useLocalImproveRuntime: z.boolean().default(true),
+  remoteSpeechBaseUrl: z.string().trim().max(2048).default(''),
+  remoteSpeechApiKey: z.string().max(2048).default(''),
+  remoteSpeechModel: z.string().trim().max(260).default(''),
+  remoteImproveBaseUrl: z.string().trim().max(2048).default(''),
+  remoteImproveApiKey: z.string().max(2048).default(''),
+  remoteImproveModel: z.string().trim().max(260).default(''),
   llmModel: z.string().max(260),
   whisperModel: z.string().max(260),
   whisperLanguage: z.enum(['auto', 'fr', 'en', 'es', 'de', 'it', 'pt']),
   whisperQualityMode: z.enum(['fast', 'balanced', 'accurate']),
+  llmPerformanceMode: z.enum(['balanced', 'fast']).default('balanced'),
   llmContextSize: z.union([
     z.literal(512),
     z.literal(1024),

@@ -85,6 +85,34 @@
   background: var(--hover-bg);
 }
 
+.settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 0 12px;
+}
+
+.settings-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #1b1b1b;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.settings-tabs button:hover,
+.settings-tabs button.active {
+  border-color: var(--hover-border);
+  background: #2d2d30;
+  color: var(--text);
+}
+
 .settings-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -167,10 +195,79 @@
   accent-color: var(--primary);
 }
 
+.settings-checkbox:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .settings-checkbox > span {
   color: var(--text);
   font-size: 14px;
   font-weight: 400;
+}
+
+.remote-runtime-panel {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #1b1b1b;
+}
+
+.remote-runtime-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.remote-runtime-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.remote-runtime-card h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.remote-runtime-card label {
+  margin-bottom: 0;
+}
+
+.remote-runtime-card button {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #2d2d30;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.remote-runtime-card button:hover:not(:disabled) {
+  border-color: var(--hover-border);
+  background: var(--hover-bg);
+}
+
+.remote-test-status {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.remote-test-status.success {
+  color: #8bdc9c;
+}
+
+.remote-test-status.error {
+  color: var(--danger);
 }
 
 .compact-number-field {

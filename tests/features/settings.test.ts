@@ -79,7 +79,10 @@ vi.mock('@services/hotkey-service', () => ({
 vi.mock('@services/active-paste-service', () => ({ ActivePasteService: class {} }));
 vi.mock('@services/history-service', () => ({ HistoryService: class {} }));
 vi.mock('@services/hardware-service', () => ({ HardwareService: class {} }));
-vi.mock('@services/llama-service', () => ({ LlamaService: class {} }));
+vi.mock('@services/llama-service', () => ({
+  LlamaService: class {},
+  correctionPromptText: (prompt: string, text: string) => `${prompt}\n${text}`,
+}));
 vi.mock('@services/llm-model-service', () => ({ LlmModelService: class {} }));
 vi.mock('@services/transcript-service', () => ({ TranscriptService: class {} }));
 vi.mock('@services/whisper-model-service', () => ({ WhisperModelService: class {} }));
@@ -124,10 +127,14 @@ describe('Settings', () => {
     for (const llmContextSize of [512, 1024, 2048, 3072, 4096, 6144, 8192, 12288, 16384, 32768]) {
       expect(settingsSchema.safeParse({ ...defaultSettings, llmContextSize }).success).toBe(true);
     }
+    for (const llmPerformanceMode of ['balanced', 'fast']) {
+      expect(settingsSchema.safeParse({ ...defaultSettings, llmPerformanceMode }).success).toBe(true);
+    }
     for (const transcriptLiveChunkSeconds of [30, 60, 120, 300]) {
       expect(settingsSchema.safeParse({ ...defaultSettings, transcriptLiveChunkSeconds }).success).toBe(true);
     }
     expect(settingsSchema.safeParse({ ...defaultSettings, whisperLanguage: 'jp' }).success).toBe(false);
+    expect(settingsSchema.safeParse({ ...defaultSettings, llmPerformanceMode: 'turbo' }).success).toBe(false);
     expect(settingsSchema.safeParse({ ...defaultSettings, llmContextSize: 9999 }).success).toBe(false);
     expect(settingsSchema.safeParse({ ...defaultSettings, transcriptLiveChunkSeconds: 29 }).success).toBe(false);
     expect(settingsSchema.safeParse({ ...defaultSettings, transcriptLiveChunkSeconds: 301 }).success).toBe(false);
@@ -135,6 +142,28 @@ describe('Settings', () => {
     expect(settingsSchema.safeParse({ ...defaultSettings, maxHistoryItems: 10001 }).success).toBe(false);
     expect(settingsSchema.safeParse({ ...defaultSettings, hotkeys: { ...defaultSettings.hotkeys, speak: '' } }).success).toBe(false);
     expect(settingsSchema.parse({ ...defaultSettings, improveAfterSpeak: true }).improveAfterSpeak).toBe(true);
+    expect(settingsSchema.parse({
+      ...defaultSettings,
+      useLocalRuntime: false,
+      useLocalSpeechRuntime: false,
+      useLocalImproveRuntime: false,
+      remoteSpeechBaseUrl: ' https://speech.example/v1 ',
+      remoteSpeechApiKey: 'speech-key',
+      remoteSpeechModel: 'whisper-large-v3',
+      remoteImproveBaseUrl: ' https://improve.example/v1 ',
+      remoteImproveApiKey: 'improve-key',
+      remoteImproveModel: 'gpt-oss',
+    })).toMatchObject({
+      useLocalRuntime: false,
+      useLocalSpeechRuntime: false,
+      useLocalImproveRuntime: false,
+      remoteSpeechBaseUrl: 'https://speech.example/v1',
+      remoteSpeechApiKey: 'speech-key',
+      remoteSpeechModel: 'whisper-large-v3',
+      remoteImproveBaseUrl: 'https://improve.example/v1',
+      remoteImproveApiKey: 'improve-key',
+      remoteImproveModel: 'gpt-oss',
+    });
   });
 
   it('stores settings safely', async () => {
@@ -163,6 +192,19 @@ describe('Settings', () => {
     const partialSettings = await service.get();
     expect(partialSettings).toEqual(defaultSettings);
     expect(writeJson).toHaveBeenCalledWith('settings.json', withoutStartup(defaultSettings));
+
+    const {
+      useLocalSpeechRuntime: _useLocalSpeechRuntime,
+      useLocalImproveRuntime: _useLocalImproveRuntime,
+      ...legacyRemoteSettings
+    } = withoutStartup({ ...defaultSettings, useLocalRuntime: false });
+    store['settings.json'] = legacyRemoteSettings;
+    const migratedRemoteSettings = await service.get();
+    expect(migratedRemoteSettings).toMatchObject({
+      useLocalRuntime: false,
+      useLocalSpeechRuntime: false,
+      useLocalImproveRuntime: false,
+    });
 
     const savedSettings = { ...defaultSettings, pasteAfterDictation: true, improveAfterSpeak: true };
     await expect(service.save(savedSettings)).resolves.toEqual(savedSettings);
@@ -241,6 +283,7 @@ describe('Settings', () => {
       llmModel: 'model.gguf',
       whisperModel: 'ggml-large-v3.bin',
       llmContextSize: 8192 as const,
+      llmPerformanceMode: 'fast' as const,
       llmTemperature: 0.2,
       whisperLanguage: 'fr' as const,
       whisperQualityMode: 'accurate' as const,

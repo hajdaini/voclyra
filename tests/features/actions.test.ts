@@ -227,6 +227,7 @@ const setup = async (): Promise<void> => {
   files.clear();
   vi.clearAllMocks();
   settingsMock.get.mockResolvedValue({
+    ...defaultSettings,
     llmModel: 'model.gguf',
     whisperModel: 'ggml-large-v3.bin',
     whisperLanguage: 'auto',

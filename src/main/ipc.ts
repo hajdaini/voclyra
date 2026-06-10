@@ -22,6 +22,7 @@ import { TranscriptService } from '@services/transcript-service';
 import { WhisperModelService } from '@services/whisper-model-service';
 import { WhisperService } from '@services/whisper-service';
 import { ProcessLogService } from '@services/process-log-service';
+import { RemoteOpenAiService } from '@services/remote-openai-service';
 import { HotkeyService } from '@services/hotkey-service';
 import { StartupService } from '@services/startup-service';
 import { AppStorage } from '@storage/app-storage';
@@ -56,6 +57,7 @@ const whisperModelService = new WhisperModelService();
 const whisperService = new WhisperService();
 const transcriptService = new TranscriptService(whisperService, historyService);
 const transcriptLogService = new ProcessLogService();
+const remoteOpenAiService = new RemoteOpenAiService();
 const hotkeyService = new HotkeyService();
 const startupService = new StartupService();
 let improveShortcutRunning = false;
@@ -65,6 +67,9 @@ const progressUpdateState = new Map<HomeMode, { at: number; key: string }>();
 const helpUrl = 'https://github.com/hajdaini/voclyra#readme';
 
 export const setServerEnabled = (server: LocalServerName, enabled: boolean, notifyRenderer = true): void => {
+  if (enabled && ((server === 'audio' && !settings.useLocalSpeechRuntime) || (server === 'llm' && !settings.useLocalImproveRuntime))) {
+    return;
+  }
   serverEnabledState[server] = enabled;
   if (!enabled && server === 'audio') {
     whisperService.stopServer();
@@ -147,7 +152,8 @@ const showProcessingProgress = (
 };
 
 export const improveClipboardFromHotkey = async (): Promise<void> => {
-  if (!serverEnabledState.llm) {
+  settings = await settingsService.get();
+  if (settings.useLocalImproveRuntime && !serverEnabledState.llm) {
     showImproveBlocked('LLM server stopped.');
     return;
   }
@@ -157,7 +163,6 @@ export const improveClipboardFromHotkey = async (): Promise<void> => {
   }
   improveShortcutRunning = true;
   try {
-    settings = await settingsService.get();
     const text = settings.improveSelectedText
       ? await readActiveSelection()
       : clipboard.readText();
@@ -168,11 +173,13 @@ export const improveClipboardFromHotkey = async (): Promise<void> => {
     showImproveProcessing();
     const startedAt = performance.now();
     showProcessingProgress('improve', { phase: 'thinking' });
-    const improved = await llamaService.improveText(
-      llmModelService.modelPath(settings.llmModel),
-      settings.correctionPrompt,
-      text,
-    );
+    const improved = settings.useLocalImproveRuntime
+      ? await llamaService.improveText(
+        llmModelService.modelPath(settings.llmModel),
+        settings.correctionPrompt,
+        text,
+      )
+      : await remoteOpenAiService.improveText(settings, text);
     const durationMs = elapsedMs(startedAt);
     if (!improved.text.trim()) {
       sendImproveResult(failed(new Error('Local AI returned an empty response.')));
@@ -185,7 +192,7 @@ export const improveClipboardFromHotkey = async (): Promise<void> => {
     await historyService.add({ kind: 'improvement', text: improved.text }, settings.maxHistoryItems);
     sendImproveResult(ready(improved.text, appMessages.copiedToClipboard, durationMs, {
       tokensGenerated: improved.tokensGenerated,
-      tokensPerSecond: improved.tokensPerSecond,
+      tokensPerSecond: tokensPerSecond(improved),
     }));
   } catch (error) {
     sendImproveResult(failed(error));
@@ -216,6 +223,12 @@ export const registerIpc = (): void => {
     }
     const savedSettings = await settingsService.save(nextSettings);
     settings = savedSettings;
+    if (!savedSettings.useLocalSpeechRuntime) {
+      setServerEnabled('audio', false);
+    }
+    if (!savedSettings.useLocalImproveRuntime) {
+      setServerEnabled('llm', false);
+    }
     await startupService.apply(savedSettings.startAtStartup);
     updateTray(savedSettings);
     return savedSettings;
@@ -314,7 +327,20 @@ export const registerIpc = (): void => {
 
   ipcMain.handle(channels.serverSetEnabled, (_event, value: unknown) => {
     const nextState = serverEnabledSchema.parse(value);
+    if (nextState.enabled && ((nextState.server === 'audio' && !settings.useLocalSpeechRuntime) || (nextState.server === 'llm' && !settings.useLocalImproveRuntime))) {
+      throw new Error('Local runtime is disabled.');
+    }
     setServerEnabled(nextState.server, nextState.enabled, false);
+  });
+
+  ipcMain.handle(channels.remoteTestSpeech, async () => {
+    settings = await settingsService.get();
+    await remoteOpenAiService.testSpeech(settings);
+  });
+
+  ipcMain.handle(channels.remoteTestImprove, async () => {
+    settings = await settingsService.get();
+    await remoteOpenAiService.testImprove(settings);
   });
 
   ipcMain.handle(channels.hardwareInfo, () => hardwareService.info());
@@ -361,22 +387,15 @@ export const registerIpc = (): void => {
     if (!audio || audio.byteLength === 0) {
       return ready('', 'No audio captured.');
     }
-    const whisperModels = await whisperModelService.downloadedModelNames();
-    const whisperModel = whisperModels.includes(settings.whisperModel)
-      ? settings.whisperModel
-      : whisperModels[0];
-    if (!whisperModel) {
+    if (settings.useLocalSpeechRuntime && !(await selectedWhisperModel())) {
       return ready('', 'Select a Whisper model first.');
     }
     try {
       const startedAt = performance.now();
       const audioDurationMs = wavDurationMs(audio);
-      const text = singleLineText(await whisperService.transcribe(audio, whisperModel, {
-        debugName: 'speak',
-        onProgress: (progress) => {
-          showProcessingProgress('speak', { phase: 'transcribing', progress });
-        },
-      }));
+      const text = singleLineText(settings.useLocalSpeechRuntime
+        ? await transcribeSpeakLocal(audio)
+        : await remoteOpenAiService.transcribe(audio, settings));
       const durationMs = elapsedMs(startedAt);
       if (!text.trim()) {
         return ready('', 'No speech detected.', durationMs, { audioDurationMs });
@@ -471,29 +490,19 @@ export const registerIpc = (): void => {
     if (audio.byteLength === 0) {
       return ready('', 'No audio captured.');
     }
-    const progressive = input.progressive;
-    const whisperModels = await whisperModelService.downloadedModelNames();
-    const whisperModel = whisperModels.includes(settings.whisperModel)
-      ? settings.whisperModel
-      : whisperModels[0];
-    if (!whisperModel) {
+    if (settings.useLocalSpeechRuntime && !(await selectedWhisperModel())) {
       return ready('', 'Select a Whisper model first.');
     }
+    const progressive = input.progressive;
     try {
       await resetTranscriptLog('full transcript', settings);
       const startedAt = performance.now();
       const audioDurationMs = wavDurationMs(audio);
-      const text = await whisperService.transcribeMeeting(audio, whisperModel, {
-        timeoutMs: null,
-        debugName: 'transcript',
-        progressive,
-        onProgress: (progress, label) => {
-          showProcessingProgress('transcript', { phase: 'transcribing', progress, progressLabel: label });
-        },
-        onPartial: (partialText) => {
+      const text = settings.useLocalSpeechRuntime
+        ? await transcribeMeetingLocal(audio, progressive, (partialText) => {
           event.sender.send(channels.transcriptPartial, partialText);
-        },
-      });
+        })
+        : await remoteOpenAiService.transcribe(audio, settings);
       const durationMs = elapsedMs(startedAt);
       if (!text.trim()) {
         return ready('', 'No speech detected.', durationMs, { audioDurationMs });
@@ -510,10 +519,10 @@ export const registerIpc = (): void => {
     if (!audio || audio.byteLength === 0) {
       return '';
     }
-    const whisperModels = await whisperModelService.downloadedModelNames();
-    const whisperModel = whisperModels.includes(settings.whisperModel)
-      ? settings.whisperModel
-      : whisperModels[0];
+    if (!settings.useLocalSpeechRuntime) {
+      return remoteOpenAiService.transcribe(audio, settings);
+    }
+    const whisperModel = await selectedWhisperModel();
     if (!whisperModel) {
       return '';
     }
@@ -598,7 +607,8 @@ export const registerIpc = (): void => {
     if (!audio.byteLength || !text) {
       return ready('', 'No speech detected.');
     }
-    await appendTranscriptLog([
+    if (settings.useLocalSpeechRuntime) {
+      await appendTranscriptLog([
       '',
       '[FINAL]',
       `audio bytes: ${audio.byteLength}`,
@@ -606,7 +616,8 @@ export const registerIpc = (): void => {
       `text chars: ${text.length}`,
       '[FINAL TEXT]',
       text || 'empty',
-    ]);
+      ]);
+    }
     await historyService.add({ kind: 'transcript', text, audio }, settings.maxHistoryItems);
     return ready(text, 'Transcript generated.', undefined, { audioDurationMs: wavDurationMs(audio) });
   });
@@ -625,11 +636,13 @@ export const registerIpc = (): void => {
     try {
       const startedAt = performance.now();
       showProcessingProgress('improve', { phase: 'thinking' });
-      const improved = await llamaService.improveText(
-        llmModelService.modelPath(settings.llmModel),
-        settings.correctionPrompt,
-        text,
-      );
+      const improved = settings.useLocalImproveRuntime
+        ? await llamaService.improveText(
+          llmModelService.modelPath(settings.llmModel),
+          settings.correctionPrompt,
+          text,
+        )
+        : await remoteOpenAiService.improveText(settings, text);
       const durationMs = elapsedMs(startedAt);
       if (!improved.text.trim()) {
         return failed(new Error('Local AI returned an empty response.'));
@@ -641,7 +654,7 @@ export const registerIpc = (): void => {
       await historyService.add({ kind: 'improvement', text: improved.text }, settings.maxHistoryItems);
       return ready(improved.text, appMessages.copiedToClipboard, durationMs, {
         tokensGenerated: improved.tokensGenerated,
-        tokensPerSecond: improved.tokensPerSecond,
+        tokensPerSecond: tokensPerSecond(improved),
       });
     } catch (error) {
       return failed(error);
@@ -809,6 +822,46 @@ const failed = (error: unknown): ResultState => ({
   message: error instanceof Error ? error.message : 'Operation failed.',
 });
 
+const selectedWhisperModel = async (): Promise<string> => {
+  const whisperModels = await whisperModelService.downloadedModelNames();
+  return whisperModels.includes(settings.whisperModel)
+    ? settings.whisperModel
+    : whisperModels[0] ?? '';
+};
+
+const transcribeSpeakLocal = async (audio: Uint8Array): Promise<string> => {
+  const whisperModel = await selectedWhisperModel();
+  if (!whisperModel) {
+    throw new Error('Select a Whisper model first.');
+  }
+  return whisperService.transcribe(audio, whisperModel, {
+    debugName: 'speak',
+    onProgress: (progress) => {
+      showProcessingProgress('speak', { phase: 'transcribing', progress });
+    },
+  });
+};
+
+const transcribeMeetingLocal = async (
+  audio: Uint8Array,
+  progressive: boolean,
+  onPartial: (text: string) => void,
+): Promise<string> => {
+  const whisperModel = await selectedWhisperModel();
+  if (!whisperModel) {
+    throw new Error('Select a Whisper model first.');
+  }
+  return whisperService.transcribeMeeting(audio, whisperModel, {
+    timeoutMs: null,
+    debugName: 'transcript',
+    progressive,
+    onProgress: (progress, label) => {
+      showProcessingProgress('transcript', { phase: 'transcribing', progress, progressLabel: label });
+    },
+    onPartial,
+  });
+};
+
 const singleLineText = (text: string): string => text.replace(/\s*\r?\n+\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
 
 const transcriptInput = (value: unknown): { audio: ArrayBuffer; progressive: boolean } | null => {
@@ -847,6 +900,13 @@ const elapsedMs = (startedAt: number): number => Math.max(0, Math.round(performa
 const quoteArgs = (args: string[]): string => args.map((part) => `"${part}"`).join(' ');
 
 const yesNo = (value: boolean): string => (value ? 'yes' : 'no');
+
+const tokensPerSecond = (value: unknown): number | undefined => {
+  if (!value || typeof value !== 'object' || !('tokensPerSecond' in value)) {
+    return undefined;
+  }
+  return typeof value.tokensPerSecond === 'number' ? value.tokensPerSecond : undefined;
+};
 
 const resetTranscriptLog = async (reason: string, currentSettings: Settings): Promise<void> => {
   transcriptLogSessionId = randomUUID();

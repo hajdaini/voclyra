@@ -82,11 +82,11 @@ void app.whenReady().then(async () => {
       improveText: () => void improveClipboardFromHotkey(),
       transcript: () => sendBackgroundAppAction('transcript'),
     });
-    setServerEnabled('audio', runtimeSettings.startAudioServerOnLaunch, false);
-    setServerEnabled('llm', runtimeSettings.startLlmServerOnLaunch, false);
+    setServerEnabled('audio', runtimeSettings.useLocalSpeechRuntime && runtimeSettings.startAudioServerOnLaunch, false);
+    setServerEnabled('llm', runtimeSettings.useLocalImproveRuntime && runtimeSettings.startLlmServerOnLaunch, false);
     createTray(runtimeSettings, {
-      audioEnabled: runtimeSettings.startAudioServerOnLaunch,
-      llmEnabled: runtimeSettings.startLlmServerOnLaunch,
+      audioEnabled: runtimeSettings.useLocalSpeechRuntime && runtimeSettings.startAudioServerOnLaunch,
+      llmEnabled: runtimeSettings.useLocalImproveRuntime && runtimeSettings.startLlmServerOnLaunch,
       onAudioServerChange: (enabled) => setServerEnabled('audio', enabled),
       onLlmServerChange: (enabled) => setServerEnabled('llm', enabled),
     });

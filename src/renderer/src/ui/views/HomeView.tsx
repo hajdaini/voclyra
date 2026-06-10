@@ -30,6 +30,8 @@ export type HomeViewProps = {
   improveInput: string;
   isRecording: boolean;
   actionBlockMessage: string | null;
+  useLocalSpeechRuntime: boolean;
+  useLocalImproveRuntime: boolean;
   whisperModel: string;
   llmModel: string;
   hotkeys: Hotkeys;
@@ -73,6 +75,8 @@ export const HomeView = ({
   improveInput,
   isRecording,
   actionBlockMessage,
+  useLocalSpeechRuntime,
+  useLocalImproveRuntime,
   whisperModel,
   llmModel,
   hotkeys,
@@ -134,6 +138,8 @@ export const HomeView = ({
   );
   const runtimeLabel = !runtimeInfoLoaded
     ? 'Runtime loading'
+    : (mode === 'improve' ? !useLocalImproveRuntime : !useLocalSpeechRuntime)
+    ? 'Remote server'
     : activeRuntimeAvailable
     ? hardwareInfo.gpuAvailable
       ? 'GPU ready'
@@ -141,6 +147,10 @@ export const HomeView = ({
     : 'Runtime missing';
   const runtimeTone = !runtimeInfoLoaded
     ? 'info'
+    : (mode === 'improve' ? !useLocalImproveRuntime : !useLocalSpeechRuntime)
+    ? activeRuntimeAvailable
+      ? 'success'
+      : 'warning'
     : activeRuntimeAvailable
     ? hardwareInfo.gpuAvailable
       ? 'success'
@@ -162,14 +172,14 @@ export const HomeView = ({
               label="Audio server"
               checked={audioServerEnabled}
               busy={audioServerBusy}
-              disabled={!audioServerEnabled && (!whisperRuntime.runtimeAvailable || !whisperModelAvailable)}
+              disabled={!useLocalSpeechRuntime || (!audioServerEnabled && (!whisperRuntime.runtimeAvailable || !whisperModelAvailable))}
               onChange={onAudioServerChange}
             />
             <ServerSwitch
               label="LLM server"
               checked={llmServerEnabled}
               busy={llmServerBusy}
-              disabled={!llmServerEnabled && (!llmRuntime.runtimeAvailable || !llmModelAvailable)}
+              disabled={!useLocalImproveRuntime || (!llmServerEnabled && (!llmRuntime.runtimeAvailable || !llmModelAvailable))}
               onChange={onLlmServerChange}
             />
             <button
