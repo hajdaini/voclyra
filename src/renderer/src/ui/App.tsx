@@ -783,9 +783,15 @@ export const App = (): JSX.Element => {
   };
 
   const setAudioServerRunning = async (enabled: boolean): Promise<void> => {
-    if (!settingsRef.current.useLocalSpeechRuntime) {
-      showToast('error', 'Local runtime is disabled.');
-      return;
+    if (enabled && !settingsRef.current.useLocalSpeechRuntime) {
+      const nextSettings = {
+        ...settingsRef.current,
+        useLocalRuntime: settingsRef.current.useLocalImproveRuntime,
+        useLocalSpeechRuntime: true,
+      };
+      const savedSettings = await api.settings.save(nextSettings);
+      settingsRef.current = savedSettings;
+      setSettings(savedSettings);
     }
     setAudioServerEnabled(enabled);
     await api.server.setEnabled('audio', enabled);
@@ -828,9 +834,15 @@ export const App = (): JSX.Element => {
   };
 
   const setLlmServerRunning = async (enabled: boolean): Promise<void> => {
-    if (!settingsRef.current.useLocalImproveRuntime) {
-      showToast('error', 'Local runtime is disabled.');
-      return;
+    if (enabled && !settingsRef.current.useLocalImproveRuntime) {
+      const nextSettings = {
+        ...settingsRef.current,
+        useLocalRuntime: settingsRef.current.useLocalSpeechRuntime,
+        useLocalImproveRuntime: true,
+      };
+      const savedSettings = await api.settings.save(nextSettings);
+      settingsRef.current = savedSettings;
+      setSettings(savedSettings);
     }
     setLlmServerEnabled(enabled);
     await api.server.setEnabled('llm', enabled);

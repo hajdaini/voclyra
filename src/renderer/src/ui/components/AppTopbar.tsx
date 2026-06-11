@@ -164,10 +164,10 @@ export const AppTopbar = ({
                 </button>
               )}
               <hr />
-              <button type="button" disabled={!useLocalSpeechRuntime || audioServerBusy} onClick={() => runAction(() => onAudioServerChange(!audioServerEnabled))}>
+              <button type="button" disabled={audioServerBusy} onClick={() => runAction(() => onAudioServerChange(!audioServerEnabled))}>
                 <span>{audioServerEnabled ? 'Stop audio server' : 'Start audio server'}</span>
               </button>
-              <button type="button" disabled={!useLocalImproveRuntime || llmServerBusy} onClick={() => runAction(() => onLlmServerChange(!llmServerEnabled))}>
+              <button type="button" disabled={llmServerBusy} onClick={() => runAction(() => onLlmServerChange(!llmServerEnabled))}>
                 <span>{llmServerEnabled ? 'Stop LLM server' : 'Start LLM server'}</span>
               </button>
             </div>

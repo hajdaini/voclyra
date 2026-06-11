@@ -172,14 +172,14 @@ export const HomeView = ({
               label="Audio server"
               checked={audioServerEnabled}
               busy={audioServerBusy}
-              disabled={!useLocalSpeechRuntime || (!audioServerEnabled && (!whisperRuntime.runtimeAvailable || !whisperModelAvailable))}
+              disabled={audioServerBusy}
               onChange={onAudioServerChange}
             />
             <ServerSwitch
               label="LLM server"
               checked={llmServerEnabled}
               busy={llmServerBusy}
-              disabled={!useLocalImproveRuntime || (!llmServerEnabled && (!llmRuntime.runtimeAvailable || !llmModelAvailable))}
+              disabled={llmServerBusy}
               onChange={onLlmServerChange}
             />
             <button
