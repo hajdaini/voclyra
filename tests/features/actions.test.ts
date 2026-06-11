@@ -235,7 +235,7 @@ const setup = async (): Promise<void> => {
     llmContextSize: 4096,
     llmTemperature: 0.1,
     correctionPrompt: 'Correct text.',
-    pasteAfterDictation: false,
+    pasteAfterSpeak: false,
     pasteAfterImprovement: false,
     improveAfterSpeak: false,
     improveSelectedText: false,
@@ -284,13 +284,13 @@ describe('App actions', () => {
   it('runs Speak and saves history', async () => {
     whisperMock.transcribe.mockResolvedValueOnce('Hello\nworld.');
 
-    const result = await handlers.get(channels.dictationStart)?.({}, wavBuffer());
+    const result = await handlers.get(channels.speakStart)?.({}, wavBuffer());
 
     expect(result).toMatchObject({ status: 'ready', text: 'Hello world.', message: 'Copied to clipboard' });
     expect(whisperMock.transcribe).toHaveBeenCalledWith(expect.any(Uint8Array), 'ggml-large-v3.bin', expect.objectContaining({ debugName: 'speak' }));
     expect(clipboardState.text).toBe('Hello world.');
     expect(historyMock.add).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'dictation', text: 'Hello world.', audio: expect.any(Uint8Array) }),
+      expect.objectContaining({ kind: 'speak', text: 'Hello world.', audio: expect.any(Uint8Array) }),
       100,
     );
   });
@@ -298,19 +298,19 @@ describe('App actions', () => {
   it('handles Speak guard cases', async () => {
     whisperMock.transcribe.mockResolvedValueOnce('   ');
 
-    const noSpeech = await handlers.get(channels.dictationStart)?.({}, wavBuffer());
+    const noSpeech = await handlers.get(channels.speakStart)?.({}, wavBuffer());
 
     expect(noSpeech).toMatchObject({ status: 'ready', text: '', message: 'No speech detected.' });
     expect(historyMock.add).not.toHaveBeenCalled();
 
     vi.clearAllMocks();
-    const noAudio = await handlers.get(channels.dictationStart)?.({}, new ArrayBuffer(0));
+    const noAudio = await handlers.get(channels.speakStart)?.({}, new ArrayBuffer(0));
     expect(noAudio).toMatchObject({ status: 'ready', text: '', message: 'No audio captured.' });
     expect(historyMock.add).not.toHaveBeenCalled();
 
     vi.clearAllMocks();
     whisperModelMock.downloadedModelNames.mockResolvedValueOnce([]);
-    const noModel = await handlers.get(channels.dictationStart)?.({}, wavBuffer());
+    const noModel = await handlers.get(channels.speakStart)?.({}, wavBuffer());
     expect(noModel).toMatchObject({ status: 'ready', text: '', message: 'Select a Whisper model first.' });
     expect(whisperMock.transcribe).not.toHaveBeenCalled();
   });
@@ -318,7 +318,7 @@ describe('App actions', () => {
   it('handles Speak errors', async () => {
     whisperMock.transcribe.mockRejectedValueOnce(new Error('Whisper failed.'));
 
-    await expect(handlers.get(channels.dictationStart)?.({}, wavBuffer())).resolves.toMatchObject({
+    await expect(handlers.get(channels.speakStart)?.({}, wavBuffer())).resolves.toMatchObject({
       status: 'error',
       message: 'Whisper failed.',
     });

@@ -18,7 +18,7 @@ export const defaultSettings: Settings = {
   llmContextSize: 4096,
   llmTemperature: 0.1,
 correctionPrompt: [
-  'Role: correct and reformat dictated text into clear, natural text.',
+  'Role: correct and reformat spoken text into clear, natural text.',
   '',
   'Rules:',
   'Fix typos, grammar, punctuation, spacing, paragraphing, and badly worded sentences.',
@@ -34,7 +34,7 @@ correctionPrompt: [
   'Do not add Markdown or formatting that is not already in the input.',
   'Preserve existing Markdown and code formatting when present.',
 ].join('\n'),
-  pasteAfterDictation: false,
+  pasteAfterSpeak: false,
   pasteAfterImprovement: false,
   improveAfterSpeak: false,
   improveSelectedText: false,

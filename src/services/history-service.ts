@@ -109,7 +109,7 @@ export class HistoryService {
   }
 
   private audioFileName(kind: HistoryEntry['kind'], id: string): string | undefined {
-    if (kind === 'dictation') {
+    if (kind === 'speak') {
       return `speak/${id}.wav`;
     }
     if (kind === 'transcript') {

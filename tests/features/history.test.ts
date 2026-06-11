@@ -105,7 +105,7 @@ vi.mock('@main/tray', () => ({ updateTray: vi.fn() }));
 
 const entry = (partial: Partial<HistoryEntry>): HistoryEntry => ({
   id: '1',
-  kind: 'dictation',
+  kind: 'speak',
   title: 'One',
   text: 'Text',
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -156,11 +156,11 @@ describe('History', () => {
     const { HistoryService } = await import('@services/history-service');
     const service = new HistoryService();
 
-    const speak = await service.add({ kind: 'dictation', text: 'Hello world', audio: new Uint8Array([1, 2]) }, 100);
+    const speak = await service.add({ kind: 'speak', text: 'Hello world', audio: new Uint8Array([1, 2]) }, 100);
     const transcript = await service.add({ kind: 'transcript', text: 'Meeting note', audio: new Uint8Array([1, 2]) }, 100);
     const improve = await service.add({ kind: 'improvement', text: 'Better text', audio: new Uint8Array([1, 2]) }, 100);
 
-    expect(speak).toMatchObject({ kind: 'dictation', title: 'Hello world', audioFileName: expect.stringMatching(/^speak\/.+\.wav$/), audioByteLength: 2 });
+    expect(speak).toMatchObject({ kind: 'speak', title: 'Hello world', audioFileName: expect.stringMatching(/^speak\/.+\.wav$/), audioByteLength: 2 });
     expect(transcript).toMatchObject({ kind: 'transcript', audioFileName: expect.stringMatching(/^transcript\/.+\.wav$/), audioByteLength: 2 });
     expect(improve.audioFileName).toBeUndefined();
     expect(improve.audioByteLength).toBeUndefined();

@@ -206,7 +206,7 @@ export const HomeView = ({
               <span className="action-title-row">
                 <strong>Speak</strong>
               </span>
-              <span className="action-description">Dictate. Paste. Move on.</span>
+              <span className="action-description">Speak. Paste. Move on.</span>
               <small className="action-badge model-badge" title={whisperModel || 'No model'}>
                 <Bot size={12} />
                 <span>{whisperModel || 'No model'}</span>

@@ -40,7 +40,7 @@ export type Settings = {
   llmContextSize: LlmContextSize;
   llmTemperature: number;
   correctionPrompt: string;
-  pasteAfterDictation: boolean;
+  pasteAfterSpeak: boolean;
   pasteAfterImprovement: boolean;
   improveAfterSpeak: boolean;
   improveSelectedText: boolean;
@@ -57,7 +57,7 @@ export type Settings = {
   hotkeys: Hotkeys;
 };
 
-export type HistoryKind = 'dictation' | 'improvement' | 'transcript';
+export type HistoryKind = 'speak' | 'improvement' | 'transcript';
 
 export type HistoryEntry = {
   id: string;
@@ -187,7 +187,7 @@ export type AppApi = {
     listLlm: () => Promise<string[]>;
     listWhisper: () => Promise<string[]>;
   };
-  dictation: {
+  speak: {
     start: (audio: ArrayBuffer) => Promise<ResultState>;
     stop: () => Promise<ResultState>;
   };

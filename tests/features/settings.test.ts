@@ -206,7 +206,7 @@ describe('Settings', () => {
       useLocalImproveRuntime: false,
     });
 
-    const savedSettings = { ...defaultSettings, pasteAfterDictation: true, improveAfterSpeak: true };
+    const savedSettings = { ...defaultSettings, pasteAfterSpeak: true, improveAfterSpeak: true };
     await expect(service.save(savedSettings)).resolves.toEqual(savedSettings);
     await expect(service.get()).resolves.toEqual(savedSettings);
   });
@@ -269,7 +269,7 @@ describe('Settings', () => {
 
     const nextSettings = {
       ...defaultSettings,
-      pasteAfterDictation: true,
+      pasteAfterSpeak: true,
       pasteAfterImprovement: true,
       improveSelectedText: true,
       startAtStartup: true,

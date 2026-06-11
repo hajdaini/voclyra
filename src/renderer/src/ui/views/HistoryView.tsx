@@ -23,7 +23,7 @@ export const HistoryView = ({
   onClear,
 }: HistoryViewProps): JSX.Element => {
   const [query, setQuery] = useState('');
-  const [kindFilter, setKindFilter] = useState<'all' | 'dictation' | 'improvement' | 'transcript'>('all');
+  const [kindFilter, setKindFilter] = useState<'all' | 'speak' | 'improvement' | 'transcript'>('all');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -157,12 +157,12 @@ export const HistoryView = ({
           <select
             value={kindFilter}
             onChange={(event) =>
-              setKindFilter(event.target.value as 'all' | 'dictation' | 'improvement' | 'transcript')
+              setKindFilter(event.target.value as 'all' | 'speak' | 'improvement' | 'transcript')
             }
             aria-label="Filter history"
           >
             <option value="all">All</option>
-            <option value="dictation">Speak</option>
+            <option value="speak">Speak</option>
             <option value="improvement">Improve</option>
             <option value="transcript">Transcript</option>
           </select>
@@ -197,7 +197,7 @@ export const HistoryView = ({
           <div className="history-empty">
             <FileText size={28} />
             <strong>{entries.length === 0 ? 'No history yet' : 'No matching history'}</strong>
-            <span>Your dictations, improvements, and transcripts will appear here.</span>
+            <span>Your Speak results, improvements, and transcripts will appear here.</span>
           </div>
         )}
         {filteredEntries.map((entry) => {
@@ -275,14 +275,14 @@ export const HistoryView = ({
                     </div>
                     <div className="history-title-row">
                       <span className={`history-kind-tag ${entry.kind}`}>
-                        {entry.kind === 'dictation' ? (
+                        {entry.kind === 'speak' ? (
                           <Mic size={13} />
                         ) : entry.kind === 'improvement' ? (
                           <Wand2 size={13} />
                         ) : (
                           <Headphones size={13} />
                         )}
-                        {entry.kind === 'dictation' ? 'Speak' : entry.kind === 'improvement' ? 'Improve' : 'Transcript'}
+                        {entry.kind === 'speak' ? 'Speak' : entry.kind === 'improvement' ? 'Improve' : 'Transcript'}
                       </span>
                       <time>
                         <Calendar size={13} />

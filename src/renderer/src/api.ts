@@ -23,7 +23,7 @@ const fallbackApi: AppApi = {
     listLlm: () => Promise.resolve(defaultSettings.llmModel ? [defaultSettings.llmModel] : []),
     listWhisper: () => Promise.resolve([]),
   },
-  dictation: {
+  speak: {
     start: () => Promise.resolve(bridgeMissing()),
     stop: () => Promise.resolve(bridgeMissing()),
   },

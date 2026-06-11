@@ -1,4 +1,21 @@
 import { z } from 'zod';
+import {
+  llmContextSizeValues,
+  llmPerformanceModeOptions,
+  optionValues,
+  settingsLimits,
+  silenceSensitivityOptions,
+  whisperLanguageOptions,
+  whisperQualityModeOptions,
+} from './settings-options';
+import type { LanguageMode, LlmContextSize, LlmPerformanceMode, SilenceSensitivity, WhisperQualityMode } from './types';
+
+const optionSchema = <T extends string>(values: readonly T[]) =>
+  z.custom<T>((value) => typeof value === 'string' && values.includes(value as T));
+
+const llmContextSizeSchema = z.custom<LlmContextSize>(
+  (value) => typeof value === 'number' && llmContextSizeValues.includes(value as LlmContextSize),
+);
 
 export const hotkeysSchema = z.object({
   speak: z.string().min(1).max(80),
@@ -18,24 +35,13 @@ export const settingsSchema = z.object({
   remoteImproveModel: z.string().trim().max(260).default(''),
   llmModel: z.string().max(260),
   whisperModel: z.string().max(260),
-  whisperLanguage: z.enum(['auto', 'fr', 'en', 'es', 'de', 'it', 'pt']),
-  whisperQualityMode: z.enum(['fast', 'balanced', 'accurate']),
-  llmPerformanceMode: z.enum(['balanced', 'fast']).default('balanced'),
-  llmContextSize: z.union([
-    z.literal(512),
-    z.literal(1024),
-    z.literal(2048),
-    z.literal(3072),
-    z.literal(4096),
-    z.literal(6144),
-    z.literal(8192),
-    z.literal(12288),
-    z.literal(16384),
-    z.literal(32768),
-  ]),
+  whisperLanguage: optionSchema<LanguageMode>(optionValues(whisperLanguageOptions)),
+  whisperQualityMode: optionSchema<WhisperQualityMode>(optionValues(whisperQualityModeOptions)),
+  llmPerformanceMode: optionSchema<LlmPerformanceMode>(optionValues(llmPerformanceModeOptions)).default('balanced'),
+  llmContextSize: llmContextSizeSchema,
   llmTemperature: z.number().min(0).max(1),
   correctionPrompt: z.string().min(1).max(4000),
-  pasteAfterDictation: z.boolean(),
+  pasteAfterSpeak: z.boolean(),
   pasteAfterImprovement: z.boolean(),
   improveAfterSpeak: z.boolean().default(false),
   improveSelectedText: z.boolean(),
@@ -46,9 +52,9 @@ export const settingsSchema = z.object({
   microphoneDeviceLabel: z.string().max(260),
   transcriptOutputDeviceId: z.string().max(260),
   transcriptOutputDeviceLabel: z.string().max(260),
-  transcriptLiveChunkSeconds: z.number().int().min(30).max(300),
-  silenceSensitivity: z.enum(['low', 'normal', 'high']),
-  maxHistoryItems: z.number().int().min(1).max(10000),
+  transcriptLiveChunkSeconds: z.number().int().min(settingsLimits.transcriptLiveChunkSeconds.min).max(settingsLimits.transcriptLiveChunkSeconds.max),
+  silenceSensitivity: optionSchema<SilenceSensitivity>(optionValues(silenceSensitivityOptions)),
+  maxHistoryItems: z.number().int().min(settingsLimits.maxHistoryItems.min).max(settingsLimits.maxHistoryItems.max),
   hotkeys: hotkeysSchema,
 });
 

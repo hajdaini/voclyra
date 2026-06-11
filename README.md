@@ -17,7 +17,7 @@
   <a href="https://github.com/hajdaini/voclyra/actions/workflows/ci.yml"><img src="https://github.com/hajdaini/voclyra/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 
-Voclyra is an open-source Windows desktop app for fast dictation, transcription, and text improvement. Speak instead of typing, clean up rough text in seconds, summarize transcripts, and keep everything private with Whisper and llama.cpp.
+Voclyra is an open-source Windows desktop app for fast Speak, transcription, and text improvement. Speak instead of typing, clean up rough text in seconds, summarize transcripts, and keep everything private with Whisper and llama.cpp.
 
 No cloud transcription. No hosted correction API. Your data stays on your machine.
 
@@ -53,7 +53,7 @@ Install it like a normal desktop app, then open Voclyra and download the local m
 
 Writing is not just typing. It is capturing ideas, fixing mistakes, rewriting sentences, cleaning notes, and moving text between tools.
 
-The real slowdown is not only typing speed. It is stopping to fix mistakes, rewrite awkward sentences, clean dictated text, and move drafts between tools.
+The real slowdown is not only typing speed. It is stopping to fix mistakes, rewrite awkward sentences, clean spoken text, and move drafts between tools.
 
 Voclyra focuses on that gap: capture text quickly, then correct or rewrite it from a shortcut with a local model. Fast input matters, but fast cleanup is what makes the workflow useful.
 
@@ -63,11 +63,11 @@ Voclyra focuses on that gap: capture text quickly, then correct or rewrite it fr
 
 ### 🎙️ Speak
 
-Fast dictation for short text: messages, prompts, notes, ideas, replies.
+Fast Speak for short text: messages, prompts, notes, ideas, replies.
 
 ### ✨ Improve
 
-Local correction and rewriting from a shortcut. Use it for spelling, punctuation, grammar, rough phrasing, dictated text, or messy drafts.
+Local correction and rewriting from a shortcut. Use it for spelling, punctuation, grammar, rough phrasing, spoken text, or messy drafts.
 
 ### 🎧 Transcript
 
@@ -85,7 +85,7 @@ Pick an audio file from the toolbar or File menu and transcribe it with the same
 | --- | --- |
 | Write faster | Speak text instead of typing it |
 | Fix rough text | Improve text locally from a shortcut |
-| Clean dictated output | Correct grammar, punctuation, and phrasing |
+| Clean spoken output | Correct grammar, punctuation, and phrasing |
 | Capture long audio | Local transcript + saved audio |
 | Work in many languages | Speak, Improve, Transcript, and Import audio across languages |
 | Reuse old work | Searchable history |
@@ -110,7 +110,7 @@ Voclyra runs local Whisper and llama.cpp servers, so models can stay warm and re
 
 Useful settings include:
 
-- automatic paste after dictation or improvement;
+- automatic paste after Speak or improvement;
 - selected-text improvement;
 - multilingual transcription and correction;
 - microphone and computer audio selection;
@@ -183,7 +183,7 @@ Your voice, text, history, models, settings, and audio stay local.
 
 ## ✅ Features
 
-- Fast local dictation from anywhere with global shortcuts
+- Fast local Speak from anywhere with global shortcuts
 - One-shortcut text cleanup for grammar, punctuation, and rough phrasing
 - Local meeting and video transcription with saved audio replay
 - Audio import for existing recordings
@@ -338,7 +338,7 @@ npm run format         # Format the project with Prettier
 
 Voclyra is focused on Windows local AI workflows.
 
-The goal is simple: make dictation, transcription, and correction fast enough that writing feels lighter.
+The goal is simple: make Speak, transcription, and correction fast enough that writing feels lighter.
 
 <a id="sources"></a>
 

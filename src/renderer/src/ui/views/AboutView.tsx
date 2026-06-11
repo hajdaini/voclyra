@@ -33,7 +33,7 @@ export const AboutView = (): JSX.Element => (
           Speak
         </h2>
         <p>
-          Speak is made for short dictations. Use a shortcut, talk naturally, and get text copied quickly so you can paste it back into the app, chat, document, or input you were using.
+          Speak is made for short voice captures. Use a shortcut, talk naturally, and get text copied quickly so you can paste it back into the app, chat, document, or input you were using.
         </p>
       </article>
 
@@ -73,7 +73,7 @@ export const AboutView = (): JSX.Element => (
           Privacy
         </h2>
         <p>
-          Dictation, transcription, and improvement are designed to run locally, keeping your main workflow private, fast, and under your control.
+          Speak, transcription, and improvement are designed to run locally, keeping your main workflow private, fast, and under your control.
         </p>
       </article>
     </div>

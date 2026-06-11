@@ -29,6 +29,15 @@ import type {
   WhisperAvailableModel,
   WhisperModelId,
 } from '@shared/types';
+import {
+  llmContextSizeValues,
+  llmPerformanceModeOptions,
+  settingsLimits,
+  silenceSensitivityOptions,
+  whisperLanguageOptions,
+  whisperQualityModeOptions,
+} from '@shared/settings-options';
+import { actionMessages } from '@shared/action-messages';
 import { api } from '../../api';
 import { defaultWaveform, nextVisualWaveform, settingsWaveformSize } from '../waveform';
 import { AudioLevelIcon } from '../components/AudioLevelIcon';
@@ -366,8 +375,8 @@ export const SettingsView = ({
         <label className="settings-checkbox">
           <input
             type="checkbox"
-            checked={settings.pasteAfterDictation}
-            onChange={(event) => onChange({ ...settings, pasteAfterDictation: event.target.checked })}
+            checked={settings.pasteAfterSpeak}
+            onChange={(event) => onChange({ ...settings, pasteAfterSpeak: event.target.checked })}
           />
           <span className="settings-option-label">
             Paste Speak result into active app
@@ -555,9 +564,9 @@ export const SettingsView = ({
               onChange({ ...settings, silenceSensitivity: event.target.value as SettingsType['silenceSensitivity'] })
             }
           >
-            <option value="low">Low</option>
-            <option value="normal">Normal</option>
-            <option value="high">High</option>
+            {silenceSensitivityOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
           </select>
         </label>
       </section>
@@ -573,14 +582,17 @@ export const SettingsView = ({
           </span>
           <input
             type="number"
-            min={1}
-            max={10000}
+            min={settingsLimits.maxHistoryItems.min}
+            max={settingsLimits.maxHistoryItems.max}
             step={1}
             value={settings.maxHistoryItems}
             onChange={(event) =>
               onChange({
                 ...settings,
-                maxHistoryItems: Math.max(1, Math.min(10000, Number(event.target.value) || 1)),
+                maxHistoryItems: Math.max(
+                  settingsLimits.maxHistoryItems.min,
+                  Math.min(settingsLimits.maxHistoryItems.max, Number(event.target.value) || settingsLimits.maxHistoryItems.min),
+                ),
               })
             }
           />
@@ -788,8 +800,9 @@ export const SettingsView = ({
                   onChange({ ...settings, llmPerformanceMode: event.target.value as SettingsType['llmPerformanceMode'] })
                 }
               >
-                <option value="balanced">Balanced</option>
-                <option value="fast">Fast GPU</option>
+                {llmPerformanceModeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
             </label>
             <label>
@@ -804,16 +817,9 @@ export const SettingsView = ({
                   onChange({ ...settings, llmContextSize: Number(event.target.value) as SettingsType['llmContextSize'] })
                 }
               >
-                <option value={512}>512</option>
-                <option value={1024}>1024</option>
-                <option value={2048}>2048</option>
-                <option value={3072}>3072</option>
-                <option value={4096}>4096</option>
-                <option value={6144}>6144</option>
-                <option value={8192}>8192</option>
-                <option value={12288}>12288</option>
-                <option value={16384}>16384</option>
-                <option value={32768}>32768</option>
+                {llmContextSizeValues.map((value) => (
+                  <option key={value} value={value}>{value}</option>
+                ))}
               </select>
             </label>
             <label>
@@ -1009,13 +1015,9 @@ export const SettingsView = ({
                   onChange({ ...settings, whisperLanguage: event.target.value as SettingsType['whisperLanguage'] })
                 }
               >
-                <option value="auto">Auto</option>
-                <option value="fr">French</option>
-                <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="de">German</option>
-                <option value="it">Italian</option>
-                <option value="pt">Portuguese</option>
+                {whisperLanguageOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
             </label>
             <label>
@@ -1033,9 +1035,9 @@ export const SettingsView = ({
                   })
                 }
               >
-                <option value="fast">Fast</option>
-                <option value="balanced">Balanced</option>
-                <option value="accurate">Accurate</option>
+                {whisperQualityModeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
             </label>
             <label>
@@ -1045,15 +1047,21 @@ export const SettingsView = ({
               </span>
                 <input
                   type="number"
-                  min={30}
-                  max={300}
+                  min={settingsLimits.transcriptLiveChunkSeconds.min}
+                  max={settingsLimits.transcriptLiveChunkSeconds.max}
                   step={5}
                   value={settings.transcriptLiveChunkSeconds}
                   disabled={localSpeechRuntimeDisabled}
                   onChange={(event) =>
                     onChange({
                       ...settings,
-                      transcriptLiveChunkSeconds: Math.max(30, Math.min(300, Math.round(Number(event.target.value) || 60))),
+                      transcriptLiveChunkSeconds: Math.max(
+                        settingsLimits.transcriptLiveChunkSeconds.min,
+                        Math.min(
+                          settingsLimits.transcriptLiveChunkSeconds.max,
+                          Math.round(Number(event.target.value) || settings.transcriptLiveChunkSeconds),
+                        ),
+                      ),
                     })
                   }
                 />
@@ -1228,7 +1236,7 @@ const vramStatus = (
 
 const formatGb = (value: number): string => `${Number.isInteger(value) ? value : value.toFixed(1)} GB`;
 const formatGbValue = (value: number): string => `${Number.isInteger(value) ? value : value.toFixed(1)}`;
-const errorMessage = (error: unknown): string => error instanceof Error ? error.message : 'Operation failed.';
+const errorMessage = (error: unknown): string => error instanceof Error ? error.message : actionMessages.operationFailed;
 
 const stopAudioCaptureTest = (test: AudioCaptureTest | null): void => {
   if (!test) {

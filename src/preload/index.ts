@@ -18,10 +18,10 @@ const api: AppApi = {
     listLlm: () => ipcRenderer.invoke(channels.modelsListLlm) as Promise<string[]>,
     listWhisper: () => ipcRenderer.invoke(channels.whisperListModels) as Promise<string[]>,
   },
-  dictation: {
+  speak: {
     start: (audio) =>
-      ipcRenderer.invoke(channels.dictationStart, audio) as ReturnType<AppApi['dictation']['start']>,
-    stop: () => ipcRenderer.invoke(channels.dictationStop) as ReturnType<AppApi['dictation']['stop']>,
+      ipcRenderer.invoke(channels.speakStart, audio) as ReturnType<AppApi['speak']['start']>,
+    stop: () => ipcRenderer.invoke(channels.speakStop) as ReturnType<AppApi['speak']['stop']>,
   },
   transcript: {
     start: (audio, options) =>

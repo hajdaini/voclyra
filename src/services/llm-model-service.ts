@@ -1,7 +1,5 @@
-import { createWriteStream } from 'node:fs';
-import { access, mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
-import { get } from 'node:https';
-import { dirname, join } from 'node:path';
+import { access, readdir, rm, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import type {
   LlmAvailableModel,
   LlmDownloadProgress,
@@ -10,6 +8,7 @@ import type {
 } from '@shared/types';
 import { llmModelCatalog, llmModelIds } from '@shared/llm-models';
 import { AppStorage } from '@storage/app-storage';
+import { downloadModelFile, downloadModelToTemporary, validateModelDownloadHost } from './model-download-service';
 
 type ProgressCallback = (progress: LlmDownloadProgress) => void;
 
@@ -68,7 +67,7 @@ export class LlmModelService {
 
   async downloadCustomModel(url: string, onProgress: ProgressCallback): Promise<LlmAvailableModel[]> {
     const parsedUrl = new URL(url);
-    this.validateDownloadHost(parsedUrl.hostname);
+    validateModelDownloadHost(parsedUrl.hostname);
     const fileName = this.customFileName(parsedUrl, '.gguf');
     const id = fileName;
     if (this.downloads.has(id)) {
@@ -195,18 +194,13 @@ export class LlmModelService {
     destination: string,
     onProgress: (progress: number) => void,
   ): Promise<void> {
-    const temporary = `${destination}.download`;
-    await mkdir(dirname(destination), { recursive: true });
-    await rm(temporary, { force: true });
-    await this.downloadToTemporary(url, temporary, onProgress);
-
-    const downloaded = await stat(temporary);
-    if (downloaded.size === 0) {
-      await rm(temporary, { force: true });
-      throw new Error('Downloaded model is empty.');
-    }
-
-    await rename(temporary, destination);
+    await downloadModelFile({
+      url,
+      destination,
+      onProgress,
+      downloadToTemporary: (nextUrl, temporary, nextProgress) =>
+        this.downloadToTemporary(nextUrl, temporary, nextProgress),
+    });
   }
 
   private downloadToTemporary(
@@ -214,72 +208,7 @@ export class LlmModelService {
     temporary: string,
     onProgress: (progress: number) => void,
   ): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      const parsedUrl = new URL(url);
-      this.validateDownloadHost(parsedUrl.hostname);
-
-      const request = get(parsedUrl, (response) => {
-        if ([301, 302, 303, 307, 308].includes(response.statusCode ?? 0)) {
-          const location = response.headers.location;
-          response.resume();
-          if (!location) {
-            reject(new Error('Model download redirected without location.'));
-            return;
-          }
-          this.downloadToTemporary(new URL(location, parsedUrl).toString(), temporary, onProgress)
-            .then(resolve)
-            .catch(reject);
-          return;
-        }
-
-        if (response.statusCode !== 200) {
-          response.resume();
-          reject(new Error(`Model download failed with status ${response.statusCode ?? 0}.`));
-          return;
-        }
-
-        const total = Number(response.headers['content-length'] ?? 0);
-        let downloaded = 0;
-        let estimatedProgress = 0;
-        const file = createWriteStream(temporary, { flags: 'wx' });
-
-        response.on('data', (chunk: Buffer) => {
-          downloaded += chunk.length;
-          if (total > 0) {
-            onProgress(Math.min(99, Math.round((downloaded / total) * 100)));
-            return;
-          }
-          const nextEstimatedProgress = Math.min(95, Math.max(1, Math.floor(downloaded / (64 * 1024 * 1024))));
-          if (nextEstimatedProgress > estimatedProgress) {
-            estimatedProgress = nextEstimatedProgress;
-            onProgress(estimatedProgress);
-          }
-        });
-
-        response.pipe(file);
-        file.on('finish', () => {
-          file.close(() => resolve());
-        });
-        file.on('error', reject);
-      });
-
-      request.on('error', reject);
-      request.setTimeout(30000, () => {
-        request.destroy(new Error('Model download timed out.'));
-      });
-    });
-  }
-
-  private validateDownloadHost(hostname: string): void {
-    if (
-      hostname === 'huggingface.co' ||
-      hostname.endsWith('.huggingface.co') ||
-      hostname === 'hf.co' ||
-      hostname.endsWith('.hf.co')
-    ) {
-      return;
-    }
-    throw new Error('Model download host is not allowed.');
+    return downloadModelToTemporary(url, temporary, onProgress);
   }
 
   private customFileName(url: URL, extension: '.gguf'): string {
