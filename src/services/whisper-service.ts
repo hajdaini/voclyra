@@ -750,9 +750,6 @@ const whisperQualityArgs = (mode: Settings['whisperQualityMode']): string[] => {
   if (mode === 'fast') {
     return ['-bs', '1', '-bo', '1'];
   }
-  if (mode === 'accurate') {
-    return ['-bs', '5', '-bo', '5'];
-  }
   return [];
 };
 
