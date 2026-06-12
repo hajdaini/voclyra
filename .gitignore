@@ -27,5 +27,6 @@ resources/runtimes/
 resources/helpers/audio-capture-helper/bin/
 resources/helpers/audio-capture-helper/obj/
 AGENTS.md
+CLAUDE.md
 TODO.md
 .codex

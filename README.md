@@ -9,12 +9,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/hajdaini/voclyra/releases/latest"><img src="https://img.shields.io/github/v/release/hajdaini/voclyra?color=blue&label=release" alt="Release"></a>
+  <a href="https://github.com/hajdaini/voclyra/releases/latest"><img src="https://img.shields.io/github/v/release/hajdaini/voclyra?color=orange&label=release" alt="Release"></a>
+  <a href="https://github.com/hajdaini/voclyra/actions/workflows/ci.yml"><img src="https://github.com/hajdaini/voclyra/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/AI-local-2ea44f" alt="Local AI">
   <img src="https://img.shields.io/badge/platform-Windows-0078D6" alt="Windows">
   <img src="https://img.shields.io/badge/TypeScript-strict-3178c6" alt="TypeScript">
   <img src="https://img.shields.io/badge/C%23-audio_helper-512BD4" alt="C#">
-  <a href="https://github.com/hajdaini/voclyra/actions/workflows/ci.yml"><img src="https://github.com/hajdaini/voclyra/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 
 Voclyra is an open-source Windows desktop app for fast Speak, transcription, and text improvement. Speak instead of typing, clean up rough text in seconds, summarize transcripts, and keep everything private with Whisper and llama.cpp.

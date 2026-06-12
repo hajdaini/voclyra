@@ -1,7 +1,7 @@
 {
   "name": "voclyra",
   "version": "0.1.25",
-  "description": "Local Windows Speak and text improvement app.",
+  "description": "Local Windows Speak, transcript and text improvement app.",
   "main": "./out/main/index.js",
   "author": "timtim",
   "license": "UNLICENSED",
